@@ -1,0 +1,13 @@
+package com.scaleguard.server.http.metering;
+
+public enum Strategy {
+  CALLS_PERMINUTE,
+  CALLS_PERSECOND,
+  CALLS_PERDAY,
+  TOTAL_CALLS,
+  MAX_USAGE_AMOUNT,
+  DATA_USAGE_PERMINUTE,
+  DATA_USAGE_PERSECOND,
+  DATA_USAGE_PERDAY,
+  DATA_USAGE_CALLS,
+}

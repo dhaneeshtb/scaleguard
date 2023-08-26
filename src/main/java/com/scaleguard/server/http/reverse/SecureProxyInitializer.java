@@ -1,0 +1,52 @@
+package com.scaleguard.server.http.reverse;
+
+import com.scaleguard.server.http.cache.RequestCacheInfo;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+
+public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
+
+	private RequestCacheInfo cacheInfo;
+	private String cacheKey;
+	private Channel inbound;
+	private final boolean isSecureBackend;
+
+
+	public SecureProxyInitializer(Channel inbound,boolean isSecureBackend,RequestCacheInfo cacheInfo,String cacheKey) {
+		this.inbound = inbound;
+		this.isSecureBackend = isSecureBackend;
+		this.cacheInfo=cacheInfo;
+		this.cacheKey=cacheKey;
+	}
+
+
+	@Override
+	public void initChannel(SocketChannel ch) throws Exception {
+		ChannelPipeline pipeline = ch.pipeline();
+
+		// Add SSL handler first to encrypt and decrypt everything.
+		// In this example, we use a bogus certificate in the server side
+		// and accept any invalid certificates in the client side.
+		// You will need something more complicated to identify both
+		// and server in the real world.
+
+		pipeline.addLast(new LoggingHandler(LogLevel.DEBUG));
+
+		if (isSecureBackend) {
+
+			pipeline.addLast(SslContextBuilder.forClient()
+					.trustManager(InsecureTrustManagerFactory.INSTANCE).build().newHandler(ch.alloc()));
+		}
+		pipeline.addLast(new HttpClientCodec());
+		pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));
+		pipeline.addLast(new ScaleGuardBackendHandler(inbound,cacheInfo,cacheKey));
+	}
+}

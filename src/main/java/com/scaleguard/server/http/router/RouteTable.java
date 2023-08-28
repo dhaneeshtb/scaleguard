@@ -9,6 +9,7 @@ public class RouteTable {
 
   private List<SourceSystem> sourceSystsems = new ArrayList<>();
   private Map<String,TargetSystem> targetSystemMap = new HashMap<>();
+  private List<HostGroup> hostGroups = new ArrayList<>();
 
   private static RouteTable routeTable;
   public static synchronized RouteTable getInstance(){
@@ -24,8 +25,9 @@ public class RouteTable {
 
   private void load(){
     SystemLoader loader =new LocalSystemLoader();
+    hostGroups.addAll(loader.loadHostGroups());
     sourceSystsems.addAll(loader.loadSources());
-    loader.loadTargets().forEach(s->targetSystemMap.put(s.getGroupId(),s));
+    loader.loadTargets(hostGroups).forEach(s->targetSystemMap.put(s.getGroupId(),s));
 
   }
   public void add(SourceSystem source){

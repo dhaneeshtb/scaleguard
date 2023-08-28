@@ -1,8 +1,6 @@
 package com.scaleguard.server.http.router;
 
-import com.google.protobuf.compiler.PluginProtos.CodeGeneratorResponse.File;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
@@ -37,7 +35,7 @@ public class LocalSystemLoader implements SystemLoader {
   }
 
   @Override
-  public List<TargetSystem> loadTargets() {
+  public List<TargetSystem> loadTargets(List<HostGroup> hostGroups) {
     try {
       Properties props = new Properties();
       props.load(new FileInputStream("target.properties"));
@@ -52,6 +50,31 @@ public class LocalSystemLoader implements SystemLoader {
         ss.setGroupId(props.getProperty("target."+key+".groupId"));
         ss.setBasePath(props.getProperty("target."+key+".basePath"));
         ss.setEnableCache(Boolean.parseBoolean(props.getProperty("target."+key+".enableCache")));
+        String hgId=props.getProperty("target."+key+".hostgroup");
+        if(hgId!=null && hostGroups!=null){
+          ss.setHostGroups(hostGroups.stream().filter(s->s.getGroupId().equals(hgId)).collect(Collectors.toList()));
+        }
+        return ss;
+      }).collect(Collectors.toList());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return null;
+  }
+
+  @Override
+  public List<HostGroup> loadHostGroups() {
+    try {
+      Properties props = new Properties();
+      props.load(new FileInputStream("hostgroup.properties"));
+      return props.keySet().stream().filter(s->s.toString().endsWith(".host")).map(k->{
+        String key = k.toString().split("[.]")[1];
+        HostGroup ss = new HostGroup();
+        ss.setHost(props.getProperty(k.toString()));
+        ss.setPort(props.getProperty("hostgroup."+key+".port"));
+        ss.setGroupId(props.getProperty("hostgroup."+key+".groupId"));
+        ss.setScheme(props.getProperty("hostgroup."+key+".scheme"));
+        ss.setType(props.getProperty("hostgroup."+key+".type"));
         return ss;
       }).collect(Collectors.toList());
     } catch (Exception e) {

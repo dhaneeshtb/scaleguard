@@ -15,6 +15,7 @@
  */
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
@@ -79,32 +80,18 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         .channel(ctx.channel().getClass())
         .handler(new SecureProxyInitializer(inboundChannel, true,null,messageKey))
         .option(ChannelOption.AUTO_READ, false);
-    ChannelFuture f = b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));
+    HostGroup hg = ts.getHostGroup();
+    ChannelFuture f =hg!=null?b.connect(hg.getHost(), Integer.valueOf(hg.getPort())): b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));
     outboundChannel = f.channel();
     f.addListener((ChannelFutureListener) future -> {
       if (future.isSuccess()) {
         inboundChannel.config().setAutoRead(true);
         outboundChannel.writeAndFlush(msg);
       } else {
-        inboundChannel.close();
-      }
-    });
-  }
-
-  private void handleNewOutboundChannelPooled(TargetSystem ts,final ChannelHandlerContext ctx, Object msg,String messageKey){
-    final Channel inboundChannel = ctx.channel();
-    Bootstrap b = new Bootstrap();
-    b.group(inboundChannel.eventLoop())
-        .channel(ctx.channel().getClass())
-        .handler(new SecureProxyInitializer(inboundChannel, true,null,messageKey))
-        .option(ChannelOption.AUTO_READ, false);
-    ChannelFuture f = b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));
-    outboundChannel = f.channel();
-    f.addListener((ChannelFutureListener) future -> {
-      if (future.isSuccess()) {
-        inboundChannel.config().setAutoRead(true);
-        outboundChannel.writeAndFlush(msg);
-      } else {
+        Object obj = future.get();
+        if(obj instanceof Exception){
+          System.out.println(((Exception) obj).getMessage());
+        }
         inboundChannel.close();
       }
     });

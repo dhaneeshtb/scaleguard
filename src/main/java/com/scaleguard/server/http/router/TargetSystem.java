@@ -1,12 +1,36 @@
 package com.scaleguard.server.http.router;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public class TargetSystem {
 
+  Random rn = new Random();
+
+  private List<HostGroup> hostGroups;
   private String host;
   private String port;
+
+  public List<HostGroup> getHostGroups() {
+    return hostGroups;
+  }
+
+  public HostGroup  getHostGroup() {
+    if(hostGroups!=null && hostGroups.size()>0) {
+      int index = rn.nextInt(hostGroups.size());
+      return hostGroups.get(index);
+    }else{
+      return null;
+    }
+  }
+
+
+  public void setHostGroups(List<HostGroup> hostGroups) {
+    this.hostGroups = hostGroups;
+  }
+
   private String scheme;
   private String basePath;
   private String id;

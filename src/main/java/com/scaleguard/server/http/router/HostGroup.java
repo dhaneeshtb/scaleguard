@@ -3,6 +3,15 @@ package com.scaleguard.server.http.router;
 public class HostGroup {
     private String host;
     private String port;
+    private String health;
+
+    public String getHealth() {
+        return health;
+    }
+
+    public void setHealth(String health) {
+        this.health = health;
+    }
 
     private String scheme;
 
@@ -86,5 +95,5 @@ public class HostGroup {
     }
 
     private float loadFactor;
-    private boolean isReachable;
+    private boolean isReachable=true;
 }

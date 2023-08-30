@@ -4,10 +4,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 public class TargetSystem {
 
-  Random rn = new Random();
 
   private List<HostGroup> hostGroups;
   private String host;
@@ -18,12 +18,7 @@ public class TargetSystem {
   }
 
   public HostGroup  getHostGroup() {
-    if(hostGroups!=null && hostGroups.size()>0) {
-      int index = rn.nextInt(hostGroups.size());
-      return hostGroups.get(index);
-    }else{
-      return null;
-    }
+    return BestHostSelector.getBestHost(hostGroups);
   }
 
 

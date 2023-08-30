@@ -75,6 +75,7 @@ public class LocalSystemLoader implements SystemLoader {
         ss.setGroupId(props.getProperty("hostgroup."+key+".groupId"));
         ss.setScheme(props.getProperty("hostgroup."+key+".scheme"));
         ss.setType(props.getProperty("hostgroup."+key+".type"));
+        ss.setHealth(props.getProperty("hostgroup."+key+".health"));
         return ss;
       }).collect(Collectors.toList());
     } catch (Exception e) {

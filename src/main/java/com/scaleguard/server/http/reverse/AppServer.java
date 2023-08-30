@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.router.RouteTable;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -15,6 +16,7 @@ public class AppServer {
     new AppServer().run();
   }
   public void run() throws Exception {
+    RouteTable.getInstance();
     EventLoopGroup bossGroup = new NioEventLoopGroup();
     EventLoopGroup workerGroup = new NioEventLoopGroup();
     try {

@@ -26,10 +26,13 @@ public class RouteTable {
   private void load(){
     SystemLoader loader =new LocalSystemLoader();
     hostGroups.addAll(loader.loadHostGroups());
+    new HostGroupWatcher(hostGroups).start();
     sourceSystsems.addAll(loader.loadSources());
     loader.loadTargets(hostGroups).forEach(s->targetSystemMap.put(s.getGroupId(),s));
 
   }
+
+
   public void add(SourceSystem source){
     if(sourceSystsems.stream().anyMatch(s->isMatched(source,s))){
       throw new RuntimeException("Route already exists");

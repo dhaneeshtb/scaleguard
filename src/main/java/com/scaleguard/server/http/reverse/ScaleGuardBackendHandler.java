@@ -49,28 +49,33 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(final ChannelHandlerContext ctx, Object msg) {
-//        if(cacheKey!=null){
-//            if(msg instanceof ByteBuf){
-//                ByteBuf b = ((ByteBuf) msg).duplicate().retain();
-//                System.out.println("Channel Read ->" +b.readableBytes());
-//                cacheManager.save(cacheInfo,cacheKey,b);
-//            }if(msg instanceof FullHttpResponse){
-//                FullHttpResponse b = ((FullHttpResponse) msg).duplicate().retain();
-//                cacheManager.save(cacheInfo,cacheKey,b);
-//            }else
-//                cacheManager.save(cacheInfo,cacheKey,msg);
-//        }
-//        System.out.println("CacheKey is" +cacheKey);
+        Object cachedObject;
+        if(cacheKey!=null){
+            if(msg instanceof ByteBuf){
+                cachedObject = ((ByteBuf) msg).duplicate().retain();
+            }else if(msg instanceof FullHttpResponse){
+                cachedObject = ((FullHttpResponse) msg).duplicate().retain();
+            }else{
+                cachedObject = msg;
+            }
+        }else{
+            cachedObject=null;
+        }
         inboundChannel.writeAndFlush(msg).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) {
                 if (future.isSuccess()) {
                     ctx.channel().read();
+                    if(cacheKey!=null && cachedObject!=null) {
+                        cacheManager.saveFresh(cacheInfo, cacheKey, cachedObject);
+                    }
                 } else {
                     future.channel().close();
                 }
             }
         });
+
+
     }
 
     @Override

@@ -53,14 +53,13 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
     TargetSystem ts = inboundHandler.matchTarget(ctx,msg);
-
     if(ts==null){
       new DefaultResponseHandler().handle(ctx,null);
     }else {
       if(ts.isEnableCache()) {
         inboundHandler.handle(ctx, msg, key -> proeedToTarget(ts, ctx, msg, key.getKey()));
       }else{
-        proeedToTarget(ts, ctx, msg, UUID.randomUUID().toString());
+        proeedToTarget(ts, ctx, msg, null);
       }
     }
   }
@@ -102,7 +101,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       outboundChannel.writeAndFlush(msg)
         .addListener((ChannelFutureListener) future -> {
           if (future.isSuccess()) {
-            //ctx.channel().read();
+            ctx.channel().read();
           } else {
             future.channel().close();
           }

@@ -55,6 +55,12 @@ public class InMemoryCacheLooker implements CacheManager {
     list.add(msg);
     dataMap.put(key,list);
   }
+  @Override
+  public void saveFresh(RequestCacheInfo info,String key, Object msg) {
+    List<Object> list =new ArrayList<Object>();
+    list.add(msg);
+    dataMap.put(key,list);
+  }
 
 
 }

@@ -70,7 +70,11 @@ public class HostGroupWatcher {
                     result.append(line);
                 }
             }
-            return conn.getResponseCode();
+            int  res= conn.getResponseCode();
+            if(res!=200){
+                System.out.println(result.toString());
+            }
+            return res;
         }finally {
             conn.disconnect();
         }
@@ -88,12 +92,15 @@ public class HostGroupWatcher {
                        int rs = getResponse("http://localhost:8080/hckeck");
                        if (rs != 200) {
                            ai.incrementAndGet();
+                           System.out.println(rs);
+
                        }else {
                            aiSuccess.incrementAndGet();
                        }
                    } catch (Exception e) {
                        ai.incrementAndGet();
-                       throw new RuntimeException(e);
+                       e.printStackTrace();
+
                    }
                }
            });

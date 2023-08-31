@@ -11,6 +11,7 @@ import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.DecoderResult;
@@ -62,12 +63,18 @@ public class InboundMessageHandler {
 
   public void handle(ChannelHandlerContext ctx, Object msg, Consumer<CachedResponse> consumer){
     CachedResponse cr = getCachedResponse(null,msg);
+
+
     if(cr.getResponse()!=null){
-      if (cr.getResponse() != null) {
-        ((List<Object>) cr.getResponse()).forEach(s -> {
-          FullHttpResponse ins = (FullHttpResponse) s;
-          writeInboundFlush(ctx, ins);
-        });
+
+
+      synchronized (cr.getKey().intern()) {
+        if (cr.getResponse() != null) {
+          ((List<Object>) cr.getResponse()).forEach(s -> {
+            FullHttpResponse ins = (FullHttpResponse) s;
+            writeInboundFlush(ctx, ins);
+          });
+        }
       }
       return;
     }else {
@@ -77,7 +84,19 @@ public class InboundMessageHandler {
 
   public void writeInboundFlush(final ChannelHandlerContext ctx, Object msg) {
     final Channel inboundChannel = ctx.channel();
-    ctx.writeAndFlush(msg).addListener(ChannelFutureListener.CLOSE);
+
+    inboundChannel.writeAndFlush(msg);
+
+//    .addListener(new ChannelFutureListener() {
+//      @Override
+//      public void operationComplete(ChannelFuture future) {
+//        if (future.isSuccess()) {
+//          ctx.channel().read();
+//        } else {
+//          future.channel().close();
+//        }
+//      }
+//    });
   }
 
   public CachedResponse getCachedResponse(RequestCacheInfo rc,Object msg){

@@ -9,8 +9,11 @@ import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+
+import javax.net.ssl.SSLException;
 
 public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -18,9 +21,21 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 	private String cacheKey;
 	private Channel inbound;
 	private final boolean isSecureBackend;
+	static SslContext sslContext=null;
+	static{
+		try {
+			sslContext= SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
+		} catch (SSLException e) {
+			throw new RuntimeException(e);
+		}
 
+	}
 
-	public SecureProxyInitializer(Channel inbound,boolean isSecureBackend,RequestCacheInfo cacheInfo,String cacheKey) {
+	public static void createSSLContext(){
+
+	}
+
+	public SecureProxyInitializer(Channel inbound,boolean isSecureBackend,RequestCacheInfo cacheInfo,String cacheKey){
 		this.inbound = inbound;
 		this.isSecureBackend = isSecureBackend;
 		this.cacheInfo=cacheInfo;
@@ -42,8 +57,7 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 
 		if (isSecureBackend) {
 
-			pipeline.addLast(SslContextBuilder.forClient()
-					.trustManager(InsecureTrustManagerFactory.INSTANCE).build().newHandler(ch.alloc()));
+			pipeline.addLast(sslContext.newHandler(ch.alloc()));
 		}
 		pipeline.addLast(new HttpClientCodec());
 		pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));

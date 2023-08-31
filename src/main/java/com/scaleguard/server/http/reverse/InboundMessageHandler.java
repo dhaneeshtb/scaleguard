@@ -40,6 +40,7 @@ public class InboundMessageHandler {
       HttpRequest request = (HttpRequest) msg;
       ss.setBasePath(request.uri());
       HttpHeaders headers = request.headers();
+
       QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
       Map<String, List<String>> params = queryStringDecoder.parameters();
       String authorization=headers.get("Authorization");

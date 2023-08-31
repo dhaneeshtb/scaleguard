@@ -78,7 +78,8 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     Bootstrap b = new Bootstrap();
     b.group(inboundChannel.eventLoop())
         .channel(ctx.channel().getClass())
-        .handler(new SecureProxyInitializer(inboundChannel, true,null,messageKey))
+            //.handler(new ScaleGuardBackendHandler(inboundChannel,null,messageKey))
+            .handler(new SecureProxyInitializer(inboundChannel, true,null,messageKey))
         .option(ChannelOption.AUTO_READ, false);
     HostGroup hg = ts.getHostGroup();
     ChannelFuture f =hg!=null?b.connect(hg.getHost(), Integer.valueOf(hg.getPort())): b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));

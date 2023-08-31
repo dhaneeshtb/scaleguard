@@ -17,8 +17,10 @@ public class AppServer {
   }
   public void run() throws Exception {
     RouteTable.getInstance();
-    EventLoopGroup bossGroup = new NioEventLoopGroup();
-    EventLoopGroup workerGroup = new NioEventLoopGroup();
+    SecureProxyInitializer.createSSLContext();
+    EventLoopGroup bossGroup = new NioEventLoopGroup(20);
+    EventLoopGroup workerGroup = new NioEventLoopGroup(20);
+    ServerInitializer server=new ServerInitializer();
     try {
       ServerBootstrap httpBootstrap = new ServerBootstrap();
       httpBootstrap.group(bossGroup, workerGroup)
@@ -26,7 +28,7 @@ public class AppServer {
           .option(ChannelOption.SO_BACKLOG, 2048)
           .childOption(ChannelOption.SO_KEEPALIVE, true)
           .handler(new LoggingHandler(LogLevel.INFO))
-          .childHandler(new ServerInitializer())
+          .childHandler(server)
           .childOption(ChannelOption.AUTO_READ, false)
           .bind(HTTP_PORT).sync().channel().closeFuture().sync();
       ChannelFuture httpChannel = httpBootstrap.bind(HTTP_PORT).sync();

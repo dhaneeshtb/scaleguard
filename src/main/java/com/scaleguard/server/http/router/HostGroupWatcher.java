@@ -8,6 +8,10 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class HostGroupWatcher {
 
@@ -29,18 +33,19 @@ public class HostGroupWatcher {
                             if (resp != 200) {
                                 hg.setReachable(false);
                             } else {
+                                logger.error("Restore connection {}",hg.getHealth());
                                 hg.setReachable(true);
                             }
                         } catch (Exception e) {
                             hg.setReachable(false);
-                            logger.error("Error while reaching {}",hg.getHealth());
+                            logger.error("Error while reaching {}",hg.getHealth(),e);
                         }
                     });
                 } catch (Exception e) {
                     logger.error("Error ",e);
                 }
                 try {
-                    Thread.sleep(10000);
+                    Thread.sleep(5000);
                 } catch (InterruptedException e) {
                     logger.error("Error ",e);
                 }
@@ -56,13 +61,51 @@ public class HostGroupWatcher {
         StringBuilder result = new StringBuilder();
         URL url = new URL(urlToRead);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(conn.getInputStream()))) {
-            for (String line; (line = reader.readLine()) != null; ) {
-                result.append(line);
+        try {
+            conn.setReadTimeout(15000);
+            conn.setRequestMethod("GET");
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream()))) {
+                for (String line; (line = reader.readLine()) != null; ) {
+                    result.append(line);
+                }
             }
+            return conn.getResponseCode();
+        }finally {
+            conn.disconnect();
         }
-        return conn.getResponseCode();
+    }
+
+    public static void main(String[] args) {
+        AtomicInteger ai = new AtomicInteger(0);
+        AtomicInteger aiSuccess = new AtomicInteger(0);
+       ExecutorService es =  Executors.newFixedThreadPool(200);
+       long start = System.currentTimeMillis();
+       for(int i=0;i<200;i++){
+           es.submit(()->{
+               for(int j=0;j<100;j++){
+                   try {
+                       int rs = getResponse("http://localhost:8080/hckeck");
+                       if (rs != 200) {
+                           ai.incrementAndGet();
+                       }else {
+                           aiSuccess.incrementAndGet();
+                       }
+                   } catch (Exception e) {
+                       ai.incrementAndGet();
+                       throw new RuntimeException(e);
+                   }
+               }
+           });
+       }
+       es.shutdown();
+        try {
+            es.awaitTermination(10, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("Failure count -> "+ai.get());
+        System.out.println("Success count -> "+aiSuccess.get());
+        System.out.println("Time taken  -> "+(System.currentTimeMillis()-start));
     }
 }

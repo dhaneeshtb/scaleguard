@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.auth.AuthInfo;
 import com.scaleguard.server.http.auth.AuthUtils;
 import com.scaleguard.server.http.cache.CacheManager;
 import com.scaleguard.server.http.cache.CachedResponse;
@@ -50,8 +51,10 @@ public class InboundMessageHandler {
         authorization=params.get("access_token")!=null?params.get("access_token").get(0):null;
       }
       if(authorization!=null) {
-        lob=AuthUtils.getAuthInfo(authorization).getLob();
-        ss.setJwtKeylookup("lob:" + lob);
+        lob=Optional.ofNullable(AuthUtils.getAuthInfo(authorization)).orElse(new AuthInfo(null,null)).getLob();
+        if(lob!=null) {
+          ss.setJwtKeylookup("lob:" + lob);
+        }
       }else if(lob!=null){
         ss.setJwtKeylookup("lob:" + lob);
       }

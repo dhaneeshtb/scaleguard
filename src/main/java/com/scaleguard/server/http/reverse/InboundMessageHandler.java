@@ -66,20 +66,13 @@ public class InboundMessageHandler {
 
   public void handle(ChannelHandlerContext ctx, Object msg, Consumer<CachedResponse> consumer){
     CachedResponse cr = getCachedResponse(null,msg);
-
-
     if(cr.getResponse()!=null){
-
-
-      synchronized (cr.getKey().intern()) {
         if (cr.getResponse() != null) {
           ((List<Object>) cr.getResponse()).forEach(s -> {
             FullHttpResponse ins = (FullHttpResponse) s;
             writeInboundFlush(ctx, ins);
           });
         }
-      }
-      return;
     }else {
       consumer.accept(cr);
     }

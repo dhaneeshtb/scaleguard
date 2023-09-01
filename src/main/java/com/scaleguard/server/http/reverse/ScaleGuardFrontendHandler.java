@@ -15,6 +15,7 @@
  */
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.cache.CachedResource;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.bootstrap.Bootstrap;
@@ -57,22 +58,22 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       new DefaultResponseHandler().handle(ctx,null);
     }else {
       if(ts.isEnableCache()) {
-        inboundHandler.handle(ctx, msg, key -> proeedToTarget(ts, ctx, msg, key.getKey()));
+        inboundHandler.handle(ctx, msg,ts, key -> proeedToTarget(ts, ctx, msg, key==null?null: key.getKey(),key==null?null:key.getResource()));
       }else{
-        proeedToTarget(ts, ctx, msg, null);
+        proeedToTarget(ts, ctx, msg, null,null);
       }
     }
   }
 
-  private void proeedToTarget(TargetSystem ts,final ChannelHandlerContext ctx, Object msg,String messageKey){
+  private void proeedToTarget(TargetSystem ts, final ChannelHandlerContext ctx, Object msg, String messageKey, CachedResource cr){
     if (outboundChannel == null || !outboundChannel.isActive()) {
-      handleNewOutboundChannel(ts,ctx,msg,messageKey);
+      handleNewOutboundChannel(ts,ctx,msg,messageKey,cr);
     }else{
-      handleExistingOutboundChannel(ctx,msg);
+      handleExistingOutboundChannel(ctx,msg,cr);
     }
   }
 
-  private void handleNewOutboundChannel(TargetSystem ts,final ChannelHandlerContext ctx, Object msg,String messageKey){
+  private void handleNewOutboundChannel(TargetSystem ts,final ChannelHandlerContext ctx, Object msg,String messageKey,CachedResource cr){
     final Channel inboundChannel = ctx.channel();
     Bootstrap b = new Bootstrap();
     b.group(inboundChannel.eventLoop())
@@ -97,7 +98,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     });
   }
 
-  public void handleExistingOutboundChannel(final ChannelHandlerContext ctx, Object msg) {
+  public void handleExistingOutboundChannel(final ChannelHandlerContext ctx, Object msg,CachedResource cr) {
       outboundChannel.writeAndFlush(msg)
         .addListener((ChannelFutureListener) future -> {
           if (future.isSuccess()) {

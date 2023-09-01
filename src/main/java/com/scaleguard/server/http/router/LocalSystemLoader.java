@@ -1,11 +1,19 @@
 package com.scaleguard.server.http.router;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.scaleguard.server.http.cache.CachedResource;
+
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
 public class LocalSystemLoader implements SystemLoader {
+
+  public static ObjectMapper mapper = new ObjectMapper();
 
   @Override
   public List<SourceSystem> loadSources() {
@@ -51,6 +59,14 @@ public class LocalSystemLoader implements SystemLoader {
         ss.setBasePath(props.getProperty("target."+key+".basePath"));
         ss.setEnableCache(Boolean.parseBoolean(props.getProperty("target."+key+".enableCache")));
         String hgId=props.getProperty("target."+key+".hostgroup");
+        String cachePatterns=props.getProperty("target."+key+".cache.patterns");
+        if(cachePatterns!=null && !cachePatterns.isEmpty()) {
+          try {
+            ss.setCachedResources(mapper.readValue(cachePatterns, new TypeReference<List<CachedResource>>() {}));
+          } catch (IOException e) {
+            e.printStackTrace();
+          }
+        }
         if(hgId!=null && hostGroups!=null){
           ss.setHostGroups(hostGroups.stream().filter(s->s.getGroupId().equals(hgId)).collect(Collectors.toList()));
         }

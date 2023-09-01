@@ -17,7 +17,7 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CacheManager;
 import com.scaleguard.server.http.cache.InMemoryCacheLooker;
-import com.scaleguard.server.http.cache.RequestCacheInfo;
+import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -29,14 +29,14 @@ import io.netty.handler.codec.http.FullHttpResponse;
 public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
     private final Channel inboundChannel;
-    private  RequestCacheInfo cacheInfo;
+    private  TargetSystem cacheInfo;
     private String cacheKey;
     private CacheManager cacheManager = InMemoryCacheLooker.getInstance();
 
     public ScaleGuardBackendHandler(Channel inboundChannel) {
         this.inboundChannel = inboundChannel;
     }
-    public ScaleGuardBackendHandler(Channel inboundChannel, RequestCacheInfo cacheInfo,String cacheKey) {
+    public ScaleGuardBackendHandler(Channel inboundChannel, TargetSystem cacheInfo, String cacheKey) {
         this.inboundChannel = inboundChannel;
         this.cacheInfo=cacheInfo;
         this.cacheKey=cacheKey;
@@ -50,23 +50,28 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(final ChannelHandlerContext ctx, Object msg) {
         Object cachedObject;
+        int statusCode;
         if(cacheKey!=null){
             if(msg instanceof ByteBuf){
                 cachedObject = ((ByteBuf) msg).duplicate().retain();
+                statusCode=-1;
             }else if(msg instanceof FullHttpResponse){
                 cachedObject = ((FullHttpResponse) msg).duplicate().retain();
+                statusCode = ((FullHttpResponse) msg).status().code();
             }else{
                 cachedObject = msg;
+                statusCode=-1;
             }
         }else{
             cachedObject=null;
+            statusCode=-1;
         }
         inboundChannel.writeAndFlush(msg).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) {
                 if (future.isSuccess()) {
                     ctx.channel().read();
-                    if(cacheKey!=null && cachedObject!=null) {
+                    if(cacheKey!=null && cachedObject!=null && statusCode>=200 && statusCode<300) {
                         cacheManager.saveFresh(cacheInfo, cacheKey, cachedObject);
                     }
                 } else {

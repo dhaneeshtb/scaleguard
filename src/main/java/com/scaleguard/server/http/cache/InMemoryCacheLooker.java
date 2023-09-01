@@ -1,6 +1,7 @@
 package com.scaleguard.server.http.cache;
 
 import com.scaleguard.server.http.router.RouteTable;
+import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.FullHttpResponse;
 import java.util.ArrayList;
@@ -29,7 +30,7 @@ public class InMemoryCacheLooker implements CacheManager {
 
 
   @Override
-  public CachedResponse lookup(RequestCacheInfo info,String key) {
+  public CachedResponse lookup(TargetSystem info, String key) {
     List<Object> dataList = dataMap.get(key);
     if(dataList!=null) {
       dataList= dataList.stream().map(x ->{
@@ -50,13 +51,13 @@ public class InMemoryCacheLooker implements CacheManager {
 
 
   @Override
-  public void save(RequestCacheInfo info,String key, Object msg) {
+  public void save(TargetSystem info,String key, Object msg) {
     List<Object> list =  dataMap.getOrDefault(key,new ArrayList<Object>());
     list.add(msg);
     dataMap.put(key,list);
   }
   @Override
-  public void saveFresh(RequestCacheInfo info,String key, Object msg) {
+  public void saveFresh(TargetSystem info,String key, Object msg) {
     List<Object> list =new ArrayList<Object>();
     list.add(msg);
     dataMap.put(key,list);

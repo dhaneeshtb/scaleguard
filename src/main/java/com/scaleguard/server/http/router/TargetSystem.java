@@ -1,5 +1,7 @@
 package com.scaleguard.server.http.router;
 
+import com.scaleguard.server.http.cache.CachedResource;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,8 +9,15 @@ import java.util.Random;
 import java.util.stream.Collectors;
 
 public class TargetSystem {
+  public List<CachedResource> getCachedResources() {
+    return cachedResources;
+  }
 
+  public void setCachedResources(List<CachedResource> cachedResources) {
+    this.cachedResources = cachedResources;
+  }
 
+  private List<CachedResource> cachedResources;
   private List<HostGroup> hostGroups;
   private String host;
   private String port;

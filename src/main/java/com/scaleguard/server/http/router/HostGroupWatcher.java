@@ -32,8 +32,8 @@ public class HostGroupWatcher {
                             int resp = getResponse(hg.getHealth());
                             if (resp != 200) {
                                 hg.setReachable(false);
+                                logger.error("Lost connection {}",hg.getHealth());
                             } else {
-                                logger.error("Restore connection {}",hg.getHealth());
                                 hg.setReachable(true);
                             }
                         } catch (Exception e) {
@@ -70,11 +70,7 @@ public class HostGroupWatcher {
                     result.append(line);
                 }
             }
-            int  res= conn.getResponseCode();
-            if(res!=200){
-                System.out.println(result.toString());
-            }
-            return res;
+            return conn.getResponseCode();
         }finally {
             conn.disconnect();
         }

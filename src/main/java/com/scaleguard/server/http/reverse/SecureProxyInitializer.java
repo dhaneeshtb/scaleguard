@@ -1,6 +1,6 @@
 package com.scaleguard.server.http.reverse;
 
-import com.scaleguard.server.http.cache.RequestCacheInfo;
+import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
@@ -17,7 +17,7 @@ import javax.net.ssl.SSLException;
 
 public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 
-	private RequestCacheInfo cacheInfo;
+	private TargetSystem cacheInfo;
 	private String cacheKey;
 	private Channel inbound;
 	private final boolean isSecureBackend;
@@ -35,7 +35,7 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 
 	}
 
-	public SecureProxyInitializer(Channel inbound,boolean isSecureBackend,RequestCacheInfo cacheInfo,String cacheKey){
+	public SecureProxyInitializer(Channel inbound,boolean isSecureBackend,TargetSystem cacheInfo,String cacheKey){
 		this.inbound = inbound;
 		this.isSecureBackend = isSecureBackend;
 		this.cacheInfo=cacheInfo;

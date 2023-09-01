@@ -5,7 +5,27 @@ public class CachedResponse {
 
   public Object response;
 
+  public CachedResource resource;
+
+  public ProxyRequest getProxyRequest() {
+    return proxyRequest;
+  }
+
+  public void setProxyRequest(ProxyRequest proxyRequest) {
+    this.proxyRequest = proxyRequest;
+  }
+
+  public ProxyRequest proxyRequest;
+
   private String key;
+
+  public CachedResource getResource() {
+    return resource;
+  }
+
+  public void setResource(CachedResource resource) {
+    this.resource = resource;
+  }
 
   public String getKey() {
     return key;

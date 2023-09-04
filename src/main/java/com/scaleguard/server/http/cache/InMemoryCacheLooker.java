@@ -1,12 +1,12 @@
 package com.scaleguard.server.http.cache;
 
-import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.FullHttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -14,7 +14,7 @@ public class InMemoryCacheLooker implements CacheManager {
 
   private ChecksumKey checksumKey = new ChecksumKey();
 
-  private Map<String, List<Object>> dataMap = new ConcurrentHashMap<>();
+  private Map<String, TimedCacheElement> dataMap = new ConcurrentHashMap<String, TimedCacheElement>();
 
   private static InMemoryCacheLooker routeTable;
 
@@ -31,15 +31,24 @@ public class InMemoryCacheLooker implements CacheManager {
 
   @Override
   public CachedResponse lookup(TargetSystem info, String key) {
-    List<Object> dataList = dataMap.get(key);
-    if(dataList!=null) {
-      dataList= dataList.stream().map(x ->{
-        if(x instanceof ByteBuf){
-          return ((ByteBuf) x).duplicate().retain();
-        }else{
-          return ((FullHttpResponse) x).duplicate().retain();
-        }
-      }).collect(Collectors.toList());
+    TimedCacheElement tce = dataMap.get(key);
+    List<Object> dataList;
+    if(tce!=null) {
+      if((System.currentTimeMillis()-tce.getCacheTime())> tce.getExpiry()*1000){
+        dataMap.remove(key);
+        dataList=null;
+      }else {
+        List<Object> dataListCached = (List<Object>) tce.getMessage();
+        dataList = dataListCached.stream().map(x -> {
+          if (x instanceof ByteBuf) {
+            return ((ByteBuf) x).duplicate().retain();
+          } else {
+            return ((FullHttpResponse) x).duplicate().retain();
+          }
+        }).collect(Collectors.toList());
+      }
+    }else{
+      dataList=null;
     }
     CachedResponse cr = new CachedResponse();
     cr.setKey(key);
@@ -52,15 +61,18 @@ public class InMemoryCacheLooker implements CacheManager {
 
   @Override
   public void save(TargetSystem info,String key, Object msg) {
-    List<Object> list =  dataMap.getOrDefault(key,new ArrayList<Object>());
-    list.add(msg);
-    dataMap.put(key,list);
+    throw new RuntimeException("");
   }
   @Override
   public void saveFresh(TargetSystem info,String key, Object msg) {
     List<Object> list =new ArrayList<Object>();
     list.add(msg);
-    dataMap.put(key,list);
+
+    CacheManager.TimedCacheElement cacheElement=new CacheManager.TimedCacheElement();
+    cacheElement.setCacheTime(System.currentTimeMillis());
+    cacheElement.setExpiry(300);
+    cacheElement.setMessage(list);
+    dataMap.put(key,cacheElement);
   }
 
 

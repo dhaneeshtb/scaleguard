@@ -72,6 +72,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
                 if (future.isSuccess()) {
                     ctx.channel().read();
                     if(cacheKey!=null && cachedObject!=null && statusCode>=200 && statusCode<300) {
+
                         cacheManager.saveFresh(cacheInfo, cacheKey, cachedObject);
                     }
                 } else {

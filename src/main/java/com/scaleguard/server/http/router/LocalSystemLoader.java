@@ -34,6 +34,9 @@ public class LocalSystemLoader implements SystemLoader {
         ss.setBasePath(props.getProperty("source."+key+".basePath"));
         ss.setCallbackId(props.getProperty("source."+key+".callbackId"));
         ss.setJwtKeylookup(props.getProperty("source."+key+".jwtKeylookup"));
+        ss.setHeaderLookup(props.getProperty("source."+key+".headerLookup"));
+
+
         return ss;
       }).collect(Collectors.toList());
     } catch (Exception e) {

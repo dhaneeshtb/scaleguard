@@ -15,10 +15,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.http.*;
-import io.netty.handler.codec.rtsp.RtspResponseStatuses;
-import io.netty.handler.codec.rtsp.RtspVersions;
 import io.netty.util.CharsetUtil;
 
 import java.util.*;
@@ -41,19 +38,16 @@ public class InboundMessageHandler {
       QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
       Map<String, List<String>> params = queryStringDecoder.parameters();
       String authorization=headers.get("Authorization");
-      String lob=headers.get("lob");
       if(authorization==null || authorization.isEmpty()){
         authorization=params.get("access_token")!=null?params.get("access_token").get(0):null;
       }
       if(authorization!=null) {
-        lob=Optional.ofNullable(AuthUtils.getAuthInfo(authorization)).orElse(new AuthInfo(null,null)).getLob();
-        if(lob!=null) {
-          ss.setJwtKeylookup("lob:" + lob);
+        Map<String,Object> keys= Optional.ofNullable(AuthUtils.getAuthInfo(authorization)).orElse(new AuthInfo(null,Map.of())).getKeys();
+        if(keys!=null){
+          keys.forEach((k,v)-> ss.setJwtKeylookup(k+":"+v));
         }
-      }else if(lob!=null){
-        ss.setJwtKeylookup("lob:" + lob);
       }
-
+      headers.forEach(h->ss.setJwtKeylookup(h.getKey()+":"+h.getValue()));
       ss.setHost(request.headers().get(HttpHeaderNames.HOST, "unknown"));
     }
     return routeTable.findTarget(ss);

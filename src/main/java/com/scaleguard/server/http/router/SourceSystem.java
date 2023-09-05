@@ -19,6 +19,16 @@ public class SourceSystem {
   private String callbackId;
   private String jwtKeylookup;
 
+  public String getHeaderLookup() {
+    return headerLookup;
+  }
+
+  public void setHeaderLookup(String headerLookup) {
+    setJwtKeylookup(headerLookup);
+  }
+
+  private String headerLookup;
+
   public Map<String, List<String>> getKeyLookupMap() {
     return keyLookupMap;
   }
@@ -28,7 +38,7 @@ public class SourceSystem {
     this.keyLookupMap = keyLookupMap;
   }
 
-  private Map<String, List<String>> keyLookupMap;
+  private Map<String, List<String>> keyLookupMap=new HashMap<>();
 
   public String getJwtKeylookup() {
     return jwtKeylookup;
@@ -37,10 +47,11 @@ public class SourceSystem {
   public void setJwtKeylookup(String jwtKeylookup) {
     this.jwtKeylookup = jwtKeylookup;
     if(jwtKeylookup!=null) {
-      keyLookupMap=new HashMap<>();
       Arrays.stream(jwtKeylookup.split(";")).forEach(s-> {
         String[] tups =s.split(":");
-        keyLookupMap.put(tups[0], Arrays.asList(tups[1].split(",")));
+        if(tups.length==2) {
+          keyLookupMap.put(tups[0], Arrays.asList(tups[1].split(",")));
+        }
       });
     }
   }

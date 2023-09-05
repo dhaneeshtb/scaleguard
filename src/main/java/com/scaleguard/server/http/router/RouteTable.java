@@ -43,27 +43,37 @@ public class RouteTable {
   private boolean isMatchedSpecific(SourceSystem source, SourceSystem s) {
     if(source.getHost().equalsIgnoreCase(s.getHost())){
       if(s.getBasePath().equalsIgnoreCase(source.getBasePath())){
-        if(s.getKeyLookupMap()!=null && s.getKeyLookupMap().containsKey("lob")){
-          return source.getKeyLookupMap()!=null&& (s.getKeyLookupMap().get("lob").contains(source.getKeyLookupMap().get("lob").get(0)));
+        if(s.getKeyLookupMap()!=null){
+          return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return false;
       }else if(source.getBasePath().startsWith(s.getBasePath())){
-        if(s.getKeyLookupMap()!=null && s.getKeyLookupMap().containsKey("lob")){
-          return source.getKeyLookupMap()!=null&& (s.getKeyLookupMap().get("lob").contains(source.getKeyLookupMap().get("lob").get(0)));
+        if(s.getKeyLookupMap()!=null){
+          return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return false;
       }
     }
     return false;
   }
 
+  private boolean isIntersectMaps(Map<String,List<String>> sm,Map<String,List<String>> rm){
+    if(rm!=null && sm!=null){
+      return rm.entrySet().stream().anyMatch((entry) ->
+              entry.getValue().stream().filter(sm.get(entry.getKey())::contains)
+                      .distinct().findAny().isPresent());
+    }else{
+      return false;
+    }
+  }
+
   private boolean isMatched(SourceSystem source, SourceSystem s) {
     if(source.getHost().equalsIgnoreCase(s.getHost())){
       if(s.getBasePath().equalsIgnoreCase(source.getBasePath())){
-        if(s.getKeyLookupMap()!=null && s.getKeyLookupMap().containsKey("lob")){
-          return source.getKeyLookupMap()!=null&& (s.getKeyLookupMap().get("lob").contains(source.getKeyLookupMap().get("lob").get(0))||s.getKeyLookupMap().get("lob").contains("any"));
+        if(s.getKeyLookupMap()!=null ){
+          return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return true;
       }else if(source.getBasePath().startsWith(s.getBasePath())){
-        if(s.getKeyLookupMap()!=null && s.getKeyLookupMap().containsKey("lob")){
-          return source.getKeyLookupMap()!=null&& (s.getKeyLookupMap().get("lob").contains(source.getKeyLookupMap().get("lob").get(0))||s.getKeyLookupMap().get("lob").contains("any"));
+        if(s.getKeyLookupMap()!=null){
+            return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return true;
       }
     }

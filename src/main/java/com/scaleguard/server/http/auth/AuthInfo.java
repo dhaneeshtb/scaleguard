@@ -1,10 +1,12 @@
 package com.scaleguard.server.http.auth;
 
+import java.util.Map;
+
 public class AuthInfo {
 
-  public AuthInfo(String userName,String lob){
+  public AuthInfo(String userName, Map<String,Object> keys){
     this.userName=userName;
-    this.lob=lob;
+    this.keys = keys;
   }
 
   public String getUserName() {
@@ -15,16 +17,16 @@ public class AuthInfo {
     this.userName = userName;
   }
 
-  public String getLob() {
-    return lob;
+  public Map<String,Object> getKeys() {
+    return keys;
   }
 
-  public void setLob(String lob) {
-    this.lob = lob;
+  public void setKeys(Map<String,Object> keys) {
+    this.keys = keys;
   }
 
   private String userName;
 
-  private String lob;
+  private Map<String,Object> keys;
 
 }

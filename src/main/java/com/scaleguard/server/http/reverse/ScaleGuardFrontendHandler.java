@@ -55,7 +55,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
     TargetSystem ts = inboundHandler.matchTarget(ctx,msg);
     if(ts==null){
-      new DefaultResponseHandler().handle(ctx,null);
+      new DefaultResponseHandler().handle(ctx,null, msg);
     }else {
       if(ts.isEnableCache()) {
         inboundHandler.handle(ctx, msg,ts, key -> proeedToTarget(ts, ctx, msg, key==null?null: key.getKey(),key==null?null:key.getResource()));

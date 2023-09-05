@@ -3,12 +3,12 @@ package com.scaleguard.server.http.reverse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.server.http.auth.AuthInfo;
-import com.scaleguard.server.http.auth.AuthUtils;
 import com.scaleguard.server.http.cache.*;
 import com.scaleguard.server.http.router.LocalSystemLoader;
 import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.http.router.TargetSystem;
+import com.scaleguard.server.http.utils.AppProperties;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -18,6 +18,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
@@ -38,11 +40,40 @@ public class InboundMessageHandler {
 
   static  RouteTable routeTable = RouteTable.getInstance();
   static CacheManager cacheManager=InMemoryCacheLooker.getInstance();
+
+  static Class tokenParser;
+
+  static Method authGetter;
+
+  static {
+    try {
+      tokenParser = Class.forName(AppProperties.get("TokenParser"));
+      authGetter =  tokenParser.getMethod("getAuthInfo", String.class);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private AuthInfo getAuthInfo(String token){
+    try {
+      return (AuthInfo) authGetter.invoke(null,new Object[]{token});
+    } catch (IllegalAccessException e) {
+      throw new RuntimeException(e);
+    } catch (InvocationTargetException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   public TargetSystem matchTarget(ChannelHandlerContext ctx, Object msg) {
     SourceSystem ss = new SourceSystem();
     if (msg instanceof HttpRequest) {
+
       HttpRequest request = (HttpRequest) msg;
       ss.setBasePath(request.uri());
+
+      if(request.uri().equalsIgnoreCase("/health")){
+        return null;
+      }
       HttpHeaders headers = request.headers();
 
       QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
@@ -52,7 +83,7 @@ public class InboundMessageHandler {
         authorization=params.get("access_token")!=null?params.get("access_token").get(0):null;
       }
       if(authorization!=null) {
-        Map<String,Object> keys= Optional.ofNullable(AuthUtils.getAuthInfo(authorization)).orElse(new AuthInfo(null,Map.of())).getKeys();
+        Map<String,Object> keys= Optional.ofNullable(getAuthInfo(authorization)).orElse(new AuthInfo(null,Map.of())).getKeys();
         if(keys!=null){
           keys.forEach((k,v)-> ss.setJwtKeylookup(k+":"+v));
         }

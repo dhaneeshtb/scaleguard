@@ -58,8 +58,10 @@ public class RouteTable {
   private boolean isIntersectMaps(Map<String,List<String>> sm,Map<String,List<String>> rm){
     if(rm!=null && sm!=null){
       return rm.entrySet().stream().anyMatch((entry) ->
-              entry.getValue().stream().filter(sm.get(entry.getKey())::contains)
-                      .distinct().findAny().isPresent());
+
+              entry.getValue().stream().filter(s->sm.containsKey(entry.getKey()) && sm.get(entry.getKey()).contains(s))
+                      .distinct().findAny().isPresent()
+      );
     }else{
       return false;
     }

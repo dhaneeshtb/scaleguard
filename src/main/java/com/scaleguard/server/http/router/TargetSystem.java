@@ -22,6 +22,7 @@ public class TargetSystem {
   private String host;
   private String port;
 
+
   public List<HostGroup> getHostGroups() {
     return hostGroups;
   }

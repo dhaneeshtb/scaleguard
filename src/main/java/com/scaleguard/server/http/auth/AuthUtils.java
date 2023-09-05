@@ -9,7 +9,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-public class AuthUtils {
+public class AuthUtils{
+
+
+
 
   public static AuthInfo getAuthInfo(String token) {
     try {

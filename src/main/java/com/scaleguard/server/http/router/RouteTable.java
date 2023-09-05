@@ -43,11 +43,11 @@ public class RouteTable {
   private boolean isMatchedSpecific(SourceSystem source, SourceSystem s) {
     if(source.getHost().equalsIgnoreCase(s.getHost())){
       if(s.getBasePath().equalsIgnoreCase(source.getBasePath())){
-        if(s.getKeyLookupMap()!=null){
+        if(s.getKeyLookupMap()!=null && !s.getKeyLookupMap().isEmpty()){
           return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return false;
       }else if(source.getBasePath().startsWith(s.getBasePath())){
-        if(s.getKeyLookupMap()!=null){
+        if(s.getKeyLookupMap()!=null && !s.getKeyLookupMap().isEmpty()){
           return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return false;
       }
@@ -70,11 +70,11 @@ public class RouteTable {
   private boolean isMatched(SourceSystem source, SourceSystem s) {
     if(source.getHost().equalsIgnoreCase(s.getHost())){
       if(s.getBasePath().equalsIgnoreCase(source.getBasePath())){
-        if(s.getKeyLookupMap()!=null ){
+        if(s.getKeyLookupMap()!=null && !s.getKeyLookupMap().isEmpty()){
           return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return true;
       }else if(source.getBasePath().startsWith(s.getBasePath())){
-        if(s.getKeyLookupMap()!=null){
+        if(s.getKeyLookupMap()!=null && !s.getKeyLookupMap().isEmpty()){
             return isIntersectMaps(source.getKeyLookupMap(),s.getKeyLookupMap());
         }else return true;
       }

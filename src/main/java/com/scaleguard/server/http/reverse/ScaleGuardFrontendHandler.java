@@ -82,7 +82,16 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
             .handler(new SecureProxyInitializer(inboundChannel, true,null,messageKey))
         .option(ChannelOption.AUTO_READ, false);
     HostGroup hg = ts.getHostGroup();
-    ChannelFuture f =hg!=null?b.connect(hg.getHost(), Integer.valueOf(hg.getPort())): b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));
+    ChannelFuture f;
+    if(hg!=null){
+      inboundHandler.setHost(hg.getHost());
+      inboundHandler.reset(msg);
+      f= b.connect(hg.getHost(), Integer.valueOf(hg.getPort()));
+      System.out.println("Connecting to "+hg.getHost()+" "+ Integer.valueOf(hg.getPort()));
+    }else{
+      inboundHandler.setHost(ts.getHost());
+      f = b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));
+    }
     outboundChannel = f.channel();
     f.addListener((ChannelFutureListener) future -> {
       if (future.isSuccess()) {
@@ -99,6 +108,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   public void handleExistingOutboundChannel(final ChannelHandlerContext ctx, Object msg,CachedResource cr) {
+      inboundHandler.reset(msg);
       outboundChannel.writeAndFlush(msg)
         .addListener((ChannelFutureListener) future -> {
           if (future.isSuccess()) {

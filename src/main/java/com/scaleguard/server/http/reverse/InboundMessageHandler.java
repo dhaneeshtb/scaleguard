@@ -26,6 +26,16 @@ import java.util.stream.Collectors;
 public class InboundMessageHandler {
   static ChecksumKey checksumKey = new ChecksumKey();
 
+  private String host;
+
+  public String getHost() {
+    return host;
+  }
+
+  public void setHost(String host) {
+    this.host = host;
+  }
+
   static  RouteTable routeTable = RouteTable.getInstance();
   static CacheManager cacheManager=InMemoryCacheLooker.getInstance();
   public TargetSystem matchTarget(ChannelHandlerContext ctx, Object msg) {
@@ -51,6 +61,13 @@ public class InboundMessageHandler {
       ss.setHost(request.headers().get(HttpHeaderNames.HOST, "unknown"));
     }
     return routeTable.findTarget(ss);
+  }
+
+  public void reset(Object msg){
+    if (msg instanceof HttpRequest) {
+      HttpRequest request = (HttpRequest) msg;
+      request.headers().set(HttpHeaderNames.HOST, host);
+    }
   }
 
   public void handle(ChannelHandlerContext ctx, Object msg,TargetSystem ts, Consumer<CachedResponse> consumer){

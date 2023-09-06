@@ -11,7 +11,7 @@ import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 
 public class AppServer {
-  private static final int HTTP_PORT = 8080;
+  private static final int HTTP_PORT = Integer.parseInt(System.getProperty("port","8080"));
   public static void main(String[] args) throws Exception {
     new AppServer().run();
   }

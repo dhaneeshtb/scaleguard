@@ -102,7 +102,7 @@
           <transformers>
             <!-- add Main-Class to manifest file -->
             <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-              <mainClass>com.peerboss.aiservice.Application</mainClass>
+              <mainClass>com.scaleguard.server.http.reverse.AppServer</mainClass>
             </transformer>
             <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
               <resource>reference.conf</resource>

@@ -31,6 +31,9 @@ import java.util.UUID;
 public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
   private Channel outboundChannel;
+
+  private TargetSystem targetSystem;
+
   private static InboundMessageHandler inboundHandler =  new InboundMessageHandler();
 
   public ScaleGuardFrontendHandler() {
@@ -66,7 +69,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   private void proeedToTarget(TargetSystem ts, final ChannelHandlerContext ctx, Object msg, String messageKey, CachedResource cr){
-    if (outboundChannel == null || !outboundChannel.isActive()) {
+    if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !ts.getId().equalsIgnoreCase(targetSystem.getId())) {
       handleNewOutboundChannel(ts,ctx,msg,messageKey,cr);
     }else{
       handleExistingOutboundChannel(ctx,msg,cr);
@@ -93,6 +96,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       f = b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));
     }
     outboundChannel = f.channel();
+    targetSystem = ts;
     f.addListener((ChannelFutureListener) future -> {
       if (future.isSuccess()) {
         inboundChannel.config().setAutoRead(true);

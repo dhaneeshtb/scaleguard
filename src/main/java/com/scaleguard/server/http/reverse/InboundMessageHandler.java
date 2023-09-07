@@ -61,6 +61,8 @@ public class InboundMessageHandler {
       throw new RuntimeException(e);
     } catch (InvocationTargetException e) {
       throw new RuntimeException(e);
+    }catch (Exception e){
+      return null;
     }
   }
 
@@ -72,6 +74,9 @@ public class InboundMessageHandler {
       ss.setBasePath(request.uri());
 
       if(request.uri().equalsIgnoreCase("/health")){
+        return null;
+      }
+      if(request.uri().equalsIgnoreCase("/info")){
         return null;
       }
       HttpHeaders headers = request.headers();

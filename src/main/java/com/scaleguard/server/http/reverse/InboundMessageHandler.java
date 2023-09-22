@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.server.http.auth.AuthInfo;
 import com.scaleguard.server.http.cache.*;
+import com.scaleguard.server.http.context.ApplicationContext;
+import com.scaleguard.server.http.metering.ApiData;
+import com.scaleguard.server.http.metering.ApiDataProcessor;
+import com.scaleguard.server.http.metering.MetricsFactory;
 import com.scaleguard.server.http.router.LocalSystemLoader;
 import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;
@@ -20,6 +24,8 @@ import io.netty.util.CharsetUtil;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
@@ -40,6 +46,9 @@ public class InboundMessageHandler {
 
   static  RouteTable routeTable = RouteTable.getInstance();
   static CacheManager cacheManager=InMemoryCacheLooker.getInstance();
+
+  private final MetricsFactory metricsFactory = ApplicationContext.get(MetricsFactory.class);
+  private
 
   static Class tokenParser;
 
@@ -73,6 +82,9 @@ public class InboundMessageHandler {
       HttpRequest request = (HttpRequest) msg;
       ss.setBasePath(request.uri());
 
+      if(request.uri().startsWith("/stats")) {
+        return null;
+      }
       if(request.uri().equalsIgnoreCase("/health")){
         return null;
       }
@@ -117,7 +129,15 @@ public class InboundMessageHandler {
         }
     }else {
       if(cr!=null && cr.getResource()!=null && cr.getResource().isAsync()){
+        ApiData apiData = ctx.channel().attr(ApiDataProcessor.API_DATA_ATTRIBUTE_KEY).get();
+        apiData.setTarget("cache");
+        apiData.setEnded(LocalDateTime.now(ZoneOffset.UTC));
+        if (cr instanceof FullHttpResponse) {
+          HttpResponseStatus status = ((FullHttpResponse) cr).status();
+          apiData.setStatus(status.code());
+        }
         writeResponse(ctx, toResponse(cr.getProxyRequest()).toString());
+        metricsFactory.getMetricsQueue().push(apiData);
       }else {
         consumer.accept(cr);
       }

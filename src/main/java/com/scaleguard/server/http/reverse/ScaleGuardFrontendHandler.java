@@ -16,17 +16,14 @@
 package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CachedResource;
+import com.scaleguard.server.http.context.ApplicationContext;
+import com.scaleguard.server.http.metering.ApiData;
+import com.scaleguard.server.http.metering.ApiDataProcessor;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelOption;
-import java.util.UUID;
+import io.netty.channel.*;
 
 public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
@@ -35,6 +32,9 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   private TargetSystem targetSystem;
 
   private static InboundMessageHandler inboundHandler =  new InboundMessageHandler();
+
+  private final ApiDataProcessor apiDataProcessor = ApplicationContext.get(ApiDataProcessor.class);
+
 
   public ScaleGuardFrontendHandler() {
   }
@@ -56,6 +56,8 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
+    ApiData apiData = apiDataProcessor.parse(msg);
+    ctx.channel().attr(ApiDataProcessor.API_DATA_ATTRIBUTE_KEY).set(apiData);
     TargetSystem ts = inboundHandler.matchTarget(ctx,msg);
     if(ts==null){
       new DefaultResponseHandler().handle(ctx,null, msg);
@@ -69,6 +71,8 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   private void proeedToTarget(TargetSystem ts, final ChannelHandlerContext ctx, Object msg, String messageKey, CachedResource cr){
+    ApiData apiData = ctx.channel().attr(ApiDataProcessor.API_DATA_ATTRIBUTE_KEY).get();
+    apiData.setTarget(ts.getHost());
     if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !ts.getId().equalsIgnoreCase(targetSystem.getId())) {
       handleNewOutboundChannel(ts,ctx,msg,messageKey,cr);
     }else{

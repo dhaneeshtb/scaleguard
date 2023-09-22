@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.context.ApplicationContext;
 import com.scaleguard.server.http.router.RouteTable;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -16,6 +17,7 @@ public class AppServer {
     new AppServer().run();
   }
   public void run() throws Exception {
+    ApplicationContext.init();
     RouteTable.getInstance();
     SecureProxyInitializer.createSSLContext();
     EventLoopGroup bossGroup = new NioEventLoopGroup(20);

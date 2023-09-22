@@ -17,13 +17,13 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CacheManager;
 import com.scaleguard.server.http.cache.InMemoryCacheLooker;
+import com.scaleguard.server.http.context.ApplicationContext;
+import com.scaleguard.server.http.metering.ApiData;
+import com.scaleguard.server.http.metering.ApiDataProcessor;
+import com.scaleguard.server.http.metering.MetricsFactory;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.*;
 import io.netty.handler.codec.http.FullHttpResponse;
 
 public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
@@ -32,6 +32,11 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     private  TargetSystem cacheInfo;
     private String cacheKey;
     private CacheManager cacheManager = InMemoryCacheLooker.getInstance();
+
+    private final ApiDataProcessor apiDataProcessor = ApplicationContext.get(ApiDataProcessor.class);
+
+    private final MetricsFactory metricsFactory = ApplicationContext.get(MetricsFactory.class);
+
 
     public ScaleGuardBackendHandler(Channel inboundChannel) {
         this.inboundChannel = inboundChannel;
@@ -51,6 +56,11 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(final ChannelHandlerContext ctx, Object msg) {
         Object cachedObject;
         int statusCode;
+        if (msg instanceof FullHttpResponse) {
+            ApiData apiData = inboundChannel.attr(ApiDataProcessor.API_DATA_ATTRIBUTE_KEY).get();
+            apiData = apiDataProcessor.updateResponseInformation(apiData, (FullHttpResponse) msg);
+            metricsFactory.getMetricsQueue().push(apiData);
+        }
         if(cacheKey!=null){
             if(msg instanceof ByteBuf){
                 cachedObject = ((ByteBuf) msg).duplicate().retain();
@@ -66,6 +76,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
             cachedObject=null;
             statusCode=-1;
         }
+
         inboundChannel.writeAndFlush(msg).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) {

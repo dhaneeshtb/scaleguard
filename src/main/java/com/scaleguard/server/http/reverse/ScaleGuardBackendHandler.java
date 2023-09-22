@@ -17,6 +17,8 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CacheManager;
 import com.scaleguard.server.http.cache.InMemoryCacheLooker;
+import com.scaleguard.server.http.router.RouteLogger;
+import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -33,8 +35,12 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     private String cacheKey;
     private CacheManager cacheManager = InMemoryCacheLooker.getInstance();
 
-    public ScaleGuardBackendHandler(Channel inboundChannel) {
+    private RouteTarget rt;
+    public ScaleGuardBackendHandler(RouteTarget rt, Channel inboundChannel, String cacheKey) {
         this.inboundChannel = inboundChannel;
+        this.rt=rt;
+        this.cacheKey=cacheKey;
+
     }
     public ScaleGuardBackendHandler(Channel inboundChannel, TargetSystem cacheInfo, String cacheKey) {
         this.inboundChannel = inboundChannel;
@@ -75,6 +81,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
                         cacheManager.saveFresh(cacheInfo, cacheKey, cachedObject);
                     }
+                    RouteLogger.log(rt);
                 } else {
                     future.channel().close();
                 }

@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -22,6 +23,8 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 	private Channel inbound;
 	private final boolean isSecureBackend;
 	static SslContext sslContext=null;
+
+	RouteTarget rt;
 	static{
 		try {
 			sslContext= SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
@@ -35,11 +38,12 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 
 	}
 
-	public SecureProxyInitializer(Channel inbound,boolean isSecureBackend,TargetSystem cacheInfo,String cacheKey){
+	public SecureProxyInitializer(RouteTarget rt, Channel inbound, boolean isSecureBackend, TargetSystem cacheInfo, String cacheKey){
 		this.inbound = inbound;
 		this.isSecureBackend = isSecureBackend;
 		this.cacheInfo=cacheInfo;
 		this.cacheKey=cacheKey;
+		this.rt=rt;
 	}
 
 
@@ -61,6 +65,6 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 		}
 		pipeline.addLast(new HttpClientCodec());
 		pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));
-		pipeline.addLast(new ScaleGuardBackendHandler(inbound,cacheInfo,cacheKey));
+		pipeline.addLast(new ScaleGuardBackendHandler(rt,inbound,cacheKey));
 	}
 }

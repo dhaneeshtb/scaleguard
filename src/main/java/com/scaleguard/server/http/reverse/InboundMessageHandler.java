@@ -4,10 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.server.http.auth.AuthInfo;
 import com.scaleguard.server.http.cache.*;
-import com.scaleguard.server.http.router.LocalSystemLoader;
-import com.scaleguard.server.http.router.RouteTable;
-import com.scaleguard.server.http.router.SourceSystem;
-import com.scaleguard.server.http.router.TargetSystem;
+import com.scaleguard.server.http.router.*;
 import com.scaleguard.server.http.utils.AppProperties;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -66,7 +63,7 @@ public class InboundMessageHandler {
     }
   }
 
-  public TargetSystem matchTarget(ChannelHandlerContext ctx, Object msg) {
+  public RouteTarget matchTarget(ChannelHandlerContext ctx, Object msg) {
     SourceSystem ss = new SourceSystem();
     if (msg instanceof HttpRequest) {
 
@@ -77,6 +74,9 @@ public class InboundMessageHandler {
         return null;
       }
       if(request.uri().equalsIgnoreCase("/info")){
+        return null;
+      }
+      if(request.uri().equalsIgnoreCase("/stats")){
         return null;
       }
       HttpHeaders headers = request.headers();
@@ -106,7 +106,7 @@ public class InboundMessageHandler {
     }
   }
 
-  public void handle(ChannelHandlerContext ctx, Object msg,TargetSystem ts, Consumer<CachedResponse> consumer){
+  public void handle(ChannelHandlerContext ctx, Object msg,RouteTarget ts, Consumer<CachedResponse> consumer){
     CachedResponse cr = getCachedResponse(ts,msg);
     if(cr!=null && cr.getResponse()!=null){
         if (cr.getResponse() != null) {
@@ -172,10 +172,10 @@ public class InboundMessageHandler {
     });
   }
 
-  public CachedResponse getCachedResponse(TargetSystem ts,Object msg){
-    CachedResponse key = getKeyData(ts,msg);
+  public CachedResponse getCachedResponse(RouteTarget ts,Object msg){
+    CachedResponse key = getKeyData(ts.getTargetSystem(),msg);
     if(key!=null) {
-      CachedResponse crr = key.getKey()!=null? cacheManager.lookup(ts, key.getKey()):key;
+      CachedResponse crr = key.getKey()!=null? cacheManager.lookup(ts.getTargetSystem(), key.getKey()):key;
       crr.setResource(key.getResource());
       return crr;
     }

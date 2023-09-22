@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.router.RouteLogger;
 import com.scaleguard.server.http.router.SourceSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -27,6 +28,9 @@ public class DefaultResponseHandler {
       }else if (request.uri().equalsIgnoreCase("/info")) {
         handleInfo(ctx,sourceSystem);
         return;
+      }else if (request.uri().equalsIgnoreCase("/stats")) {
+        handleStats(ctx,sourceSystem);
+        return;
       }
     }
 
@@ -50,6 +54,24 @@ public class DefaultResponseHandler {
 
   public void handleHealth(final ChannelHandlerContext ctx, SourceSystem sourceSystem){
     ByteBuf content = Unpooled.copiedBuffer("{\"status\":\"healthy\"}", CharsetUtil.UTF_8);
+    FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, content);
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    ctx.writeAndFlush(response).addListener(new ChannelFutureListener() {
+      @Override
+      public void operationComplete(ChannelFuture future) throws Exception {
+        //It is successful here, and does not represent the success of the customer, and brush out the data success default representative has completed
+        if (future.isSuccess()) {
+          ctx.channel().read();
+        } else {
+          future.channel().close();
+        }
+      }
+    });
+  }
+
+  public void handleStats(final ChannelHandlerContext ctx, SourceSystem sourceSystem){
+    ByteBuf content = Unpooled.copiedBuffer(RouteLogger.toStatsJson().toString(), CharsetUtil.UTF_8);
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, content);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());

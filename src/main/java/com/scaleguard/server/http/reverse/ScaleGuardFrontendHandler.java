@@ -17,6 +17,7 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CachedResource;
 import com.scaleguard.server.http.router.HostGroup;
+import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
@@ -32,7 +33,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
   private Channel outboundChannel;
 
-  private TargetSystem targetSystem;
+  private RouteTarget targetSystem;
 
   private static InboundMessageHandler inboundHandler =  new InboundMessageHandler();
 
@@ -56,11 +57,12 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
-    TargetSystem ts = inboundHandler.matchTarget(ctx,msg);
+    RouteTarget ts = inboundHandler.matchTarget(ctx,msg);
     if(ts==null){
       new DefaultResponseHandler().handle(ctx,null, msg);
     }else {
-      if(ts.isEnableCache()) {
+      System.out.println("Crossing... "+ts.getTargetHost());
+      if(ts.getTargetSystem().isEnableCache()) {
         inboundHandler.handle(ctx, msg,ts, key -> proeedToTarget(ts, ctx, msg, key==null?null: key.getKey(),key==null?null:key.getResource()));
       }else{
         proeedToTarget(ts, ctx, msg, null,null);
@@ -68,32 +70,45 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private void proeedToTarget(TargetSystem ts, final ChannelHandlerContext ctx, Object msg, String messageKey, CachedResource cr){
-    if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !ts.getId().equalsIgnoreCase(targetSystem.getId())) {
+  private boolean isSameSourceAndTarget(RouteTarget ts,RouteTarget hts){
+    if(ts.getTargetSystem().getId().equalsIgnoreCase(targetSystem.getTargetSystem().getId())
+            && ts.getSourceSystem().getId().equalsIgnoreCase(targetSystem.getSourceSystem().getId())
+    ){
+      return true;
+    }else{
+      return false;
+    }
+  }
+
+  private void proeedToTarget(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey, CachedResource cr){
+    if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !isSameSourceAndTarget(ts,targetSystem)) {
       handleNewOutboundChannel(ts,ctx,msg,messageKey,cr);
     }else{
+      targetSystem.setStartTime(System.currentTimeMillis());
       handleExistingOutboundChannel(ctx,msg,cr);
     }
   }
 
-  private void handleNewOutboundChannel(TargetSystem ts,final ChannelHandlerContext ctx, Object msg,String messageKey,CachedResource cr){
+  private void handleNewOutboundChannel(RouteTarget ts,final ChannelHandlerContext ctx, Object msg,String messageKey,CachedResource cr){
     final Channel inboundChannel = ctx.channel();
     Bootstrap b = new Bootstrap();
     b.group(inboundChannel.eventLoop())
         .channel(ctx.channel().getClass())
             //.handler(new ScaleGuardBackendHandler(inboundChannel,null,messageKey))
-            .handler(new SecureProxyInitializer(inboundChannel, true,null,messageKey))
+            .handler(new SecureProxyInitializer(ts,inboundChannel, true,null,messageKey))
         .option(ChannelOption.AUTO_READ, false);
-    HostGroup hg = ts.getHostGroup();
+    HostGroup hg = ts.getTargetSystem().getHostGroup();
     ChannelFuture f;
     if(hg!=null){
+      ts.setTargetHost(hg.getHost()+":"+hg.getPort());
       inboundHandler.setHost(hg.getHost());
       inboundHandler.reset(msg);
       f= b.connect(hg.getHost(), Integer.valueOf(hg.getPort()));
       System.out.println("Connecting to "+hg.getHost()+" "+ Integer.valueOf(hg.getPort()));
     }else{
-      inboundHandler.setHost(ts.getHost());
-      f = b.connect(ts.getHost(), Integer.valueOf(ts.getPort()));
+      ts.setTargetHost(ts.getTargetSystem().getHost()+":"+ts.getTargetSystem().getPort());
+      inboundHandler.setHost(ts.getTargetSystem().getHost());
+      f = b.connect(ts.getTargetSystem().getHost(), Integer.valueOf(ts.getTargetSystem().getPort()));
     }
     outboundChannel = f.channel();
     targetSystem = ts;

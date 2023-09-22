@@ -86,10 +86,11 @@ public class RouteTable {
     return sourceSystsems.stream().filter(s->isMatched(source,s)).findFirst().orElse(null);
   }
 
-  public TargetSystem findTarget(SourceSystem source){
+  public RouteTarget findTarget(SourceSystem source){
     SourceSystem ss =sourceSystsems.stream().filter(s->isMatchedSpecific(source,s)).findFirst().orElse(sourceSystsems.stream().filter(s->isMatched(source,s)).findFirst().orElse(null)) ;
     if(ss!=null){
-      return targetSystemMap.get(ss.getTarget());
+      TargetSystem ts =  targetSystemMap.get(ss.getTarget());
+      return new RouteTarget(ss,ts);
     }
     return null;
   }

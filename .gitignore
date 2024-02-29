@@ -1,0 +1,13 @@
+*.iml
+target
+target/*
+.idea
+.idea/*
+build
+*.yml
+dependency-reduced-pom.xml
+adminui/*
+admin-ui/node_modules/*
+admin-ui/build/*
+domains/*
+certs/*

@@ -8,6 +8,7 @@ import com.scaleguard.server.db.HostGroupsDB;
 import com.scaleguard.server.db.SourceSystemDB;
 import com.scaleguard.server.db.TargetSystemDB;
 import com.scaleguard.server.system.SystemManager;
+import org.shredzone.acme4j.Order;
 
 import java.lang.reflect.Field;
 import java.net.SocketException;
@@ -138,14 +139,15 @@ public class ConfigManager {
         if(ss.getId()==null){
             ss.setId(UUID.randomUUID().toString());
             RouteTable.getInstance().getSourceSystsems().add(ss);
-
+            boolean isCertificateOrdered=false;
             if(ss.isAutoProcure() && ss.getCertificateId()!=null && !ss.getCertificateId().isEmpty()) {
                 try {
                     boolean isMapped =  SystemManager.isSystemMapped(ss.getHost());
                     if(isMapped) {
                         String certificateId = UUID.randomUUID().toString();
-                        CertificatesRoute.getCm().orderCertificate(List.of(ss.getHost()), certificateId);
+                         CertificatesRoute.getCm().orderCertificate(List.of(ss.getHost()), certificateId);
                         ss.setCertificateId(certificateId);
+                        isCertificateOrdered=true;
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -153,6 +155,9 @@ public class ConfigManager {
             }
             try {
                 SourceSystemDB.getInstance().create(toDBModel(ss));
+                if(isCertificateOrdered){
+                    CertificatesRoute.getCm().verifyOrder(ss.getCertificateId());
+                }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

@@ -1,0 +1,151 @@
+package com.scaleguard.server.http.router;
+
+import java.util.Calendar;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class RateLimitManager {
+
+    private static Map<String, Queue<RateLimit>> rateLimitMap = new ConcurrentHashMap<>();
+
+    public static void log(RouteTarget rt) {
+        String key = "system";
+        if (rt != null) {
+            key = rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
+        }
+        Queue<RateLimit> rs = rateLimitMap.computeIfAbsent(key, k -> new SizeLimitedQueue<>(10));
+        RateLimit rl = rs.peek();
+        Calendar cal = Calendar.getInstance();
+        String minKey = cal.get(Calendar.HOUR) + "" + cal.get(Calendar.MINUTE);
+        if (rl != null && rl.getMinuteKey().equalsIgnoreCase(minKey)) {
+            rl.getCount().incrementAndGet();
+        } else {
+            RateLimit rli = new RateLimit();
+            rli.setMinuteKey(minKey);
+            rli.getCount().incrementAndGet();
+            rs.add(rli);
+        }
+
+    }
+
+    public static boolean checkRate(RouteTarget rt) {
+        return isInRate(rt,true);
+    }
+    public static boolean isInRate(RouteTarget rt,boolean add) {
+        String key = "system";
+        if (rt != null) {
+            key = rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
+        }
+        Queue<RateLimit> rs = rateLimitMap.computeIfAbsent(key, k -> new SizeLimitedQueue<>(10));
+        RateLimit rl = rs.peek();
+        Calendar cal = Calendar.getInstance();
+        String minKey = cal.get(Calendar.HOUR) + "" + cal.get(Calendar.MINUTE);
+        if (rl.getMinuteKey().equalsIgnoreCase(minKey)) {
+            if ( (add?rl.getCount().getAndIncrement(): rl.getCount().get()) < 1000) {
+                return true;
+            } else {
+                System.out.println("Rate Exceeded " + rl.getMinuteKey() + " " + rl.getCount().get());
+                return false;
+            }
+        }else if(add){
+            RateLimit rli = new RateLimit();
+            rli.setMinuteKey(minKey);
+            rli.getCount().incrementAndGet();
+            rs.add(rli);
+        }
+
+        return true;
+    }
+
+    public static void main(String[] args) {
+        SourceSystem ss = new SourceSystem();
+        ss.setId("10");
+        TargetSystem ts = new TargetSystem();
+        ts.setId("20");
+        RouteTarget rt = new RouteTarget(ss, ts);
+        for (int i = 0; i < 10000; i++) {
+            log(rt);
+            if (!isInRate(rt,false)) {
+                try {
+                    System.out.println("Rate Exceeded..");
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+
+    }
+
+    public static class SizeLimitedQueue<E>
+            extends LinkedList<E> {
+
+        // Variable which store the
+        // SizeLimitOfQueue of the queue
+        private int SizeLimitOfQueue;
+
+        // Constructor method for initializing
+        // the SizeLimitOfQueue variable
+        public SizeLimitedQueue(int SizeLimitOfQueue) {
+
+            this.SizeLimitOfQueue = SizeLimitOfQueue;
+        }
+
+        // Override the method add() available
+        // in LinkedList class so that it allow
+        // addition  of element in queue till
+        // queue size is less than
+        // SizeLimitOfQueue otherwise it remove
+        // the front element of queue and add
+        // new element
+        @Override
+        public boolean add(E o) {
+
+            // If queue size become greater
+            // than SizeLimitOfQueue then
+            // front of queue will be removed
+            while (this.size() == SizeLimitOfQueue) {
+
+                super.remove();
+            }
+            super.add(o);
+            return true;
+        }
+    }
+
+    public static class RateLimit {
+
+        private String minuteKey;
+        private AtomicInteger count = new AtomicInteger(0);
+        private String api;
+
+        public String getMinuteKey() {
+            return minuteKey;
+        }
+
+        public void setMinuteKey(String minuteKey) {
+            this.minuteKey = minuteKey;
+        }
+
+        public AtomicInteger getCount() {
+            return count;
+        }
+
+        public void setCount(AtomicInteger count) {
+            this.count = count;
+        }
+
+        public String getApi() {
+            return api;
+        }
+
+        public void setApi(String api) {
+            this.api = api;
+        }
+    }
+
+
+}

@@ -31,6 +31,8 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetSocketAddress;
+
 
 public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
@@ -70,8 +72,10 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
+    String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
+
     RouteTarget ts = inboundHandler.matchTarget(ctx,msg,port);
-    if(!RateLimitManager.checkRate(ts)){
+    if(!RateLimitManager.checkRate(ts,inAddress)){
       logger.info("Discard due to rate exceeded....");
       return;
     }

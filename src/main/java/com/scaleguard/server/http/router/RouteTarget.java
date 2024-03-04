@@ -8,6 +8,16 @@ public class RouteTarget {
 
     private String targetHost;
 
+    private String clientIp;
+
+    public String getClientIp() {
+        return clientIp;
+    }
+
+    public void setClientIp(String clientIp) {
+        this.clientIp = clientIp;
+    }
+
     public String getTargetHost() {
         return targetHost;
     }

@@ -17,6 +17,7 @@ import io.netty.util.CharsetUtil;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
@@ -65,6 +66,8 @@ public class InboundMessageHandler {
 
   public RouteTarget matchTarget(ChannelHandlerContext ctx, Object msg,int port) {
     SourceSystem ss = new SourceSystem();
+    String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
+
     if (msg instanceof HttpRequest) {
 
       HttpRequest request = (HttpRequest) msg;
@@ -101,11 +104,18 @@ public class InboundMessageHandler {
           keys.forEach((k,v)-> ss.setJwtKeylookup(k+":"+v));
         }
       }
+
+      inAddress=headers.get("X-Forwarded-For",inAddress);
+
       headers.forEach(h->ss.setJwtKeylookup(h.getKey()+":"+h.getValue()));
       ss.setHost(request.headers().get(HttpHeaderNames.HOST, "unknown").toString());
       ss.setPort(port+"");
     }
-    return routeTable.findTarget(ss);
+    RouteTarget rt= routeTable.findTarget(ss);
+    if(rt!=null){
+      rt.setClientIp(inAddress);
+    }
+    return rt;
   }
 
   public void reset(Object msg, Map<String, String> includeHeaders){

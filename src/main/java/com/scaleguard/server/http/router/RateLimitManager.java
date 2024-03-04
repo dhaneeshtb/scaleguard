@@ -31,13 +31,13 @@ public class RateLimitManager {
 
     }
 
-    public static boolean checkRate(RouteTarget rt) {
-        return isInRate(rt,true);
+    public static boolean checkRate(RouteTarget rt,String inAddress) {
+        return isInRate(rt,inAddress,true);
     }
-    public static boolean isInRate(RouteTarget rt,boolean add) {
-        String key = "system";
+    public static boolean isInRate(RouteTarget rt,String inAddress,boolean add) {
+        String key = inAddress+":system";
         if (rt != null) {
-            key = rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
+            key = rt.getClientIp()+":"+rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
         }
         Queue<RateLimit> rs = rateLimitMap.computeIfAbsent(key, k -> new SizeLimitedQueue<>(10));
         RateLimit rl = rs.peek();
@@ -68,7 +68,7 @@ public class RateLimitManager {
         RouteTarget rt = new RouteTarget(ss, ts);
         for (int i = 0; i < 10000; i++) {
             log(rt);
-            if (!isInRate(rt,false)) {
+            if (!isInRate(rt,"",false)) {
                 try {
                     System.out.println("Rate Exceeded..");
                     Thread.sleep(1000);

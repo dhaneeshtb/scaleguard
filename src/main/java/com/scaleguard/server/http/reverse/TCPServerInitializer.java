@@ -5,6 +5,8 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 
+import java.util.Locale;
+
 
 public class TCPServerInitializer extends ChannelInitializer<Channel> {
     private int port=80;
@@ -17,7 +19,6 @@ public class TCPServerInitializer extends ChannelInitializer<Channel> {
     }
     @Override  
     protected void initChannel(Channel ch) {
-
 
 
                 ch.pipeline().addLast(

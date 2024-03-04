@@ -17,6 +17,7 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CachedResource;
 import com.scaleguard.server.http.router.HostGroup;
+import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.router.RouteTarget;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
@@ -27,10 +28,15 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.Map;
 
 public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
+
+  private static final Logger logger
+          = LoggerFactory.getLogger(ScaleGuardFrontendHandler.class);
+
 
   private Channel outboundChannel;
 
@@ -65,10 +71,15 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
     RouteTarget ts = inboundHandler.matchTarget(ctx,msg,port);
+    if(!RateLimitManager.checkRate(ts)){
+      logger.info("Discard due to rate exceeded....");
+      return;
+    }
+
     if(ts==null){
       new DefaultResponseHandler().handle(ctx,null, msg);
     }else {
-      System.out.println("Crossing... "+ts.getTargetHost());
+      logger.debug("Crossing... "+ts.getTargetHost());
       if(ts.getTargetSystem().isEnableCache()) {
         inboundHandler.handle(ctx, msg,ts, key -> proeedToTarget(ts, ctx, msg, key==null?null: key.getKey(),key==null?null:key.getResource()));
       }else{
@@ -111,7 +122,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       inboundHandler.setHost(hg.getHost());
       inboundHandler.reset(msg,ts.getTargetSystem().getIncludeHeaders());
       f= b.connect(hg.getHost(), Integer.valueOf(hg.getPort()));
-      System.out.println("Connecting to "+hg.getHost()+" "+ Integer.valueOf(hg.getPort()));
+      logger.debug("Connecting to "+hg.getHost()+" "+ Integer.valueOf(hg.getPort()));
     }else{
       ts.setTargetHost(ts.getTargetSystem().getHost()+":"+ts.getTargetSystem().getPort());
       inboundHandler.setHost(ts.getTargetSystem().getHost());
@@ -132,7 +143,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       } else {
         Object obj = future.get();
         if(obj instanceof Exception){
-          System.out.println(((Exception) obj).getMessage());
+          logger.error(((Exception) obj).getMessage());
         }
         inboundChannel.close();
       }

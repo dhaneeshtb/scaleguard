@@ -14,6 +14,8 @@ export const SystemContextProvider = ({ children }:{children:any}) => {
   const [properties, setProperties] = useState<any>();
 
   const [isReachable,setReachable] = useState(true)
+  const [discovery,setDiscovery] = useState(false)
+
 
   const {auth} = useAuth() as any;
 
@@ -29,29 +31,34 @@ export const SystemContextProvider = ({ children }:{children:any}) => {
           Authorization:auth.data.token
         }
     })
+    setReachable(true)
     setProperties(r.data.reduce((acc,r)=>{
       acc[r.name]=r;
       return acc;
     },{}))
-  }catch(e){
-
-    setReachable(false)
-
-  }
+    }catch(e){
+        setReachable(false)
+    }finally{
+      setDiscovery(true)
+    }
   }
 
   useEffect(()=>{
 
     if(auth.data)
-    loadProperties();
+      loadProperties();
 
   },[auth])
 
   return (
 
     <SystemContext.Provider value={{ properties, updateProperties }}>
-      {properties?  properties.hostName? children : <ConfigureSystem onUpdate={loadProperties} auth={auth}></ConfigureSystem>:
-      auth.data? <ConfigureServer onUpdate={updateProperties} ></ConfigureServer>:children
+
+      {
+        !discovery?<>Loading</>:
+      
+      properties?  properties.hostName? children : <ConfigureSystem onUpdate={loadProperties} auth={auth}></ConfigureSystem>:
+      auth.data ? <ConfigureServer onUpdate={loadProperties} ></ConfigureServer>:children
       }
     </SystemContext.Provider>
 

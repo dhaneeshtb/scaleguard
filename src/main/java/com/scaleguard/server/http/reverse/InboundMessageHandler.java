@@ -124,7 +124,6 @@ public class InboundMessageHandler {
       request.headers().set(HttpHeaderNames.HOST, host);
       if(includeHeaders!=null){
         includeHeaders.forEach((k,v)->request.headers().set(k, v));
-        System.out.println("Set header "+includeHeaders);
       }
     }
   }

@@ -7,8 +7,11 @@ import com.scaleguard.server.db.DBModelSystem;
 import com.scaleguard.server.db.HostGroupsDB;
 import com.scaleguard.server.db.SourceSystemDB;
 import com.scaleguard.server.db.TargetSystemDB;
+import com.scaleguard.server.http.reverse.ScaleGuardFrontendHandler;
 import com.scaleguard.server.system.SystemManager;
 import org.shredzone.acme4j.Order;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.net.SocketException;
@@ -20,6 +23,10 @@ import java.util.concurrent.SubmissionPublisher;
 import java.util.stream.Collectors;
 
 public class ConfigManager {
+    private static final Logger logger
+            = LoggerFactory.getLogger(ConfigManager.class);
+
+
     public static ObjectMapper mapper = new ObjectMapper();
 
     static SubmissionPublisher<SourceSystem> publisher= new SubmissionPublisher<>();
@@ -148,6 +155,8 @@ public class ConfigManager {
                          CertificatesRoute.getCm().orderCertificate(List.of(ss.getHost()), certificateId);
                         ss.setCertificateId(certificateId);
                         isCertificateOrdered=true;
+                    }else{
+                        logger.error("unable to autoprocure the certificate : host not mapped");
                     }
                 } catch (Exception e) {
                     e.printStackTrace();

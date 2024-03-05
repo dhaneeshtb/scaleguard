@@ -103,7 +103,7 @@ public class RouteLogger {
         long repTime =System.currentTimeMillis()-rt.getStartTime();
         RouteStats rs = routeStatsMap.computeIfAbsent(key,k->new RouteStats(k));
         rs.addRT(repTime);
-        logger.info(key+" : "+(repTime)+" Average:"+rs.getAverageRT()+": Min=>"+rs.getMinTime()+",Max=>"+rs.getMaxTime());
+        logger.debug(key+" : "+(repTime)+" Average:"+rs.getAverageRT()+": Min=>"+rs.getMinTime()+",Max=>"+rs.getMaxTime());
     }
 
     public static JsonNode toStatsJson(){

@@ -43,7 +43,7 @@ public class RateLimitManager {
         RateLimit rl = rs.peek();
         Calendar cal = Calendar.getInstance();
         String minKey = cal.get(Calendar.HOUR) + "" + cal.get(Calendar.MINUTE);
-        if (rl.getMinuteKey().equalsIgnoreCase(minKey)) {
+        if (rl!=null && rl.getMinuteKey().equalsIgnoreCase(minKey)) {
             if ( (add?rl.getCount().getAndIncrement(): rl.getCount().get()) < 1000) {
                 return true;
             } else {

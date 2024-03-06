@@ -36,7 +36,7 @@ public class KafkaEventsConsumer {
         this.broker= ss.getHost()+":"+ss.getPort();
         this.appId=ss.getGroupId();
         this.pollCount = 100;
-        this.topicNames=List.of(ss.getBasePath());
+        this.topicNames=List.of(ss.getBasePath().split(","));
         this.sourceSystem=ss;
     }
 

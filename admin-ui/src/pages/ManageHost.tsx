@@ -58,7 +58,7 @@ const ManageHost = () => {
         loadCerts();
     }, [])
 
-    const RenderScreen = ({ bs, baseObject, setBaseObject }) => {
+    const RenderScreen = ({type, bs, baseObject, setBaseObject }) => {
 
         const compScreen = (k) => {
             switch (k) {
@@ -73,7 +73,7 @@ const ManageHost = () => {
                 case "scheme": 
                     return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
                             {
-                                ["http", "https", "tcp","kafka"].map(c => {
+                                (type=="sourcesystems"? ["http", "https", "tcp","kafka"]: ["http", "https", "tcp"]).map(c => {
                                     return <option value={c}>{c}</option>
                                 })
                             }</Select>
@@ -102,7 +102,7 @@ const ManageHost = () => {
 
         const filterField=(scheme,k)=>{
            if(scheme=="tcp"){
-            return k!="host" && k!="basePath" && k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId";
+            return k!="host" && k!="basePath" && k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
            }else if(scheme=="kafka"){
               return   k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId";
            }else{
@@ -110,10 +110,19 @@ const ManageHost = () => {
            }
         }
 
-        return <>{Object.keys(bs).filter(k=>(type=="sourcesystems" ? filterField(baseObject["scheme"],k):true)).map((k) => {
+        function getHint(type,name){
+
+            if(name=="basePath" && type=="kafka"){
+                return <span >(comma separated topic names)</span>
+            }else{
+                return <></>
+            }
+
+        }
+        return <>{Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems" ? filterField(baseObject["scheme"],k):true)).map((k) => {
             return  <div>
-                <label className="block text-black dark:text-white text-sm font-normal mb-1 capitalize">
-                    {k}
+                <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
+                    <span className="capitalize">{k}</span> {getHint(baseObject["scheme"],k)}
                 </label>
                 {compScreen(k)}
 
@@ -135,7 +144,7 @@ const ManageHost = () => {
 
                 <form className=" shadow-md rounded px-8 pt-6 pb-8 w-full flex flex-col gap-2">
 
-                    <RenderScreen setBaseObject={setBaseObject} baseObject={baseObject} bs={bs}></RenderScreen>
+                    <RenderScreen type={type} setBaseObject={setBaseObject} baseObject={baseObject} bs={bs}></RenderScreen>
 
 
                 </form>

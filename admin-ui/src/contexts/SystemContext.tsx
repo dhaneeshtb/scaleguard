@@ -10,55 +10,63 @@ import { ConfigureServer } from '../components/ConfigureServer';
 
 const SystemContext = createContext<any>(null);
 
-export const SystemContextProvider = ({ children }:{children:any}) => {
+export const SystemContextProvider = ({ children }: { children: any }) => {
   const [properties, setProperties] = useState<any>();
 
-  const [isReachable,setReachable] = useState(true)
-  const [discovery,setDiscovery] = useState(false)
+  const [isReachable, setReachable] = useState(true)
+  const [discovery, setDiscovery] = useState(false)
 
 
-  const {auth} = useAuth() as any;
+  const { auth } = useAuth() as any;
 
-  const updateProperties=(key,value)=>{
+  const updateProperties = (key, value) => {
 
-    setProperties({...properties,[key]:value})
+    setProperties({ ...properties, [key]: value })
 
   }
-  const loadProperties=async ()=>{
-    try{
-     const r = await axios.get(auth.data.host+"/systems",{
-        headers:{
-          Authorization:auth.data.token
+  const loadProperties = async () => {
+    try {
+      const r = await axios.get(auth.data.host + "/systems", {
+        headers: {
+          Authorization: auth.data.token
         }
-    })
-    setReachable(true)
-    setProperties(r.data.reduce((acc,r)=>{
-      acc[r.name]=r;
-      return acc;
-    },{}))
-    }catch(e){
-        setReachable(false)
-    }finally{
+      })
+      setReachable(true)
+      setProperties(r.data.reduce((acc, r) => {
+        acc[r.name] = r;
+        return acc;
+      }, {}))
+    } catch (e) {
+      console.log(e)
+      setReachable(false)
+    } finally {
       setDiscovery(true)
     }
   }
 
-  useEffect(()=>{
+  useEffect(() => {
 
-    if(auth.data)
+    if (auth.data)
       loadProperties();
+    else {
+      if(!auth.loading){
+        setDiscovery(true)
+      }
+      //console.log("Discovery done")
+      //setDiscovery(true)
+    }
 
-  },[auth])
+  }, [auth])
 
   return (
 
     <SystemContext.Provider value={{ properties, updateProperties }}>
 
       {
-        !discovery?<>Loading</>:
-      
-      properties?  properties.hostName? children : <ConfigureSystem onUpdate={loadProperties} auth={auth}></ConfigureSystem>:
-      auth.data ? <ConfigureServer onUpdate={loadProperties} ></ConfigureServer>:children
+        !discovery ? <>Loading</> :
+
+          (properties ? (properties.hostName ? children : <ConfigureSystem onUpdate={loadProperties} auth={auth}></ConfigureSystem>) :
+            (auth.data ? (<ConfigureServer onUpdate={loadProperties} ></ConfigureServer>) : children))
       }
     </SystemContext.Provider>
 
@@ -66,7 +74,7 @@ export const SystemContextProvider = ({ children }:{children:any}) => {
 };
 
 export default function useSystemContext() {
-    return useContext(SystemContext);
+  return useContext(SystemContext);
 }
 
 

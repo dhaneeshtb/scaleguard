@@ -45,7 +45,10 @@ public final class DnsServer {
     private static final String PUBLIC_DNS_SERVER_HOST = "8.8.8.8";
     private static final byte[] QUERY_RESULT = new byte[]{(byte) 192, (byte) 168, 1, 1};
     private static Map<String, byte[][]> addressMap = new ConcurrentHashMap<>();
-    NioEventLoopGroup group = new NioEventLoopGroup();
+    NioEventLoopGroup group = new NioEventLoopGroup(10);
+
+    NioEventLoopGroup clientGroup = new NioEventLoopGroup(10);
+
     Bootstrap bootstrap = new Bootstrap();
 
     public static void main(String[] args) throws Exception {
@@ -129,7 +132,7 @@ public final class DnsServer {
     // copy from TcpDnsClient.java
     private void clientQuery(DnsQuery dnsQuery, String ip, int port, Consumer<DefaultDnsResponse> consumer) throws Exception {
         Bootstrap clientQueryGroup = new Bootstrap();
-        clientQueryGroup.group(group)
+        clientQueryGroup.group(clientGroup)
                 .channel(NioSocketChannel.class)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override

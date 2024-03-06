@@ -44,9 +44,9 @@ import io.netty.util.NetUtil;
 
 public final class DnsClient {
 
-    private static final String QUERY_DOMAIN = "www.salescode.ai";
+    private static final String QUERY_DOMAIN = "salescode.ai";
     private static final int DNS_SERVER_PORT = 53;
-    private static final String DNS_SERVER_HOST = "9.9.9.9";
+    private static final String DNS_SERVER_HOST = "8.8.8.8";
 
     private DnsClient() { }
 

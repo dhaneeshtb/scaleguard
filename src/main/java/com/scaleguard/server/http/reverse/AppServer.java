@@ -1,4 +1,5 @@
 package com.scaleguard.server.http.reverse;
+import com.scaleguard.server.http.dns.tcp.DnsServer;
 import com.scaleguard.server.http.router.ConfigManager;
 import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;
@@ -35,6 +36,7 @@ public class AppServer implements Server{
         AppServer server= new AppServer();
         EventSubscriber subscriber = new EventSubscriber(server);
         ConfigManager.getPublisher().subscribe(subscriber);
+
         server.start();
         server.listen();
     }
@@ -111,6 +113,9 @@ public class AppServer implements Server{
 
     public void start() throws Exception {
         try {
+
+            DnsServer dnsServer = new DnsServer();
+            dnsServer.start();
 
             RouteTable.getInstance().getSourceSystsems().forEach(s -> {
                 try {

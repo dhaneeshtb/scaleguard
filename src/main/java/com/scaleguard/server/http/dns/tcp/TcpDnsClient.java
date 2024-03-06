@@ -1,19 +1,6 @@
-/*
- * Copyright 2020 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
 package com.scaleguard.server.http.dns.tcp;
+
+
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufUtil;
@@ -46,28 +33,26 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 public final class TcpDnsClient {
-    private static final String QUERY_DOMAIN = "www.salescode.ai";
+    private static final String QUERY_DOMAIN = "salescode.ai";
     private static final int DNS_SERVER_PORT = 53;
-    private static final String DNS_SERVER_HOST = "8.8.8.8";
+    private static final String DNS_SERVER_HOST = "127.0.0.1";
 
     private TcpDnsClient() {
     }
 
     private static void handleQueryResp(DefaultDnsResponse msg) {
-        System.out.println("respnse "+msg.toString());
         if (msg.count(DnsSection.QUESTION) > 0) {
             DnsQuestion question = msg.recordAt(DnsSection.QUESTION, 0);
             System.out.printf("name: %s%n", question.name());
         }
-
-
-
         for (int i = 0, count = msg.count(DnsSection.ANSWER); i < count; i++) {
             DnsRecord record = msg.recordAt(DnsSection.ANSWER, i);
-            if (true) {
+            if (record.type() == DnsRecordType.A) {
                 //just print the IP after query
                 DnsRawRecord raw = (DnsRawRecord) record;
                 System.out.println(NetUtil.bytesToIpAddress(ByteBufUtil.getBytes(raw.content())));
+            }else{
+                System.out.println("record.type() "+record.type());
             }
         }
     }
@@ -90,7 +75,7 @@ public final class TcpDnsClient {
                                             try {
                                                 handleQueryResp(msg);
                                             } finally {
-                                                ctx.close();
+                                                ctx.channel().close();
                                             }
                                         }
                                     });
@@ -101,14 +86,13 @@ public final class TcpDnsClient {
 
             int randomID = new Random().nextInt(60000 - 1000) + 1000;
             DnsQuery query = new DefaultDnsQuery(randomID, DnsOpCode.QUERY)
-                    .setRecord(DnsSection.QUESTION, new DefaultDnsQuestion(QUERY_DOMAIN, DnsRecordType.ANY));
+                    .setRecursionDesired(true)
+                    .setRecord(DnsSection.QUESTION, new DefaultDnsQuestion(QUERY_DOMAIN, DnsRecordType.A));
             ch.writeAndFlush(query).sync();
-            boolean success = ch.closeFuture().await(10, TimeUnit.SECONDS);
+            boolean success = ch.closeFuture().await(20, TimeUnit.SECONDS);
             if (!success) {
                 System.err.println("dns query timeout!");
                 ch.close().sync();
-            }else{
-                System.out.println("done");
             }
         } finally {
             group.shutdownGracefully();

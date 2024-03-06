@@ -128,7 +128,7 @@ public final class DnsServer {
     }
 
     // copy from TcpDnsClient.java
-    private void clientQuery(String queryDomain, String ip, int port, Consumer<DefaultDnsResponse> consumer) throws Exception {
+    private void clientQuery(DnsQuery dnsQuery, String ip, int port, Consumer<DefaultDnsResponse> consumer) throws Exception {
         Bootstrap clientQueryGroup = new Bootstrap();
         clientQueryGroup.group(group)
                 .channel(NioSocketChannel.class)
@@ -149,12 +149,13 @@ public final class DnsServer {
                                 });
                     }
                 });
+//        DnsQuestion question = dnsQuery.recordAt(DnsSection.QUESTION);
         final Channel ch = clientQueryGroup.connect(ip, port).sync().channel();
-        int randomID = new Random().nextInt(60000 - 1000) + 1000;
-        DnsQuery query = new DefaultDnsQuery(randomID, DnsOpCode.QUERY)
-                .setRecursionDesired(true)
-                .setRecord(DnsSection.QUESTION, new DefaultDnsQuestion(queryDomain, DnsRecordType.A));
-        ch.writeAndFlush(query).sync();
+//        int randomID = new Random().nextInt(60000 - 1000) + 1000;
+//        DnsQuery query = new DefaultDnsQuery(randomID, DnsOpCode.QUERY)
+//                .setRecursionDesired(true)
+//                .setRecord(DnsSection.QUESTION, new DefaultDnsQuestion(question.name(), DnsRecordType.A));
+        ch.writeAndFlush(dnsQuery.retain()).sync();
         boolean success = ch.closeFuture().await(10, TimeUnit.SECONDS);
         if (!success) {
             System.err.println("dns query timeout!");
@@ -186,7 +187,7 @@ public final class DnsServer {
                 DefaultDnsResponse dr = DNSAddressBook.get(question.name(),msg);
                 send(ctx, msg, dr);
             } else {
-                clientQuery(question.name(), PUBLIC_DNS_SERVER_HOST, PUBLIC_DNS_SERVER_PORT, (respMsg) -> {
+                clientQuery(msg, PUBLIC_DNS_SERVER_HOST, PUBLIC_DNS_SERVER_PORT, (respMsg) -> {
                     List<DnsRecord> records = handleQueryResp(respMsg);
                     DefaultDnsResponse dr = newResponse(msg, question, records);
                     send(ctx, msg, dr);

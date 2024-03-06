@@ -57,7 +57,7 @@ public final class DnsServer {
     private static List<DnsRecord> handleQueryResp(DefaultDnsResponse msg) {
         if (msg.count(DnsSection.QUESTION) > 0) {
             DnsQuestion question = msg.recordAt(DnsSection.QUESTION, 0);
-            System.out.printf("name: %s%n", question.name());
+            logger.debug("name: %s%n", question.name());
         }
         List<DnsRecord> dnsList = new ArrayList<>();
         for (int i = 0, count = msg.count(DnsSection.ANSWER); i < count; i++) {
@@ -156,11 +156,17 @@ public final class DnsServer {
 //                .setRecursionDesired(true)
 //                .setRecord(DnsSection.QUESTION, new DefaultDnsQuestion(question.name(), DnsRecordType.A));
         ch.writeAndFlush(dnsQuery.retain()).sync();
-        boolean success = ch.closeFuture().await(10, TimeUnit.SECONDS);
-        if (!success) {
-            System.err.println("dns query timeout!");
-            ch.close().sync();
-        }
+        ch.closeFuture().addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture channelFuture) throws Exception {
+                ch.close().sync();
+            }
+        });
+//        boolean success = ch.closeFuture().await(10, TimeUnit.SECONDS);
+//        if (!success) {
+//            System.err.println("dns query timeout!");
+//            ch.close().sync();
+//        }
 
 
     }

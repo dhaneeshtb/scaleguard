@@ -20,11 +20,11 @@ public class KafkaEventPublisher implements Publisher<StreamingRawData> {
 
     @Override
     public void publish(String topic, StreamingRawData sd) {
-        final ProducerRecord<String, StreamingRawData> record = new ProducerRecord(topic,
+        final ProducerRecord<String, StreamingRawData> streamingRecord = new ProducerRecord<>(topic,
                 sd.getRequestId(),
                 sd);
         try {
-            producer.send(record);
+            producer.send(streamingRecord);
         } catch (Exception e) {
             log.error("stacktrace", e);
         }
@@ -34,5 +34,6 @@ public class KafkaEventPublisher implements Publisher<StreamingRawData> {
     @Override
     public void publish(String topic, StreamingRawData sd, int partitionCount) {
 
+        //Handle
     }
 }

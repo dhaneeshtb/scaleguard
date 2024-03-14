@@ -11,15 +11,15 @@ import java.util.Map;
 @JsonInclude(Include.NON_NULL)
 public class StreamingRawData implements Serializable {
 
-  public String requestId;
+  private String requestId;
 
-  public String groupId;
+  private String groupId;
   private String fileId;
   private String lob;
   private String loginId;
   private String submittedBy;
   private List<TransformerInfo> transformerInfo;
-  private ArrayNode features;
+  private transient ArrayNode features;
   private List<Response> responses;
   private String status;
   private String appId="integration";

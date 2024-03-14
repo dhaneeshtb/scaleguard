@@ -10,7 +10,7 @@ public class CustomPartitioner implements Partitioner {
 
     @Override
     public void configure(Map<String, ?> configs) {
-
+        //Handle
     }
 
     @Override
@@ -20,5 +20,6 @@ public class CustomPartitioner implements Partitioner {
 
     @Override
     public void close() {
+        //Handle
     }
 }

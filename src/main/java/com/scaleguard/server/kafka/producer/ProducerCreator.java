@@ -12,6 +12,8 @@ import java.util.Properties;
 
 public class ProducerCreator {
 
+    private ProducerCreator(){}
+
     private static Properties getCommonProperties() {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, IKafkaConstants.KAFKA_BROKERS);

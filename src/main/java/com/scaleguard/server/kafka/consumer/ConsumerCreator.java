@@ -16,21 +16,6 @@ public class ConsumerCreator {
     private ConsumerCreator(){
     }
 
-    private static String env=System.getenv("channelkart.environment");
-
-    private static Properties getCommonProperties() {
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, IKafkaConstants.KAFKA_BROKERS);
-        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, IKafkaConstants.MAX_POLL_RECORDS);
-        props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 60000);
-        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 600000);
-        props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 5000);
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, IKafkaConstants.OFFSET_RESET_EARLIER);
-        return props;
-    }
-
-
     public static Consumer<String, String> createRawDataConsumer(String broker,String appId) {
         final Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, broker);

@@ -12,15 +12,11 @@ import java.util.concurrent.ExecutionException;
 public class IKafkaConstants {
     private IKafkaConstants(){}
     private static final Logger LOGGER = LoggerFactory.getLogger(IKafkaConstants.class);
-    private static final Object LOCK = new Object();
     public static final String KAFKA_BROKERS;
     private static AdminClient adminClient = null;
-
-
     public static final String KAFKA_DEFAULT_PARTITIONER = CustomPartitioner.class.getName();
 
     private static final String KAFKA_BROKERS_CNST = "KAFKA_BROKERS";
-    private static String asyncStreamName = null;
 
     static {
         if (System.getenv(KAFKA_BROKERS_CNST) != null && !System.getenv(KAFKA_BROKERS_CNST).isEmpty()) {

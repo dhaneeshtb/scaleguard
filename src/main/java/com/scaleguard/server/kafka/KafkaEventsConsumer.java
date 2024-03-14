@@ -78,9 +78,7 @@ public class KafkaEventsConsumer {
                        }
                        srd.setFeatures(arr);
                        Httplient.getClient(sourceSystem).send(mapper.writeValueAsString(srd));
-                      // System.out.println(event);
                        LOGGER.debug("Record offset {}", event.offset());
-
                     } catch (Exception e) {
                         LOGGER.error("Discarded due to unsupported message " + event.offset(), e);
                     }
@@ -92,9 +90,5 @@ public class KafkaEventsConsumer {
         LOGGER.info("Kafka Event Consumptions Started");
     }
 
-    public static void main(String[] args) {
-        KafkaEventsConsumer kec = new KafkaEventsConsumer("164.52.202.184:9092","test","uat-metric-data-streams");
-        kec.onApplicationReady();
-    }
 
 }

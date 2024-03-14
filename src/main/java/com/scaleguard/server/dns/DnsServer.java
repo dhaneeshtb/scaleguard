@@ -15,8 +15,6 @@
  */
 package com.scaleguard.server.dns;
 
-import com.scaleguard.server.http.router.IPBlockingManager;
-import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.utils.AppProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
@@ -24,7 +22,6 @@ import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -50,7 +47,7 @@ public final class DnsServer {
 
     private static final List<String>  blacklistedDomains = List.of("collectd.org.","sl.","bradley.edu.");
 
-    private static RateLimitManager rateLimitManager = new RateLimitManager(10,new IPBlockingManager());
+    //private static RateLimitManager rateLimitManager = new RateLimitManager(10,new IPBlockingManager());
     NioEventLoopGroup group = new NioEventLoopGroup(10);
 
     NioEventLoopGroup clientGroup = new NioEventLoopGroup(10);

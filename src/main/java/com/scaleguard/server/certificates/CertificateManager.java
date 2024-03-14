@@ -7,6 +7,7 @@ import org.shredzone.acme4j.*;
 import org.shredzone.acme4j.challenge.Challenge;
 import org.shredzone.acme4j.challenge.Dns01Challenge;
 import org.shredzone.acme4j.challenge.Http01Challenge;
+import org.shredzone.acme4j.challenge.TokenChallenge;
 import org.shredzone.acme4j.exception.AcmeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,37 +62,28 @@ public class CertificateManager {
         return loader.loadOrder(orderId);
     }
 
-    public String verifyOrder(String id) throws AcmeException, IOException {
+    public String verifyOrder(String id,String challengeType) throws AcmeException, IOException {
         Order order = getOrder(id);
         order.update();
         List<Challenge> challenges = new ArrayList<>();
         System.out.println("Location "+order.getLocation());
+        //String challengeType="http";//http or dns
+
 
         if(order.getStatus().equals(Status.PENDING)) {
             order.getAuthorizations().forEach(auth -> {
-                Http01Challenge challenge = auth.findChallenge(Http01Challenge.class).orElse(null);
-                try {
-                    if(challenge!=null) {
+                Http01Challenge challengeHTTP = auth.findChallenge(Http01Challenge.class).orElse(null);
+                Dns01Challenge challengeDNS = auth.findChallenge(Dns01Challenge.class).orElse(null);
+                TokenChallenge challenge= ("http".equalsIgnoreCase(challengeType))?challengeHTTP:challengeDNS;
+                if(challenge!=null) {
+                    try {
                         challenge.trigger();
                         challenges.add(challenge);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
                     }
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
                 }
             });
-//            order.getAuthorizations().forEach(auth -> {
-//                Dns01Challenge challenge = auth.findChallenge(Dns01Challenge.class).orElse(null);
-//                try {
-//                    if(challenge!=null)  {
-//                        challenge.trigger();
-           // challenges.add(challenge);
-//                        Thread.sleep(2000);
-//                    }
-//
-//                } catch (Exception e) {
-//                    throw new RuntimeException(e);
-//                }
-//            });
         }
 
         if (order.getStatus().equals(Status.READY)){

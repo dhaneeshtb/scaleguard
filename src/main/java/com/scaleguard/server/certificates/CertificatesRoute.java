@@ -42,9 +42,14 @@ public class CertificatesRoute implements RequestRoute {
 
             String[] tuples = uri.split("/");
             String action = (tuples[tuples.length-1]);
+
+            JsonNode node =body!=null && !body.isEmpty()? mapper.readTree(body):null;
+            String challengeType = node!=null && node.has("challengeType")?
+                    node.get("challengeType").asText():"http";
+
             if("verify".equalsIgnoreCase(action)){
                 String id = tuples[tuples.length-2];
-                return RequestRoutingResponse.succes("{\"status\":\""+cm.verifyOrder(id)+"\"}");
+                return RequestRoutingResponse.succes("{\"status\":\""+cm.verifyOrder(id,challengeType)+"\"}");
             }else
             if("download".equalsIgnoreCase(action)){
                 String id = tuples[tuples.length-2];

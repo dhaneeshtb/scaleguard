@@ -165,7 +165,7 @@ public class ConfigManager {
             try {
                 SourceSystemDB.getInstance().create(toDBModel(ss));
                 if(isCertificateOrdered){
-                    CertificatesRoute.getCm().verifyOrder(ss.getCertificateId());
+                    CertificatesRoute.getCm().verifyOrder(ss.getCertificateId(),"http");
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e);

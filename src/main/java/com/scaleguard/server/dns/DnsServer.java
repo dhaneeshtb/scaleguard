@@ -48,6 +48,8 @@ public final class DnsServer {
     private static final int PUBLIC_DNS_SERVER_PORT = 53;
     private static final String PUBLIC_DNS_SERVER_HOST = AppProperties.get("dnsProxy");
 
+    private static final List<String>  blacklistedDomains = List.of("collectd.org.","sl.","bradley.edu.");
+
     private static RateLimitManager rateLimitManager = new RateLimitManager(10,new IPBlockingManager());
     NioEventLoopGroup group = new NioEventLoopGroup(10);
 
@@ -166,12 +168,16 @@ public final class DnsServer {
         protected void channelRead0(ChannelHandlerContext ctx,
                                     DnsQuery msg) throws Exception {
             DnsQuestion question = msg.recordAt(DnsSection.QUESTION);
+            if(blacklistedDomains.contains(question.name())){
+                return;
+            }
             logger.info("dns in query {} {}",question.name(),ctx.channel().remoteAddress());
             if (DNSAddressBook.isEntryExist(question.name())) {
                 DefaultDnsResponse dr = DNSAddressBook.get(question.name(),msg);
                 send(ctx, msg, dr);
             } else {
                 clientQuery(msg, PUBLIC_DNS_SERVER_HOST, PUBLIC_DNS_SERVER_PORT, respMsg -> {
+                    logger.info("dns answer count  {}",msg.count(DnsSection.ANSWER));
                     List<DnsRecord> records = handleQueryResp(respMsg);
                     DefaultDnsResponse dr = newResponse(msg, question, records);
                     send(ctx, msg, dr);

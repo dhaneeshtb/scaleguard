@@ -76,6 +76,8 @@ public final class DnsServer {
                     .handler(new ChannelInitializer<NioDatagramChannel>() {
                         @Override
                         protected void initChannel(NioDatagramChannel nioDatagramChannel) throws Exception {
+                            nioDatagramChannel.pipeline().addLast(new LoggingHandler());
+
                             nioDatagramChannel.pipeline().addLast(new DatagramDnsQueryDecoder());
                             nioDatagramChannel.pipeline().addLast(new DNSChannelInboundHandler());
                             nioDatagramChannel.pipeline().addLast("encoder", new DatagramDnsResponseEncoder());

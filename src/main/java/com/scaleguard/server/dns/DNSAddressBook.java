@@ -15,9 +15,9 @@ public class DNSAddressBook {
         private String name;
         private String ip;
 
-        public DefaultDnsRawRecord getRecord() {
+        public DefaultDnsRawRecord getRecord(String inName) {
             return  new DefaultDnsRawRecord(
-                    name,
+                    inName!=null?inName:name,
                     DnsRecordType.A, DEFAULT_TTL, Unpooled.wrappedBuffer(NetUtil.createByteArrayFromIpAddressString(ip)));
         }
         public String getName() {
@@ -59,7 +59,7 @@ public class DNSAddressBook {
         DnsQuestion question = query.recordAt(DnsSection.QUESTION);
         response.addRecord(DnsSection.QUESTION, question);
         dnsList.forEach(rec->{
-            response.addRecord(DnsSection.ANSWER, rec.getRecord());
+            response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name()));
         });
         return response;
     }

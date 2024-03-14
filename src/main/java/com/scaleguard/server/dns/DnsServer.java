@@ -15,6 +15,7 @@
  */
 package com.scaleguard.server.dns;
 
+import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.utils.AppProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
@@ -45,6 +46,8 @@ public final class DnsServer {
     private static final int DNS_SERVER_PORT = 53;
     private static final int PUBLIC_DNS_SERVER_PORT = 53;
     private static final String PUBLIC_DNS_SERVER_HOST = AppProperties.get("dnsProxy");
+
+    private static RateLimitManager rateLimitManager = new RateLimitManager(10);
     NioEventLoopGroup group = new NioEventLoopGroup(10);
 
     NioEventLoopGroup clientGroup = new NioEventLoopGroup(10);
@@ -81,8 +84,13 @@ public final class DnsServer {
 
                             nioDatagramChannel.pipeline().addLast(new DatagramDnsQueryDecoder(){
                                 protected void decode(ChannelHandlerContext ctx, final DatagramPacket packet, List<Object> out) throws Exception {
-                                    logger.info(packet.sender().getHostName()+packet.sender().getAddress());
-                                    super.decode(ctx,packet,out);
+                                    if(rateLimitManager.isInRate(null,packet.sender().getHostName(),true)){
+                                        logger.info(packet.sender().getHostName()+packet.sender().getAddress());
+                                        super.decode(ctx,packet,out);
+                                    }else{
+                                        logger.info("blocked "+packet.sender().getHostName());
+                                    }
+
                                 }
                             });
                             nioDatagramChannel.pipeline().addLast(new DNSChannelInboundHandler());

@@ -33,6 +33,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   private static final Logger logger
           = LoggerFactory.getLogger(ScaleGuardFrontendHandler.class);
 
+  private static RateLimitManager rateLimitManager=new RateLimitManager();
 
   private Channel outboundChannel;
 
@@ -69,7 +70,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
 
     RouteTarget ts = inboundHandler.matchTarget(ctx,msg,port);
-    if(!RateLimitManager.checkRate(ts,inAddress)){
+    if(!rateLimitManager.checkRate(ts,inAddress)){
       logger.info("Discard due to rate exceeded....");
       return;
     }

@@ -9,9 +9,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class RateLimitManager {
 
-    private static Map<String, Queue<RateLimit>> rateLimitMap = new ConcurrentHashMap<>();
+    private  Map<String, Queue<RateLimit>> rateLimitMap = new ConcurrentHashMap<>();
 
-    public static void log(RouteTarget rt) {
+    private int allowedRate=1000;
+
+    public RateLimitManager(){
+
+    }
+    public RateLimitManager(int allowedRate){
+        this.allowedRate=allowedRate;
+    }
+
+    public  void log(RouteTarget rt) {
         String key = "system";
         if (rt != null) {
             key = rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
@@ -31,10 +40,10 @@ public class RateLimitManager {
 
     }
 
-    public static boolean checkRate(RouteTarget rt,String inAddress) {
+    public  boolean checkRate(RouteTarget rt,String inAddress) {
         return isInRate(rt,inAddress,true);
     }
-    public static boolean isInRate(RouteTarget rt,String inAddress,boolean add) {
+    public  boolean isInRate(RouteTarget rt,String inAddress,boolean add) {
         String key = inAddress+":system";
         if (rt != null) {
             key = rt.getClientIp()+":"+rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
@@ -44,7 +53,7 @@ public class RateLimitManager {
         Calendar cal = Calendar.getInstance();
         String minKey = cal.get(Calendar.HOUR) + "" + cal.get(Calendar.MINUTE);
         if (rl!=null && rl.getMinuteKey().equalsIgnoreCase(minKey)) {
-            if ( (add?rl.getCount().getAndIncrement(): rl.getCount().get()) < 1000) {
+            if ( (add?rl.getCount().getAndIncrement(): rl.getCount().get()) < allowedRate) {
                 return true;
             } else {
                 System.out.println("Rate Exceeded " + rl.getMinuteKey() + " " + rl.getCount().get());
@@ -66,9 +75,10 @@ public class RateLimitManager {
         TargetSystem ts = new TargetSystem();
         ts.setId("20");
         RouteTarget rt = new RouteTarget(ss, ts);
+        RateLimitManager rtm=new RateLimitManager();
         for (int i = 0; i < 10000; i++) {
-            log(rt);
-            if (!isInRate(rt,"",false)) {
+            rtm.log(rt);
+            if (!rtm.isInRate(rt,"",false)) {
                 try {
                     System.out.println("Rate Exceeded..");
                     Thread.sleep(1000);

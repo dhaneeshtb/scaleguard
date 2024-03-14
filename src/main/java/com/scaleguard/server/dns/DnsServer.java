@@ -63,7 +63,7 @@ public final class DnsServer {
         if (msg.count(DnsSection.QUESTION) > 0) {
             DnsQuestion question = msg.recordAt(DnsSection.QUESTION, 0);
             if(logger.isInfoEnabled()) {
-                logger.debug("name: {}", question.name());
+                logger.info("name: {}", question.name());
             }
         }
         List<DnsRecord> dnsList = new ArrayList<>();

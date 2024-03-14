@@ -12,12 +12,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DNSAddressBook {
     public static class WrappedDNSRecord{
-        DefaultDnsRawRecord record;
         private String name;
         private String ip;
 
         public DefaultDnsRawRecord getRecord() {
-            return record;
+            return  new DefaultDnsRawRecord(
+                    name,
+                    DnsRecordType.A, DEFAULT_TTL, Unpooled.wrappedBuffer(NetUtil.createByteArrayFromIpAddressString(ip)));
         }
         public String getName() {
             return name;
@@ -26,12 +27,9 @@ public class DNSAddressBook {
             return ip;
         }
         WrappedDNSRecord(String name, String ip){
-            DefaultDnsRawRecord record = new DefaultDnsRawRecord(
-                    name,
-                    DnsRecordType.A, DEFAULT_TTL, Unpooled.wrappedBuffer(NetUtil.createByteArrayFromIpAddressString(ip)));
+
             this.ip=ip;
             this.name=name;
-            this.record=record;
         }
     }
     private static long DEFAULT_TTL=600l;

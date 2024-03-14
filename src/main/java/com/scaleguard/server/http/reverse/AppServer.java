@@ -1,5 +1,5 @@
 package com.scaleguard.server.http.reverse;
-import com.scaleguard.server.http.dns.tcp.DnsServer;
+import com.scaleguard.server.dns.DnsServer;
 import com.scaleguard.server.http.router.ConfigManager;
 import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;

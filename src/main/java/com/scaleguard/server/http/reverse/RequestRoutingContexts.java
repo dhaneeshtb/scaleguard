@@ -2,6 +2,7 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.acmechallengeroute.AcmeChannelgeRoute;
 import com.scaleguard.server.certificates.CertificatesRoute;
+import com.scaleguard.server.dns.DNSRoute;
 import com.scaleguard.server.login.LoginRoute;
 import com.scaleguard.server.system.SystemsRoute;
 
@@ -16,6 +17,7 @@ public class RequestRoutingContexts {
         routesMap.put("certificates",new CertificatesRoute());
         routesMap.put("systems",new SystemsRoute());
         routesMap.put("signin",new LoginRoute());
+        routesMap.put("dns",new DNSRoute());
         routesMap.put(".well-known",new AcmeChannelgeRoute());
 
 

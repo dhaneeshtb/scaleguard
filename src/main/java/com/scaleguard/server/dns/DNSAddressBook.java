@@ -1,4 +1,4 @@
-package com.scaleguard.server.http.dns.tcp;
+package com.scaleguard.server.dns;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.dns.*;

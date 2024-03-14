@@ -13,7 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package com.scaleguard.server.http.dns.tcp;
+package com.scaleguard.server.dns;
 
 import com.scaleguard.server.http.utils.AppProperties;
 import io.netty.bootstrap.Bootstrap;

@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class RateLimitManager {
 
+    private  IPBlockingManager ibm;
     private  Map<String, Queue<RateLimit>> rateLimitMap = new ConcurrentHashMap<>();
 
     private int allowedRate=1000;
@@ -18,6 +19,18 @@ public class RateLimitManager {
     }
     public RateLimitManager(int allowedRate){
         this.allowedRate=allowedRate;
+    }
+    public RateLimitManager(int allowedRate,IPBlockingManager ibm){
+        this.allowedRate=allowedRate;
+        this.ibm=ibm;
+    }
+
+    public IPBlockingManager getIbm() {
+        return ibm;
+    }
+
+    public boolean isBlocked(String address){
+        return ibm != null && ibm.isBlocked(address);
     }
 
     public  void log(RouteTarget rt) {
@@ -57,6 +70,9 @@ public class RateLimitManager {
                 return true;
             } else {
                 System.out.println("Rate Exceeded " + rl.getMinuteKey() + " " + rl.getCount().get());
+                if(ibm!=null){
+                    ibm.block(rt != null?rt.getClientIp():inAddress);
+                }
                 return false;
             }
         }else if(add){

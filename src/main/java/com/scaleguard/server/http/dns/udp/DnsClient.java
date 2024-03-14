@@ -15,32 +15,17 @@
  */
 package com.scaleguard.server.http.dns.udp;
 
-import java.net.InetSocketAddress;
-import java.util.concurrent.TimeUnit;
-
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufUtil;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
-import io.netty.handler.codec.dns.DatagramDnsQuery;
-import io.netty.handler.codec.dns.DatagramDnsQueryEncoder;
-import io.netty.handler.codec.dns.DatagramDnsResponse;
-import io.netty.handler.codec.dns.DatagramDnsResponseDecoder;
-import io.netty.handler.codec.dns.DefaultDnsQuestion;
-import io.netty.handler.codec.dns.DnsQuery;
-import io.netty.handler.codec.dns.DnsQuestion;
-import io.netty.handler.codec.dns.DnsRawRecord;
-import io.netty.handler.codec.dns.DnsRecord;
-import io.netty.handler.codec.dns.DnsRecordType;
-import io.netty.handler.codec.dns.DnsSection;
+import io.netty.handler.codec.dns.*;
 import io.netty.util.NetUtil;
+
+import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
 
 public final class DnsClient {
 

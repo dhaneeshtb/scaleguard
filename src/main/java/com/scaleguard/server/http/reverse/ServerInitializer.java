@@ -7,7 +7,6 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.cors.CorsConfig;
 import io.netty.handler.codec.http.cors.CorsConfigBuilder;
-import io.netty.handler.codec.http.cors.CorsHandler;
 
 public class ServerInitializer extends ChannelInitializer<Channel> {
     private int port=80;

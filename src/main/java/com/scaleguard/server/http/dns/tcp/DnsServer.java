@@ -32,8 +32,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 public final class DnsServer {
@@ -43,15 +43,13 @@ public final class DnsServer {
     private static final int DNS_SERVER_PORT = 53;
     private static final int PUBLIC_DNS_SERVER_PORT = 53;
     private static final String PUBLIC_DNS_SERVER_HOST = "8.8.8.8";
-    private static final byte[] QUERY_RESULT = new byte[]{(byte) 192, (byte) 168, 1, 1};
-    private static Map<String, byte[][]> addressMap = new ConcurrentHashMap<>();
     NioEventLoopGroup group = new NioEventLoopGroup(10);
 
     NioEventLoopGroup clientGroup = new NioEventLoopGroup(10);
 
     Bootstrap bootstrap = new Bootstrap();
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args)  {
         DnsServer server = new DnsServer();
         server.start();
     }
@@ -59,12 +57,13 @@ public final class DnsServer {
     private static List<DnsRecord> handleQueryResp(DefaultDnsResponse msg) {
         if (msg.count(DnsSection.QUESTION) > 0) {
             DnsQuestion question = msg.recordAt(DnsSection.QUESTION, 0);
-            logger.debug("name: %s%n", question.name());
+            if(logger.isInfoEnabled()) {
+                logger.debug("name: {}", question.name());
+            }
         }
         List<DnsRecord> dnsList = new ArrayList<>();
         for (int i = 0, count = msg.count(DnsSection.ANSWER); i < count; i++) {
-            DnsRecord record = msg.recordAt(DnsSection.ANSWER, i);
-            dnsList.add(record);
+            dnsList.add(msg.recordAt(DnsSection.ANSWER, i));
         }
         return dnsList;
     }
@@ -92,7 +91,7 @@ public final class DnsServer {
     }
 
     public Channel tcpStart() {
-        ServerBootstrap bootstrap = new ServerBootstrap().group(new NioEventLoopGroup(1),
+        ServerBootstrap dnsbootstrap = new ServerBootstrap().group(new NioEventLoopGroup(1),
                         new NioEventLoopGroup())
                 .channel(NioServerSocketChannel.class)
                 .handler(new LoggingHandler(LogLevel.INFO))
@@ -103,7 +102,7 @@ public final class DnsServer {
                                   }
                               }
                 );
-        return bootstrap.bind(DNS_SERVER_PORT).channel();
+        return dnsbootstrap.bind(DNS_SERVER_PORT).channel();
 
 
     }
@@ -118,60 +117,18 @@ public final class DnsServer {
             try {
                 udpChannel.closeFuture().sync();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt();
             }
             try {
                 tcpChannel.closeFuture().sync();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt();
             }
         }).start();
 
     }
 
     // copy from TcpDnsClient.java
-    private void clientQuery(DnsQuery dnsQuery, String ip, int port, Consumer<DefaultDnsResponse> consumer) throws Exception {
-        Bootstrap clientQueryGroup = new Bootstrap();
-        clientQueryGroup.group(clientGroup)
-                .channel(NioSocketChannel.class)
-                .handler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        ch.pipeline().addLast(new TcpDnsQueryEncoder())
-                                .addLast(new TcpDnsResponseDecoder())
-                                .addLast(new SimpleChannelInboundHandler<DefaultDnsResponse>() {
-                                    @Override
-                                    protected void channelRead0(ChannelHandlerContext ctx, DefaultDnsResponse msg) {
-                                        try {
-                                            consumer.accept(msg);
-                                        } finally {
-                                            ctx.close();
-                                        }
-                                    }
-                                });
-                    }
-                });
-//        DnsQuestion question = dnsQuery.recordAt(DnsSection.QUESTION);
-        final Channel ch = clientQueryGroup.connect(ip, port).sync().channel();
-//        int randomID = new Random().nextInt(60000 - 1000) + 1000;
-//        DnsQuery query = new DefaultDnsQuery(randomID, DnsOpCode.QUERY)
-//                .setRecursionDesired(true)
-//                .setRecord(DnsSection.QUESTION, new DefaultDnsQuestion(question.name(), DnsRecordType.A));
-        ch.writeAndFlush(dnsQuery.retain()).sync();
-        ch.closeFuture().addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture channelFuture) throws Exception {
-                ch.close().sync();
-            }
-        });
-//        boolean success = ch.closeFuture().await(10, TimeUnit.SECONDS);
-//        if (!success) {
-//            System.err.println("dns query timeout!");
-//            ch.close().sync();
-//        }
-
-
-    }
 
     class DNSChannelInboundHandler extends SimpleChannelInboundHandler<DnsQuery> {
 
@@ -195,7 +152,7 @@ public final class DnsServer {
                 DefaultDnsResponse dr = DNSAddressBook.get(question.name(),msg);
                 send(ctx, msg, dr);
             } else {
-                clientQuery(msg, PUBLIC_DNS_SERVER_HOST, PUBLIC_DNS_SERVER_PORT, (respMsg) -> {
+                clientQuery(msg, PUBLIC_DNS_SERVER_HOST, PUBLIC_DNS_SERVER_PORT, respMsg -> {
                     List<DnsRecord> records = handleQueryResp(respMsg);
                     DefaultDnsResponse dr = newResponse(msg, question, records);
                     send(ctx, msg, dr);
@@ -207,7 +164,7 @@ public final class DnsServer {
                                                DnsQuestion question, List<DnsRecord> records) {
             DefaultDnsResponse response = new DefaultDnsResponse(query.id());
             response.addRecord(DnsSection.QUESTION, question);
-            records.stream().forEach(r -> {
+            records.forEach(r -> {
                 DnsRawRecord raw = (DnsRawRecord) r;
                 DefaultDnsRawRecord queryAnswer = new DefaultDnsRawRecord(
                         question.name(),
@@ -216,6 +173,38 @@ public final class DnsServer {
             });
             return response;
         }
+
+        private void clientQuery(DnsQuery dnsQuery, String ip, int port, Consumer<DefaultDnsResponse> consumer) throws InterruptedException {
+            Bootstrap clientQueryGroup = new Bootstrap();
+            clientQueryGroup.group(clientGroup)
+                    .channel(NioSocketChannel.class)
+                    .handler(new ChannelInitializer<SocketChannel>() {
+                        @Override
+                        protected void initChannel(SocketChannel ch) {
+                            ch.pipeline().addLast(new TcpDnsQueryEncoder())
+                                    .addLast(new TcpDnsResponseDecoder())
+                                    .addLast(new SimpleChannelInboundHandler<DefaultDnsResponse>() {
+                                        @Override
+                                        protected void channelRead0(ChannelHandlerContext ctx, DefaultDnsResponse msg) {
+                                            try {
+                                                consumer.accept(msg);
+                                            } finally {
+                                                ctx.close();
+                                            }
+                                        }
+                                    });
+                        }
+                    });
+            final Channel ch = clientQueryGroup.connect(ip, port).sync().channel();
+            ch.writeAndFlush(dnsQuery.retain()).sync();
+            ch.closeFuture().addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture channelFuture) throws Exception {
+                    ch.close().sync();
+                }
+            });
+        }
+
 
     }
 }

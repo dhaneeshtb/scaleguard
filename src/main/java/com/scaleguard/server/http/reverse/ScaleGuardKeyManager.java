@@ -1,10 +1,8 @@
 package com.scaleguard.server.http.reverse;
 
 import io.netty.handler.ssl.CertificateStore;
-import io.netty.handler.ssl.SslContext;
 
 import javax.net.ssl.*;
-import java.io.File;
 import java.net.Socket;
 import java.security.Principal;
 import java.security.PrivateKey;

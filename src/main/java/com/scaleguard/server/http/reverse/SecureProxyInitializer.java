@@ -15,7 +15,6 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
 import javax.net.ssl.SSLException;
-import java.io.File;
 
 public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 

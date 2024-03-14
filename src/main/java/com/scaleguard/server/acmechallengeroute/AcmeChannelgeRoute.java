@@ -1,21 +1,19 @@
 package com.scaleguard.server.acmechallengeroute;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.server.http.reverse.RequestRoute;
 import com.scaleguard.server.http.reverse.RequestRoutingResponse;
 import org.shredzone.acme4j.AcmeUtils;
 import org.shredzone.acme4j.exception.AcmeException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 public class AcmeChannelgeRoute implements RequestRoute {
-    private static final ObjectMapper mapper = new ObjectMapper();
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AcmeChannelgeRoute.class);
 
     @Override
     public boolean isAuthNeeded() {
@@ -25,7 +23,7 @@ public class AcmeChannelgeRoute implements RequestRoute {
     @Override
     public RequestRoutingResponse handle(String method, String uri, String body) throws AcmeException, IOException {
 
-        System.out.println("Acme challenge request !!!! for uri:"+uri);
+        LOGGER.info("Acme challenge request !!!! for uri: {}",uri);
 
         if (method.equalsIgnoreCase("get")) {
             String[] tuples = uri.split("/");

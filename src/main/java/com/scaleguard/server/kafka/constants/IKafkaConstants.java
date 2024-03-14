@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 public class IKafkaConstants {
     private IKafkaConstants(){}

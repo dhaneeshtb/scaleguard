@@ -16,23 +16,25 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyPair;
 import java.security.MessageDigest;
 import java.util.Collection;
-import java.util.Date;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class AcmeUtils {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AcmeUtils.class);
+
+    private AcmeUtils(){
+
+    }
     private static final ObjectMapper mapper = new ObjectMapper();
 
     private static final File USER_KEY_FILE = new File("user.key");
@@ -47,9 +49,10 @@ public class AcmeUtils {
         if(context==null) {
             synchronized (AcmeUtils.class) {
                 if(context==null) {
-                    context = new AcmeContext();
+                    AcmeContext context = new AcmeContext();
                     context.setAccount(findOrRegisterAccount(new Session("acme://letsencrypt.org"), loadKeyPair()));
                     context.setDomainKeyPair(loadOrCreateDomainKeyPair());
+                    AcmeUtils.context=context;
                 }
             }
         }
@@ -65,7 +68,7 @@ public class AcmeUtils {
             return DatatypeConverter
                     .printHexBinary(digest).toUpperCase();
         }catch (Exception e){
-            e.printStackTrace();
+            LOGGER.error("Error while generating domain hash ",e);
             return null;
         }
     }
@@ -81,7 +84,6 @@ public class AcmeUtils {
         }
         order.getAuthorizations().forEach(auth->{
             try {
-
                 on.set("httpChallenge",httpChallenge(auth));
                 on.set("dnsChallenge",dnsChallenge(auth));
             } catch (AcmeException e) {
@@ -144,8 +146,10 @@ public class AcmeUtils {
 
             // Output the challenge, wait for acknowledge...
             LOG.info("Please create a TXT record:");
-            LOG.info("{} IN TXT {}",
-                    Dns01Challenge.toRRName(auth.getIdentifier()), challenge.getDigest());
+            if(LOG.isInfoEnabled()) {
+                LOG.info("{} IN TXT {}",
+                        Dns01Challenge.toRRName(auth.getIdentifier()), challenge.getDigest());
+            }
             LOG.info("If you're ready, dismiss the dialog...");
             on.put("domainRecordName", Dns01Challenge.toRRName(auth.getIdentifier()));
             on.put("dnsRecordType", "TXT");
@@ -158,7 +162,7 @@ public class AcmeUtils {
                     .append(challenge.getDigest());
             on.put("message", message.toString());
         }catch (Exception e){
-            System.err.println(e.getMessage());
+            LOG.error(e.getMessage(),e);
         }
 
         return on;
@@ -202,10 +206,8 @@ public class AcmeUtils {
     }
 
     private static Account findOrRegisterAccount(Session session, KeyPair accountKey) throws AcmeException {
-        Optional<URI> tos = session.getMetadata().getTermsOfService();
         Account account = new AccountBuilder()
                 .agreeToTermsOfService()
-
                 .useKeyPair(accountKey)
                 .create(session);
         LOG.info("Registered a new user, URL: {}", account.getLocation());

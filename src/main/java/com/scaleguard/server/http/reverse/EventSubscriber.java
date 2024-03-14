@@ -2,7 +2,8 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.router.SourceSystem;
 
-import java.util.concurrent.Flow.*;
+import java.util.concurrent.Flow.Subscriber;
+import java.util.concurrent.Flow.Subscription;
 
 public class EventSubscriber implements Subscriber<SourceSystem> {
     private final AppServer appServer;

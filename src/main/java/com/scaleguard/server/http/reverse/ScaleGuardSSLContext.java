@@ -1,11 +1,8 @@
 package com.scaleguard.server.http.reverse;
 
 
-import javax.net.ssl.*;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.security.KeyStore;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.SSLContext;
 public class ScaleGuardSSLContext {
     public static SSLContext  get(int port){
         SSLContext context=null;

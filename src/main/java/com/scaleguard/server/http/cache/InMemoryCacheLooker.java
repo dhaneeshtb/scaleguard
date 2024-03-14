@@ -3,10 +3,10 @@ package com.scaleguard.server.http.cache;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.FullHttpResponse;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 

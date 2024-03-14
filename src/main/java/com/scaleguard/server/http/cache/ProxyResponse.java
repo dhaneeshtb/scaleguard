@@ -1,7 +1,5 @@
 package com.scaleguard.server.http.cache;
 
-import java.util.Map;
-
 public class ProxyResponse {
     private String id;
     private String groupId;

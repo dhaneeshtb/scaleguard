@@ -1,10 +1,5 @@
 package com.scaleguard.server.http.reverse;
 
-import com.scaleguard.server.certificates.CertificatesRoute;
-
-import java.util.HashMap;
-import java.util.Map;
-
 public class RequestRoutingResponse {
 
     private int status=200;

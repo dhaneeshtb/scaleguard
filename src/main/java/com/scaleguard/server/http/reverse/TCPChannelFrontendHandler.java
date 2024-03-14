@@ -2,7 +2,6 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.RouteTable;
-import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;

@@ -1,17 +1,13 @@
 package com.scaleguard.server.http.router;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scaleguard.server.db.DBModelSystem;
 import com.scaleguard.server.db.HostGroupsDB;
 import com.scaleguard.server.db.SourceSystemDB;
 import com.scaleguard.server.db.TargetSystemDB;
-import com.scaleguard.server.http.cache.CachedResource;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class DBSystemLoader implements SystemLoader {

@@ -1,7 +1,6 @@
 package com.scaleguard.server.db;
 
 
-import com.scaleguard.server.licencing.licensing.LicenceManager;
 import com.scaleguard.server.licencing.licensing.LicenceUtil;
 import org.sqlite.mc.SQLiteMCConfig;
 

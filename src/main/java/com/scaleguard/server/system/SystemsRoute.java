@@ -3,20 +3,14 @@ package com.scaleguard.server.system;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.server.certificates.CertificatesRoute;
 import com.scaleguard.server.db.SystemProperty;
 import com.scaleguard.server.db.SystemPropertyDB;
 import com.scaleguard.server.http.reverse.RequestRoute;
 import com.scaleguard.server.http.reverse.RequestRoutingResponse;
-import com.scaleguard.server.licencing.licensing.LicenceUtil;
-import org.shredzone.acme4j.exception.AcmeException;
 
-import java.io.IOException;
 import java.net.InetAddress;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 public class SystemsRoute implements RequestRoute {
     private static final ObjectMapper mapper = new ObjectMapper();

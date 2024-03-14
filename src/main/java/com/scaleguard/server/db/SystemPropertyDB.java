@@ -1,13 +1,8 @@
 package com.scaleguard.server.db;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.scaleguard.server.licencing.licensing.LicenceManager;
-
-import java.sql.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 public class SystemPropertyDB extends DBManager<SystemProperty>{
 

@@ -1,24 +1,31 @@
 package com.scaleguard.server.http.utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Properties;
 
 public class AppProperties {
-    private static Properties appProperties=new Properties();
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AppProperties.class);
+
+    private AppProperties(){}
+    private static final Properties properties =new Properties();
     static {
         try {
-            appProperties.load(AppProperties.class.getClassLoader().getResourceAsStream("/application.properties"));
+            properties.load(AppProperties.class.getClassLoader().getResourceAsStream("/application.properties"));
         } catch (Exception e) {
             try {
-                appProperties.load(AppProperties.class.getResourceAsStream("/application.properties"));
+                properties.load(AppProperties.class.getResourceAsStream("/application.properties"));
             } catch (Exception ex) {
-                e.printStackTrace();
+                LOGGER.error("Error while loading application.properties",e);
             }
         }
-        System.getenv().forEach((k,v)->appProperties.put(k,v));
-        System.getProperties().forEach((k,v)->appProperties.put(k,v));
+        properties.putAll(System.getenv());
+        properties.putAll(System.getProperties());
     }
 
     public static String get(String key){
-        return appProperties.getProperty(key,"");
+        return properties.getProperty(key,"");
     }
 
 

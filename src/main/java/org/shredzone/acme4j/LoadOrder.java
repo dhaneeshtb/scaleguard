@@ -14,27 +14,10 @@
 package org.shredzone.acme4j;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.shredzone.acme4j.challenge.Challenge;
-import org.shredzone.acme4j.challenge.Dns01Challenge;
-import org.shredzone.acme4j.challenge.Http01Challenge;
 import org.shredzone.acme4j.exception.AcmeException;
-import org.shredzone.acme4j.toolbox.JSON;
-import org.shredzone.acme4j.util.KeyPairUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.net.URI;
-import java.net.URL;
-import java.security.KeyPair;
-import java.security.Security;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Optional;
 
 /**
  * A simple client test tool.

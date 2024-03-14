@@ -13,6 +13,16 @@
  */
 package org.shredzone.acme4j;
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.shredzone.acme4j.challenge.Challenge;
+import org.shredzone.acme4j.challenge.Dns01Challenge;
+import org.shredzone.acme4j.challenge.Http01Challenge;
+import org.shredzone.acme4j.exception.AcmeException;
+import org.shredzone.acme4j.toolbox.JSON;
+import org.shredzone.acme4j.util.KeyPairUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -24,25 +34,6 @@ import java.security.Security;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Optional;
-
-
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.shredzone.acme4j.Account;
-import org.shredzone.acme4j.AccountBuilder;
-import org.shredzone.acme4j.Authorization;
-import org.shredzone.acme4j.Certificate;
-import org.shredzone.acme4j.Order;
-import org.shredzone.acme4j.Problem;
-import org.shredzone.acme4j.Session;
-import org.shredzone.acme4j.Status;
-import org.shredzone.acme4j.challenge.Challenge;
-import org.shredzone.acme4j.challenge.Dns01Challenge;
-import org.shredzone.acme4j.challenge.Http01Challenge;
-import org.shredzone.acme4j.exception.AcmeException;
-import org.shredzone.acme4j.toolbox.JSON;
-import org.shredzone.acme4j.util.KeyPairUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A simple client test tool.

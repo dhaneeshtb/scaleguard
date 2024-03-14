@@ -6,8 +6,6 @@ import com.scaleguard.server.http.auth.AuthUtils;
 import com.scaleguard.server.http.reverse.RequestRoute;
 import com.scaleguard.server.http.reverse.RequestRoutingResponse;
 
-import java.util.List;
-
 public class LoginRoute implements RequestRoute {
     private static final ObjectMapper mapper = new ObjectMapper();
 

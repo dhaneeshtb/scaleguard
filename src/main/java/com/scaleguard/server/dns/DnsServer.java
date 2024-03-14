@@ -22,6 +22,7 @@ import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -78,7 +79,12 @@ public final class DnsServer {
                         protected void initChannel(NioDatagramChannel nioDatagramChannel) throws Exception {
                             nioDatagramChannel.pipeline().addLast(new LoggingHandler());
 
-                            nioDatagramChannel.pipeline().addLast(new DatagramDnsQueryDecoder());
+                            nioDatagramChannel.pipeline().addLast(new DatagramDnsQueryDecoder(){
+                                protected void decode(ChannelHandlerContext ctx, final DatagramPacket packet, List<Object> out) throws Exception {
+                                    logger.info(packet.sender().getHostName()+packet.sender().getAddress());
+                                    super.decode(ctx,packet,out);
+                                }
+                            });
                             nioDatagramChannel.pipeline().addLast(new DNSChannelInboundHandler());
                             nioDatagramChannel.pipeline().addLast("encoder", new DatagramDnsResponseEncoder());
                         }

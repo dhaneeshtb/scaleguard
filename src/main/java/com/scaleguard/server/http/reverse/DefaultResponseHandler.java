@@ -111,11 +111,9 @@ public class DefaultResponseHandler {
 
 
                     RequestRoute rr = RequestRoutingContexts.routesMap.get(params[1]);
-                    if(rr.isAuthNeeded()){
-                        if( !isValidToken) {
-                            handleFailure(ctx, "no valid auth token", HttpResponseStatus.FORBIDDEN);
-                            return;
-                        }
+                    if(rr.isAuthNeeded() && !isValidToken){
+                        handleFailure(ctx, "no valid auth token", HttpResponseStatus.FORBIDDEN);
+                        return;
                     }
 
                     try {

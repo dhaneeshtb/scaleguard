@@ -33,7 +33,6 @@ import java.security.KeyPair;
 import java.security.Security;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Optional;
 
 /**
  * A simple client test tool.
@@ -232,11 +231,6 @@ public class ClientTest {
      * @return {@link Account}
      */
     private Account findOrRegisterAccount(Session session, KeyPair accountKey) throws AcmeException {
-        // Ask the user to accept the TOS, if server provides us with a link.
-        Optional<URI> tos = session.getMetadata().getTermsOfService();
-//        if (tos.isPresent()) {
-//            acceptAgreement(tos.get());
-//        }
 
         Account account = new AccountBuilder()
                 .agreeToTermsOfService()

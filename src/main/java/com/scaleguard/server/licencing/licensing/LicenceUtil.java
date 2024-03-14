@@ -1,5 +1,8 @@
 package com.scaleguard.server.licencing.licensing;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -8,6 +11,8 @@ import java.io.*;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.security.*;
 import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
@@ -20,48 +25,49 @@ import java.util.stream.Collectors;
 
 public class LicenceUtil {
 
+    private LicenceUtil(){}
+
+    private static final Logger LOGGER
+            = LoggerFactory.getLogger(LicenceUtil.class);
+
     private static String macAddress =null;
 
-    public static String APP_ROOT=null;
+    public static final  String APP_ROOT;
 
     static {
-        APP_ROOT = System.getProperty("appRoot","");
-        if(!APP_ROOT.isEmpty()){
-            APP_ROOT+="/";
-        }
+        APP_ROOT = System.getProperty("appRoot","")+"/";
     }
 
-    public static String TEMP_DIR=null;
-    public static String CONF_DIR=null;
+    private static String tempDir;
+    private static String confDir;
 
     public static String dataDir(){
-        if(TEMP_DIR==null) {
+        if(tempDir ==null) {
             String home = System.getProperty("user.home");
-            TEMP_DIR = home + "/.scaleguard";
+            tempDir = home + "/.scaleguard";
             try {
-                new File(TEMP_DIR).mkdirs();
+                new File(tempDir).mkdirs();
             } catch (Exception e) {
-
+                LOGGER.debug("folder exist {}",tempDir);
             }
         }
-       return TEMP_DIR;
+       return tempDir;
     }
 
     public static String getConfDir(){
-        if(CONF_DIR==null) {
+        if(confDir ==null) {
             String home = System.getProperty("user.home");
-            CONF_DIR = home + "/.scaleguard/conf";
+            confDir = home + "/.scaleguard/conf";
             try {
-                File conf= new File(CONF_DIR);
+                File conf= new File(confDir);
                 if(!conf.exists()) {
-                    new File(CONF_DIR).mkdirs();
-                    //copyDirectory(new File(LicenceUtil.APP_ROOT+"/conf"),conf);
+                    new File(confDir).mkdirs();
                 }
             } catch (Exception e) {
-
+                LOGGER.debug("folder exist {}",confDir);
             }
         }
-        return CONF_DIR;
+        return confDir;
     }
 
     public static void copyFile(String sourceLocation , String targetLocation)throws IOException {
@@ -76,49 +82,45 @@ public class LicenceUtil {
                     new File(targetLocation.getParent()).mkdirs();
                 }catch (Exception e){
 
+                    LOGGER.error("targetLocation creation failed ",e);
                 }
-
-                InputStream in = new FileInputStream(sourceLocation);
-                OutputStream out = new FileOutputStream(targetLocation);
-
-                // Copy the bits from instream to outstream
-                byte[] buf = new byte[1024];
-                int len;
-                while ((len = in.read(buf)) > 0) {
-                    out.write(buf, 0, len);
+                try(InputStream in = new FileInputStream(sourceLocation);
+                    OutputStream out = new FileOutputStream(targetLocation)) {
+                    // Copy the bits from instream to outstream
+                    byte[] buf = new byte[1024];
+                    int len;
+                    while ((len = in.read(buf)) > 0) {
+                        out.write(buf, 0, len);
+                    }
                 }
-                in.close();
-                out.close();
             }
 
     }
 
     public static String generateHash(String key) throws NoSuchAlgorithmException {
         MessageDigest md = MessageDigest.getInstance("MD5");
-        byte[] messageDigest = md.digest((key).getBytes());
+        byte[] messageDigest = md.digest(key.getBytes());
         BigInteger no = new BigInteger(1, messageDigest);
-        // Convert message digest into hex value
-        String hashtext = no.toString(16);
+        StringBuilder hashtext = new StringBuilder(no.toString(16));
         while (hashtext.length() < 32) {
-            hashtext = "0" + hashtext;
+            hashtext.append("0");
         }
-        return hashtext;
+        return hashtext.toString();
     }
-    public static PrivateKey loadPrivateKey(String keyName) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+    public static PrivateKey loadPrivateKey(String keyName)  {
         // reading from resource folder
         String filePath=APP_ROOT+keyName + ".priv";
         return loadPrivateKeyFromPath(filePath);
     }
 
-    public static PrivateKey loadPrivateKeyFromPath(String filePath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
-        try {
-            byte[] privateKeyBytes = new FileInputStream(filePath).readAllBytes();
+    public static PrivateKey loadPrivateKeyFromPath(String filePath)  {
+        try(FileInputStream fis=new FileInputStream(filePath)){
+            byte[] privateKeyBytes = fis.readAllBytes();
             KeyFactory privateKeyFactory = KeyFactory.getInstance("RSA");
             EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
-            PrivateKey privateKey = privateKeyFactory.generatePrivate(privateKeySpec);
-            return privateKey;
+            return privateKeyFactory.generatePrivate(privateKeySpec);
         }catch (Exception e){
-            throw new RuntimeException(filePath);
+            throw new IllegalStateException(filePath);
         }
     }
 
@@ -128,25 +130,26 @@ public class LicenceUtil {
     }
 
     public static PublicKey loadPublicKeyFromPath(String filePath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
-        byte[] privateKeyBytes = new FileInputStream(filePath).readAllBytes();
-        KeyFactory privateKeyFactory = KeyFactory.getInstance("RSA");
-        EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(privateKeyBytes);
-        PublicKey publicKey = privateKeyFactory.generatePublic(publicKeySpec);
-        return publicKey;
+        try(FileInputStream fis=new FileInputStream(filePath)) {
+            byte[] privateKeyBytes = fis.readAllBytes();
+            KeyFactory privateKeyFactory = KeyFactory.getInstance("RSA");
+            EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(privateKeyBytes);
+            return privateKeyFactory.generatePublic(publicKeySpec);
+        }
     }
-    public static String encryptWithPublicKey(PublicKey publicKey,String instring) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    public static String encryptWithPublicKey(PublicKey publicKey,String instring) throws  NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         Cipher encryptCipher = Cipher.getInstance("RSA");
         encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
         return Base64.getEncoder().encodeToString(encryptCipher.doFinal(instring.getBytes()));
     }
 
-    public static String decryptWithPrivateKey(PrivateKey publicKey,String instring) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    public static String decryptWithPrivateKey(PrivateKey publicKey,String instring) throws  NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         Cipher encryptCipher = Cipher.getInstance("RSA");
         encryptCipher.init(Cipher.DECRYPT_MODE, publicKey);
         return new String(encryptCipher.doFinal(Base64.getDecoder().decode(instring)));
     }
 
-    public static String getMACId() throws Exception {
+    public static String getMACId() throws SocketException, UnknownHostException {
         if(macAddress!=null){
             return macAddress;
         }
@@ -164,7 +167,9 @@ public class LicenceUtil {
             byte[] hardwareAddress = ni.getHardwareAddress();
             if(hardwareAddress!=null) {
                 String ra = getResolvedAddress(hardwareAddress);
-                System.out.println(ni.getName()+",path=>"+LicenceUtil.dataDir()+"/"+ra.replace(":","")+".priv");
+                if(LOGGER.isInfoEnabled()) {
+                    LOGGER.info(ni.getName() + ",path=>" + LicenceUtil.dataDir() + "/" + ra.replace(":", "") + ".priv");
+                }
                 if(new File(LicenceUtil.dataDir()+"/"+ra.replace(":","")+".priv").exists()){
                     macAddress=ra;
                     return macAddress;
@@ -189,9 +194,6 @@ public class LicenceUtil {
         }
         return null;
     }
-
-
-
     public static String getResolvedAddress(byte[] hardwareAddress){
         String[] hexadecimal = new String[hardwareAddress.length];
         for (int i = 0; i < hardwareAddress.length; i++) {
@@ -199,13 +201,5 @@ public class LicenceUtil {
         }
         return String.join(":", hexadecimal).toLowerCase();
     }
-
-    public static String getResolvedIPAddress(byte[] hardwareAddress){
-        String[] hexadecimal = new String[hardwareAddress.length];
-
-        return new String(hardwareAddress);
-    }
-
-
 
 }

@@ -85,7 +85,7 @@ public class AppServer implements Server{
         TCPServerInitializer server = new TCPServerInitializer(s.getId(),port);
         try {
             ServerBootstrap httpBootstrap = new ServerBootstrap();
-            return httpBootstrap.group(tcpbossGroup, tcpworkerGroup)
+            return httpBootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .option(ChannelOption.SO_BACKLOG, 2048)
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
@@ -172,7 +172,7 @@ public class AppServer implements Server{
                     break;
                 default:
                     try {
-                        futureChannels.add(startTcp(s, bossGroup, workerGroup));
+                        futureChannels.add(startTcp(s, tcpbossGroup, tcpworkerGroup));
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }

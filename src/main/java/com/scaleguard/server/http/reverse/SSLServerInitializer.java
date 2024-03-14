@@ -5,8 +5,6 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.cors.CorsConfig;
-import io.netty.handler.codec.http.cors.CorsConfigBuilder;
 import io.netty.handler.ssl.SslHandler;
 
 import javax.net.ssl.SSLEngine;
@@ -20,10 +18,10 @@ public class SSLServerInitializer extends ChannelInitializer<Channel> {
   
     @Override  
     protected void initChannel(Channel ch) {
-        CorsConfig corsConfig = CorsConfigBuilder.forAnyOrigin().allowNullOrigin().allowCredentials().build();
+//        CorsConfig corsConfig = CorsConfigBuilder.forAnyOrigin().allowNullOrigin().allowCredentials().build();
 
         ChannelPipeline pipeline = ch.pipeline();
-        SSLEngine engine = ScaleGuardSSLContext.get(port).createSSLEngine();
+        SSLEngine engine = ScaleGuardSSLContext.get().createSSLEngine();
         engine.setUseClientMode(false);
         ch.pipeline().addLast(
                 new SslHandler(engine)

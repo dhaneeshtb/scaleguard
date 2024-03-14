@@ -15,7 +15,6 @@
  */
 package com.scaleguard.server.http.reverse;
 
-import com.scaleguard.server.http.cache.CachedResource;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.router.RouteTarget;
@@ -80,14 +79,14 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     }else {
       logger.debug("Crossing... "+ts.getTargetHost());
       if(ts.getTargetSystem().isEnableCache()) {
-        inboundHandler.handle(ctx, msg,ts, key -> proeedToTarget(ts, ctx, msg, key==null?null: key.getKey(),key==null?null:key.getResource()));
+        inboundHandler.handle(ctx, msg,ts, key -> proeedToTarget(ts, ctx, msg, key==null?null: key.getKey()));
       }else{
-        proeedToTarget(ts, ctx, msg, null,null);
+        proeedToTarget(ts, ctx, msg, null);
       }
     }
   }
 
-  private boolean isSameSourceAndTarget(RouteTarget ts,RouteTarget hts){
+  private boolean isSameSourceAndTarget(RouteTarget ts){
     if(ts.getTargetSystem().getId().equalsIgnoreCase(targetSystem.getTargetSystem().getId())
             && ts.getSourceSystem().getId().equalsIgnoreCase(targetSystem.getSourceSystem().getId())
     ){
@@ -97,22 +96,22 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private void proeedToTarget(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey, CachedResource cr){
-    if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !isSameSourceAndTarget(ts,targetSystem)) {
-      handleNewOutboundChannel(ts,ctx,msg,messageKey,cr);
+  private void proeedToTarget(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey){
+    if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !isSameSourceAndTarget(ts)) {
+      handleNewOutboundChannel(ts,ctx,msg,messageKey);
     }else{
       targetSystem.setStartTime(System.currentTimeMillis());
-      handleExistingOutboundChannel(ctx,msg,cr,ts);
+      handleExistingOutboundChannel(ctx,msg,ts);
     }
   }
 
-  private void handleNewOutboundChannel(RouteTarget ts,final ChannelHandlerContext ctx, Object msg,String messageKey,CachedResource cr){
+  private void handleNewOutboundChannel(RouteTarget ts,final ChannelHandlerContext ctx, Object msg,String messageKey){
     final Channel inboundChannel = ctx.channel();
     Bootstrap b = new Bootstrap();
     b.group(inboundChannel.eventLoop())
         .channel(ctx.channel().getClass())
             //.handler(new ScaleGuardBackendHandler(inboundChannel,null,messageKey))
-            .handler(new SecureProxyInitializer(ts,inboundChannel,"https".equalsIgnoreCase(ts.getTargetSystem().getScheme()),null,messageKey))
+            .handler(new SecureProxyInitializer(ts,inboundChannel,"https".equalsIgnoreCase(ts.getTargetSystem().getScheme()),messageKey))
         .option(ChannelOption.AUTO_READ, false);
     HostGroup hg = ts.getTargetSystem().getHostGroup();
     ChannelFuture f;
@@ -149,7 +148,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     });
   }
 
-  public void handleExistingOutboundChannel(final ChannelHandlerContext ctx, Object msg, CachedResource cr, RouteTarget ts) {
+  public void handleExistingOutboundChannel(final ChannelHandlerContext ctx, Object msg, RouteTarget ts) {
       inboundHandler.reset(msg, ts.getTargetSystem().getIncludeHeaders());
       outboundChannel.writeAndFlush(msg)
         .addListener((ChannelFutureListener) future -> {

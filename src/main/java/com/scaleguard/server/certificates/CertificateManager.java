@@ -51,7 +51,7 @@ public class CertificateManager {
         return loader.loadOrderStatus(orderId);
     }
 
-    public JsonNode readCertificates(String orderId) throws AcmeException, IOException {
+    public JsonNode readCertificates(String orderId) throws  IOException {
         return AcmeUtils.readCertificate(orderId);
     }
 
@@ -68,7 +68,7 @@ public class CertificateManager {
         Order order = getOrder(id);
         order.update();
         List<Challenge> challenges = new ArrayList<>();
-        System.out.println("Location "+order.getLocation());
+        LOG.info("Location {}",order.getLocation());
         //String challengeType="http";//http or dns
 
 
@@ -76,7 +76,7 @@ public class CertificateManager {
             order.getAuthorizations().forEach(auth -> {
                 Http01Challenge challengeHTTP = auth.findChallenge(Http01Challenge.class).orElse(null);
                 Dns01Challenge challengeDNS = auth.findChallenge(Dns01Challenge.class).orElse(null);
-                TokenChallenge challenge= ("http".equalsIgnoreCase(challengeType))?challengeHTTP:challengeDNS;
+                TokenChallenge challenge= "http".equalsIgnoreCase(challengeType)?challengeHTTP:challengeDNS;
                 if(challenge!=null) {
                     try {
                         challenge.trigger();
@@ -90,7 +90,7 @@ public class CertificateManager {
 
         if (order.getStatus().equals(Status.READY)){
 
-            System.out.println("Executing Domain Order ###");
+            LOG.info("Executing Domain Order ###");
             order.execute(context.getDomainKeyPair());
             try {
                 Thread.sleep(4000);
@@ -101,12 +101,12 @@ public class CertificateManager {
 
         int attempts = 10;
         while (order.getStatus() != Status.VALID && attempts-- > 0) {
-            System.out.println("Checking status" +order.getStatus());
+            LOG.info("Checking status" +order.getStatus());
 
             if (order.getStatus() == Status.INVALID) {
                 throw new AcmeException("Challenge failed... Giving up.");
             } else if (order.getStatus().equals(Status.READY)) {
-                System.out.println("Executing inner ready" +order.getStatus());
+                LOG.info("Executing inner ready" +order.getStatus());
 
                 order.execute(context.getDomainKeyPair());
             }
@@ -119,7 +119,7 @@ public class CertificateManager {
         }
 
         if(order.getStatus().equals(Status.VALID)){
-            System.out.println("Final status" +order.getStatus());
+            LOG.info("Final status {}",order.getStatus());
 
             AcmeUtils.saveCertificate(id,order,context);
         }else{
@@ -129,57 +129,5 @@ public class CertificateManager {
 
     }
 
-    public static void main(String[] args) {
-        CertificateManager cm = new CertificateManager();
-        String id ="76fde90a-f667-473e-ac86-d34050ee72f4";// UUID.randomUUID().toString();
-        try {
-            //System.out.println(cm.orderCertificate(Arrays.asList("crm.noootherday.com"),id));
-            System.out.println("Checking status ............");
-            System.out.println(cm.checkStatus(id));
-
-            Order order = cm.getOrder(id);
-            order.update();
-
-            if(order.getStatus().equals(Status.PENDING)) {
-                order.getAuthorizations().forEach(auth -> {
-                    Http01Challenge challenge = auth.findChallenge(Http01Challenge.class).orElse(null);
-                    try {
-                        if(challenge!=null) {
-                            challenge.trigger();
-                        }
-                    } catch (AcmeException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-
-                order.getAuthorizations().forEach(auth -> {
-                    Dns01Challenge challenge = auth.findChallenge(Dns01Challenge.class).orElse(null);
-                    try {
-                      if(challenge!=null)  challenge.trigger();
-                    } catch (AcmeException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-            }
-
-            if(order.getStatus().equals(Status.READY)) {
-                order.execute(cm.context.getDomainKeyPair());
-            }
-
-            if(order.getStatus().equals(Status.VALID)){
-                AcmeUtils.saveCertificate(id,order,cm.context);
-            }
-
-
-            System.out.println(order.getStatus());
-
-
-        } catch (AcmeException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-    }
 
 }

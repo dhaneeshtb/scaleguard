@@ -12,9 +12,7 @@ import java.util.stream.Collectors;
 
 public class InMemoryCacheLooker implements CacheManager {
 
-  private ChecksumKey checksumKey = new ChecksumKey();
-
-  private Map<String, TimedCacheElement> dataMap = new ConcurrentHashMap<String, TimedCacheElement>();
+  private Map<String, TimedCacheElement> dataMap = new ConcurrentHashMap<>();
 
   private static InMemoryCacheLooker routeTable;
 
@@ -65,7 +63,7 @@ public class InMemoryCacheLooker implements CacheManager {
   }
   @Override
   public void saveFresh(TargetSystem info,String key, Object msg) {
-    List<Object> list =new ArrayList<Object>();
+    List<Object> list =new ArrayList<>();
     list.add(msg);
 
     CacheManager.TimedCacheElement cacheElement=new CacheManager.TimedCacheElement();

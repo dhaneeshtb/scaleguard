@@ -15,6 +15,7 @@
  */
 package com.scaleguard.server.http.dns.tcp;
 
+import com.scaleguard.server.http.utils.AppProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBufUtil;
@@ -42,7 +43,7 @@ public final class DnsServer {
 
     private static final int DNS_SERVER_PORT = 53;
     private static final int PUBLIC_DNS_SERVER_PORT = 53;
-    private static final String PUBLIC_DNS_SERVER_HOST = "8.8.8.8";
+    private static final String PUBLIC_DNS_SERVER_HOST = AppProperties.get("dnsProxy");
     NioEventLoopGroup group = new NioEventLoopGroup(10);
 
     NioEventLoopGroup clientGroup = new NioEventLoopGroup(10);

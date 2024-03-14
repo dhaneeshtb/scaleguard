@@ -7,6 +7,7 @@ import java.lang.reflect.ParameterizedType;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -66,7 +67,6 @@ public abstract class DBManager<T extends DBObject> {
         try (Connection c = ConnectionUtil.getConnection()) {
             folders.forEach(folder -> {
                 List<String> keys = new ArrayList<>();
-                List<String> values = new ArrayList<>();
                 Arrays.stream(persistentClass.getDeclaredFields()).forEach(f -> {
                     f.setAccessible(true);
                     try {
@@ -81,7 +81,6 @@ public abstract class DBManager<T extends DBObject> {
                     }
                 });
                 String fields = String.join(",", keys);
-                //String valuesC = String.join(",", values);
                 String insertString = "update " + tableName + " set " + fields + " where id='" + folder.getId()+"'";
 
                 try {
@@ -98,16 +97,16 @@ public abstract class DBManager<T extends DBObject> {
         init();
         String cond = users.stream().map(u->"'"+u.getId()+"'").collect(Collectors.joining(","));
         String insertString = "delete from "+tableName+" where id in ("+cond+")";
-        try (Connection c = ConnectionUtil.getConnection()) {
-            c.createStatement().executeUpdate(insertString);
+        try (Connection c = ConnectionUtil.getConnection(); Statement st = c.createStatement()) {
+            st.executeUpdate(insertString);
         }
     }
 
     public void delete(String id) throws Exception {
         init();
         String insertString = "delete from "+tableName+" where id ='"+id+"'";
-        try (Connection c = ConnectionUtil.getConnection()) {
-            c.createStatement().executeUpdate(insertString);
+        try (Connection c = ConnectionUtil.getConnection(); Statement st = c.createStatement()) {
+            st.executeUpdate(insertString);
         }
     }
 
@@ -116,36 +115,19 @@ public abstract class DBManager<T extends DBObject> {
     }
 
 
-    public synchronized int getNextFolderId() throws Exception {
-        init();
-        String insertString = "select max(id) as id from "+tableName;
-        int maxVal = 0;
-
-        try (Connection c = ConnectionUtil.getConnection()) {
-            ResultSet rs = c.createStatement().executeQuery(insertString);
-            if(rs.next()) {
-                maxVal = rs.getInt("id");
-            }
-        }catch (Exception e){
-            e.printStackTrace();
-        }
-        return maxVal+1;
-    }
 
     public List<T> readItems(String name,String value) throws Exception {
         init();
         List<T> users = new ArrayList<>();
         String insertString = "select * from "+tableName+" " + (name!=null ? " where "+name+"=" + value  : "");
-        try (Connection c = ConnectionUtil.getConnection()) {
-            ResultSet rs = c.createStatement().executeQuery(insertString);
+        try (Connection c = ConnectionUtil.getConnection();Statement st=c.createStatement()) {
+            ResultSet rs = st.executeQuery(insertString);
             int count = rs.getMetaData().getColumnCount();
             String[] colNames = new String[count];
             for (int i = 0; i < count; i++) {
                 colNames[i] = rs.getMetaData().getColumnName(i + 1);
             }
-
             while (rs.next()) {
-                T u =  persistentClass.newInstance();
                 ObjectNode on = LicenceManager.om.createObjectNode();
                 for (int i = 0; i < count; i++) {
                     Object obj = rs.getObject(i + 1);

@@ -21,7 +21,7 @@ public class DBSystemLoader implements SystemLoader {
 
       DBSystemLoader dbl = new DBSystemLoader();
       List<DBModelSystem> models = new ArrayList<>();
-      ls.loadHostGroups().stream().forEach(d->{
+      ls.loadHostGroups().forEach(d->{
         DBModelSystem dm = new DBModelSystem();
         dm.setId(d.getId()!=null?d.getId():UUID.randomUUID().toString());
         dm.setName(d.getGroupId());
@@ -62,7 +62,7 @@ public class DBSystemLoader implements SystemLoader {
   @Override
   public List<TargetSystem> loadTargets(List<HostGroup> hostGroups) {
     try {
-      Map<String, Set<HostGroup>> hglistMap = hostGroups.stream().collect((Collectors.groupingBy(c -> c.getGroupId(), Collectors.toSet())));
+      Map<String, Set<HostGroup>> hglistMap = hostGroups.stream().collect(Collectors.groupingBy(c -> c.getGroupId(), Collectors.toSet()));
       try {
         return TargetSystemDB.getInstance().readAll().stream().map(t -> {
           try {

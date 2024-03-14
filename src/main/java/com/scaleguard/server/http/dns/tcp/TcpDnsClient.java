@@ -20,7 +20,7 @@ public final class TcpDnsClient {
 
     private static final String QUERY_DOMAIN = "salescode.ai";
     private static final int DNS_SERVER_PORT = 53;
-    private static final String DNS_SERVER_HOST = "127.0.0.1";
+    private static final String DNS_SERVER_HOST = "localhost";
 
     private TcpDnsClient() {
     }

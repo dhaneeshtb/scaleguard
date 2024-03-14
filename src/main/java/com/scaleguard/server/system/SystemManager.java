@@ -4,9 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.server.db.SystemProperty;
 import com.scaleguard.server.db.SystemPropertyDB;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
@@ -19,7 +16,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class SystemManager {
-    private static final Logger LOG = LoggerFactory.getLogger(SystemManager.class);
     private static final ObjectMapper mapper = new ObjectMapper();
 
     private static List<SystemProperty> properties = null;
@@ -55,14 +51,7 @@ public class SystemManager {
        return SystemPropertyDB.getInstance().readAll().stream().collect(Collectors.toMap(SystemProperty::getName, Function.identity()));
     }
 
-    public static void main(String[] args) {
-        try {
-            System.out.println(isSystemMapped("google.com"));
-            //System.out.println(new SystemManager().readNetworks());
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
+
 
     public List<SystemProperty> createProperty(List<SystemProperty> property) throws Exception {
         List<SystemProperty> properties =  property.stream().map(this::sanitize).collect(Collectors.toList());

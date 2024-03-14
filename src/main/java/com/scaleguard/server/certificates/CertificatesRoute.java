@@ -41,7 +41,7 @@ public class CertificatesRoute implements RequestRoute {
         }else{
 
             String[] tuples = uri.split("/");
-            String action = (tuples[tuples.length-1]);
+            String action = tuples[tuples.length-1];
 
             JsonNode node =body!=null && !body.isEmpty()? mapper.readTree(body):null;
             String challengeType = node!=null && node.has("challengeType")?

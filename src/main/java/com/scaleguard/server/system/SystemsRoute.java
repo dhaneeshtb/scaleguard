@@ -26,7 +26,7 @@ public class SystemsRoute implements RequestRoute {
     public RequestRoutingResponse handle(String method, String uri, String body) throws Exception {
 
             String[] tuples = uri.split("/");
-            String action = (tuples[tuples.length-1]);
+            String action = tuples[tuples.length-1];
             if("systems".equalsIgnoreCase(action) && method.equalsIgnoreCase("get")){
                 return RequestRoutingResponse.succes(cm.systemProperties().toString());
             }else if(method.equalsIgnoreCase("post")){

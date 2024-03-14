@@ -3,15 +3,20 @@ package com.scaleguard.server.licencing.licensing;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.PublicKey;
+import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Base64;
 import java.util.Date;
@@ -20,6 +25,8 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 public class LicenceManager {
+    private static final Logger LOGGER
+            = LoggerFactory.getLogger(LicenceManager.class);
 
     public static class ActivateRequest{
         private String payload;
@@ -89,7 +96,6 @@ public class LicenceManager {
             String devId = getMACId();
             LicenceInfo linfo=getCurrentLicenceInfo(devId);
             checkValidity(linfo);
-            //linfo.getActivationHash()
             if (!LicenceUtil.generateHash(devId).equalsIgnoreCase(LicenceUtil.generateHash(linfo.getDeviceId().replace(":","")))) {
                 throw new RuntimeException("licence is not valid");
             }
@@ -116,6 +122,7 @@ public class LicenceManager {
             String devId = getMACId();
             cLn=getCurrentLicenceInfo(devId);
         }catch (Exception e){
+            LOGGER.error("activate licence failed ",e);
 
         }
 
@@ -163,24 +170,21 @@ public class LicenceManager {
     }
 
     public static boolean  checkValidity(){
-        if(currentLicence==null || currentLicence.getExpiryTimestamp()<System.currentTimeMillis()){
-            return false;
-        }
-        return true;
+        return  !(currentLicence==null || currentLicence.getExpiryTimestamp()<System.currentTimeMillis());
     }
 
 
 
     public static String generateLicenceRequest(String request) throws Exception {
-        LicenceRequest li = om.readValue(request,LicenceRequest.class);//.getBytes(StandardCharsets.UTF_8);
+        LicenceRequest li = om.readValue(request,LicenceRequest.class);
         return generateLicenceRequest(li);
     }
-    public static String generateLicenceRequest(LicenceRequest lr) throws Exception {
+    public static String generateLicenceRequest(LicenceRequest lr) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchPaddingException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
         PublicKey publicKey = loadPublicKey();
         Cipher encryptCipher = Cipher.getInstance("RSA");
         encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
         lr.setDeviceId(getMACId());
-        String secretMessage = om.valueToTree(lr).toString();//.getBytes(StandardCharsets.UTF_8);
+        String secretMessage = om.valueToTree(lr).toString();
         String key =UUID.randomUUID().toString();
         String encryptedKey = new String(Base64.getEncoder().encode(encryptCipher.doFinal(key.getBytes())));
         String encryptedMessage = AESUtils.encrypt(secretMessage,key);
@@ -191,21 +195,8 @@ public class LicenceManager {
     }
 
 
-    private static String macAddress=null;
 
-    public static String getMACId() throws Exception {
-//        if(macAddress==null) {
-//            InetAddress localHost = InetAddress.getLocalHost();
-//            NetworkInterface ni = NetworkInterface.getByInetAddress(localHost);
-//            byte[] hardwareAddress = ni.getHardwareAddress();
-//
-//            String[] hexadecimal = new String[hardwareAddress.length];
-//            for (int i = 0; i < hardwareAddress.length; i++) {
-//                hexadecimal[i] = String.format("%02X", hardwareAddress[i]);
-//            }
-//            macAddress = String.join(":", hexadecimal).toLowerCase();
-//        }
-//        return macAddress;
+    public static String getMACId() throws SocketException, UnknownHostException {
         return LicenceUtil.getMACId();
     }
 

@@ -12,10 +12,9 @@ public final class ScaleGuardKeyManager extends X509ExtendedKeyManager {
 	private final X509ExtendedKeyManager keyManager;
 	private final String defaultAlias = "test1.example.com";
 
-	private int port;
-	public ScaleGuardKeyManager(X509ExtendedKeyManager keyManager,int port) {
+
+	public ScaleGuardKeyManager(X509ExtendedKeyManager keyManager) {
 		this.keyManager = keyManager;
-		this.port = port;
 	}
 	@Override
 	public String[] getClientAliases(String keyType, Principal[] issuers) {
@@ -50,7 +49,7 @@ public final class ScaleGuardKeyManager extends X509ExtendedKeyManager {
 		}
 		// If we got given a hostname over SNI, check if we have a cert and key for that hostname. If so, we use it.
 		// Otherwise, we fall back to the default certificate.
-		if (hostname != null && (getCertificateChain(hostname) != null && getPrivateKey(hostname) != null))
+		if (hostname != null && getCertificateChain(hostname) != null && getPrivateKey(hostname) != null)
 			return hostname;
 		else
 			return defaultAlias;

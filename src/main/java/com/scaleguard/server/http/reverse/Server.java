@@ -5,16 +5,16 @@ public interface Server {
     /**
      * Keeps the server waiting for requests.
      */
-    public void listen();
+     void listen();
 
     /**
      * Starts the server.
      */
-    public void start() throws Exception;
+     void start() throws Exception;
 
     /**
      * Stops the server.
      */
-    public void stop();
+     void stop();
 
 }

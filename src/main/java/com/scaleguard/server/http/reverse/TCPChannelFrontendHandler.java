@@ -25,7 +25,7 @@ public class TCPChannelFrontendHandler extends ChannelInboundHandlerAdapter {
     public void channelActive(ChannelHandlerContext ctx) {
         final Channel inboundChannel = ctx.channel();
 
-        System.out.println(inboundChannel.remoteAddress());
+        System.out.println(inboundChannel.remoteAddress()+":"+remotePort);
 
         TargetSystem ts = RouteTable.getInstance().findTarget(sourceId).getTargetSystem();
 

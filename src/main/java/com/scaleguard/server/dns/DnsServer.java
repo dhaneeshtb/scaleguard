@@ -85,17 +85,18 @@ public final class DnsServer {
                         protected void initChannel(NioDatagramChannel nioDatagramChannel) throws Exception {
                             nioDatagramChannel.pipeline().addLast(new LoggingHandler());
 
-                            nioDatagramChannel.pipeline().addLast(new DatagramDnsQueryDecoder(){
-                                protected void decode(ChannelHandlerContext ctx, final DatagramPacket packet, List<Object> out) throws Exception {
-                                    if(!rateLimitManager.isBlocked(packet.sender().getAddress().getHostAddress()) && rateLimitManager.isInRate(null,packet.sender().getHostName(),true)){
-                                        logger.info(packet.sender().getHostName()+":"+packet.sender().getAddress());
-                                        super.decode(ctx,packet,out);
-                                    }else{
-                                        logger.info("blocked "+packet.sender().getAddress().getHostAddress());
-                                    }
-
-                                }
-                            });
+                            nioDatagramChannel.pipeline().addLast(new DatagramDnsQueryDecoder());
+//                            nioDatagramChannel.pipeline().addLast(new DatagramDnsQueryDecoder(){
+//                                protected void decode(ChannelHandlerContext ctx, final DatagramPacket packet, List<Object> out) throws Exception {
+//                                    if(!rateLimitManager.isBlocked(packet.sender().getAddress().getHostAddress()) && rateLimitManager.isInRate(null,packet.sender().getHostName(),true)){
+//                                        logger.info(packet.sender().getHostName()+":"+packet.sender().getAddress());
+//                                        super.decode(ctx,packet,out);
+//                                    }else{
+//                                        logger.info("blocked "+packet.sender().getAddress().getHostAddress());
+//                                    }
+//
+//                                }
+//                            });
                             nioDatagramChannel.pipeline().addLast(new DNSChannelInboundHandler());
                             nioDatagramChannel.pipeline().addLast("encoder", new DatagramDnsResponseEncoder());
                         }

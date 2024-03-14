@@ -51,7 +51,7 @@ public class DNSAddressBook {
         return dnsAddressMap.containsKey(name);
     }
     public static DefaultDnsResponse get(String name,DnsQuery query){
-        List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(name,(k)->new ArrayList<>());
+        List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(name,k->new ArrayList<>());
         return generateResponse(dnsList,query);
     }
     private static DefaultDnsResponse generateResponse(List<WrappedDNSRecord> dnsList,DnsQuery query) {

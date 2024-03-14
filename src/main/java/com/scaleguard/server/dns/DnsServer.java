@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 public final class DnsServer {
@@ -171,7 +172,7 @@ public final class DnsServer {
             }
             logger.info("dns in query {} {}",question.name(),ctx.channel().remoteAddress());
             if (DNSAddressBook.isEntryExist(question.name())) {
-                DefaultDnsResponse dr = DNSAddressBook.get(question.name(),msg);
+                DefaultDnsResponse dr = DNSAddressBook.get(question.name().trim().toLowerCase(),msg);
                 send(ctx, msg, dr);
             } else {
                 clientQuery(msg, PUBLIC_DNS_SERVER_HOST, PUBLIC_DNS_SERVER_PORT, respMsg -> {

@@ -149,7 +149,7 @@ public final class DnsServer {
         protected void channelRead0(ChannelHandlerContext ctx,
                                     DnsQuery msg) throws Exception {
             DnsQuestion question = msg.recordAt(DnsSection.QUESTION);
-            logger.info("dns in query {}",question.name());
+            logger.info("dns in query {}",question.name(),ctx.channel().remoteAddress().toString());
             if (DNSAddressBook.isEntryExist(question.name())) {
                 DefaultDnsResponse dr = DNSAddressBook.get(question.name(),msg);
                 send(ctx, msg, dr);

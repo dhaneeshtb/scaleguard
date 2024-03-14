@@ -3,6 +3,7 @@ package com.scaleguard.server.http.reverse;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.cors.CorsConfig;
@@ -16,7 +17,12 @@ public class ServerInitializer extends ChannelInitializer<Channel> {
     }
     @Override  
     protected void initChannel(Channel ch) {
-        CorsConfig corsConfig = CorsConfigBuilder.forAnyOrigin().allowNullOrigin().allowCredentials().build();
+        CorsConfig corsConfig = CorsConfigBuilder.forAnyOrigin()
+                .allowNullOrigin()
+                .allowCredentials()
+                .allowedRequestHeaders("*")
+                .allowedRequestMethods(HttpMethod.DELETE,HttpMethod.GET,HttpMethod.PATCH,HttpMethod.POST,HttpMethod.PUT,HttpMethod.OPTIONS)
+                .build();
         ChannelPipeline pipeline = ch.pipeline();
         pipeline.addLast(new HttpServerCodec());
         pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));

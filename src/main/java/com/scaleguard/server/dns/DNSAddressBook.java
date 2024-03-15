@@ -56,6 +56,7 @@ public class DNSAddressBook {
     }
     private static DefaultDnsResponse generateResponse(List<WrappedDNSRecord> dnsList,DnsQuery query) {
         DefaultDnsResponse response = new DefaultDnsResponse(query.id());
+        response.setAuthoritativeAnswer(true);
         DnsQuestion question = query.recordAt(DnsSection.QUESTION);
         response.addRecord(DnsSection.QUESTION, question);
         dnsList.forEach(rec->{

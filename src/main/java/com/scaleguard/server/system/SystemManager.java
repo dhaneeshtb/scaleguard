@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.server.db.SystemProperty;
 import com.scaleguard.server.db.SystemPropertyDB;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
@@ -20,10 +23,16 @@ public class SystemManager {
 
     private static List<SystemProperty> properties = null;
 
+    private static final Logger LOGGER
+            = LoggerFactory.getLogger(SystemManager.class);
+
+
+
     public static boolean isSystemMapped(String hostName) throws UnknownHostException, SocketException {
 
         InetAddress addr = InetAddress.getByName(hostName);
         String host = addr.getHostAddress();
+        LOGGER.info("hostname {} resolved address {}",hostName,host);
         return  readNetworks().contains(host);
     }
 

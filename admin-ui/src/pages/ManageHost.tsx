@@ -10,6 +10,8 @@ import { useAuth } from "../contexts/AuthContext";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
 import { linter, lintGutter } from "@codemirror/lint";
+import { Checkbox, CheckboxGroup } from '@chakra-ui/react'
+
 const ManageHost = () => {
     const navigate = useNavigate();
     const { id, type } = useParams() as any;
@@ -77,6 +79,12 @@ const ManageHost = () => {
                                     return <option value={c}>{c}</option>
                                 })
                             }</Select>
+                case "autoProcure": 
+                        return <Checkbox
+                            isChecked={baseObject[k]}
+                            onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.checked })}
+                          >
+                          </Checkbox>
                 default: 
                     return bs[k] && (typeof bs[k] == "object") ?
                     <CodeMirror

@@ -26,6 +26,7 @@ const sourceSystemSchema = {
     "async": false,
     "callbackId": "",
     "jwtKeylookup": null,
+    "autoProcure":true
 }
 const targetSchema = {
     "scheme": "https",

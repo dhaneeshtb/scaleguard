@@ -143,7 +143,7 @@ public class ConfigManager {
             ss.setId(UUID.randomUUID().toString());
             RouteTable.getInstance().getSourceSystsems().add(ss);
             boolean isCertificateOrdered=false;
-            if(ss.isAutoProcure() && ss.getCertificateId()!=null && !ss.getCertificateId().isEmpty()) {
+            if(ss.isAutoProcure() && (ss.getCertificateId()==null || ss.getCertificateId().isEmpty())) {
                 try {
                     boolean isMapped =  SystemManager.isSystemMapped(ss.getHost());
                     if(isMapped) {

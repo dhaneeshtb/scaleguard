@@ -82,14 +82,16 @@ public class AcmeUtils {
         if(order.getStatus().equals(Status.VALID) && order.getCertificate()!=null && order.getCertificate().getCertificate()!=null ){
             on.put("expiryTime",order.getCertificate().getCertificate().getNotAfter().getTime());
         }
-        order.getAuthorizations().forEach(auth->{
-            try {
-                on.set("httpChallenge",httpChallenge(auth));
-                on.set("dnsChallenge",dnsChallenge(auth));
-            } catch (AcmeException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        if(!order.getStatus().equals(Status.VALID)) {
+            order.getAuthorizations().forEach(auth -> {
+                try {
+                    on.set("httpChallenge", httpChallenge(auth));
+                    on.set("dnsChallenge", dnsChallenge(auth));
+                } catch (AcmeException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
         return on;
     }
 
@@ -128,7 +130,7 @@ public class AcmeUtils {
             message.append(challenge.getAuthorization());
             on.put("message", message.toString());
         }catch (Exception e){
-            System.err.println(e.getMessage());
+            LOG.error("Http01Challenge.TYPE not saved=>",e.getMessage());
         }
 
         return on;
@@ -162,7 +164,7 @@ public class AcmeUtils {
                     .append(challenge.getDigest());
             on.put("message", message.toString());
         }catch (Exception e){
-            LOG.error(e.getMessage(),e);
+            LOG.error("Dns01Challenge.TYPE not saved=>",e.getMessage());
         }
 
         return on;

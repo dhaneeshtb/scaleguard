@@ -59,9 +59,7 @@ public class DNSAddressBook {
         response.setAuthoritativeAnswer(true);
         DnsQuestion question = query.recordAt(DnsSection.QUESTION);
         response.addRecord(DnsSection.QUESTION, question);
-        dnsList.forEach(rec->{
-            response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name()));
-        });
+        dnsList.forEach(rec-> response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name())));
         return response;
     }
 }

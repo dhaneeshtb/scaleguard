@@ -167,10 +167,11 @@ public final class DnsServer {
         protected void channelRead0(ChannelHandlerContext ctx,
                                     DnsQuery msg) throws Exception {
             DnsQuestion question = msg.recordAt(DnsSection.QUESTION);
+
             if(blacklistedDomains.contains(question.name())){
                 return;
             }
-            logger.info("dns in query {} {}",question.name(),ctx.channel().remoteAddress());
+            logger.info("dns in query {} {} {}",question.name(),ctx.channel().remoteAddress(),question.type().name());
             if (DNSAddressBook.isEntryExist(question.name().trim().toLowerCase())) {
                 DefaultDnsResponse dr = DNSAddressBook.get(question.name().trim().toLowerCase(),msg);
                 send(ctx, msg, dr);

@@ -118,13 +118,7 @@ public class AppServer implements Server{
             DnsServer dnsServer = new DnsServer();
             dnsServer.start();
 
-            RouteTable.getInstance().getSourceSystsems().forEach(s -> {
-                try {
-                    addListener(s);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            });
+
 
 
             if(!ports.contains(String.valueOf(HTTP_PORT))){
@@ -140,6 +134,14 @@ public class AppServer implements Server{
                 logger.info("Starting scaleguard base http port on {}",HTTPS_PORT);
                 futureChannels.add(startHttpSSL(temp, bossGroup, workerGroup));
             }
+
+            RouteTable.getInstance().getSourceSystsems().forEach(s -> {
+                try {
+                    addListener(s);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
 
         }catch (Exception e){
             logger.error("Failed to start servers",e);

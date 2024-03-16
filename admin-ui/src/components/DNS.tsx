@@ -113,7 +113,7 @@ export default function DNS() {
                 </select>
                 <input  value={ttl} onChange={(e)=>setTTL(+e.target.value)} className="w-1/2  text-base text-gray-400  rounded-lg border-2 px-2 py-2" type="text" placeholder="TTL" />
               </div>
-              <Button onClick={()=>save()} leftIcon={<FaSave></FaSave>} bg={"bg-indigo-500"} className="w-full lg:w-1/2 bg-indigo-500 text-white text-base rounded-lg px-4 py-2 font-thin">Save</Button>
+              <Button isDisabled={!name||!ttl} onClick={()=>save()} leftIcon={<FaSave></FaSave>} bg={"bg-indigo-500"} className="w-full lg:w-1/2 bg-indigo-500 text-white text-base rounded-lg px-4 py-2 font-thin">Save</Button>
             </div>
           </div>
         </div>

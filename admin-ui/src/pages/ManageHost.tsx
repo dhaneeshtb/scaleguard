@@ -18,6 +18,8 @@ const ManageHost = () => {
 
     const { auth } = useAuth() as any;
 
+    const [isLoading,setLoading] =useState(false);
+
     useEffect(() => {
         if (id && id != "new")
             axios.get(`${auth.data.host}/config/${type}/${id}?scaleguard=true`, {
@@ -33,6 +35,7 @@ const ManageHost = () => {
 
 
     const onSave = async (baseObject) => {
+        setLoading(true);
         if(baseObject["includeHeaders"] && typeof baseObject["includeHeaders"]!="object"){
             baseObject["includeHeaders"]=JSON.parse(baseObject["includeHeaders"]);
         }
@@ -43,6 +46,7 @@ const ManageHost = () => {
             baseObject["cachedResources"]=JSON.parse(baseObject["cachedResources"]);
         }
         await updateSource(baseObject, type, auth);
+        setLoading(false);
         navigate("/")
     }
 
@@ -104,11 +108,14 @@ const ManageHost = () => {
 
                         // <input onChange={(e) => setBaseObject({ ...baseObject, [k]: JSON.parse(e.target.value) })} value={JSON.stringify(baseObject[k])} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
                         :
-                        <input onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} value={baseObject[k]} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
+                        <input onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} value={k=="port" && baseObject['scheme']=="https" ?"443":baseObject[k]} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
             }
         }
 
-        const filterField=(scheme,k)=>{
+        const filterField=(scheme,k,baseObject)=>{
+            if(baseObject[scheme]=="https"){
+                baseObject['port']="443"
+            }
            if(scheme=="tcp"){
             return k!="host" && k!="basePath" && k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
            }else if(scheme=="kafka"){
@@ -127,7 +134,7 @@ const ManageHost = () => {
             }
 
         }
-        return <>{Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems" ? filterField(baseObject["scheme"],k):true)).map((k) => {
+        return <>{Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems" ? filterField(baseObject["scheme"],k,baseObject):true)).map((k) => {
             return  <div>
                 <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
                     <span className="capitalize">{k}</span> {getHint(baseObject["scheme"],k)}
@@ -169,6 +176,7 @@ const ManageHost = () => {
                     colorScheme="teal"
                     variant={"outline"}
                     leftIcon={<FaSave></FaSave>}
+                    isLoading={isLoading}
 
                     className="text-white bg-yellow-500 active:bg-yellow-700 font-bold  text-sm px-6 py-3 rounded shadow hover:shadow-lg outline-none focus:outline-none mr-1 mb-1"
                     type="button"

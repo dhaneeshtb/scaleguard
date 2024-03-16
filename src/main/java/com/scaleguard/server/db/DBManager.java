@@ -3,6 +3,8 @@ package com.scaleguard.server.db;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.licencing.licensing.LicenceManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.ParameterizedType;
 import java.sql.Connection;
@@ -15,6 +17,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public abstract class DBManager<T extends DBObject> {
+    private static final Logger LOG = LoggerFactory.getLogger(DBManager.class);
+
     private final String tableName;
     private final Class<T> persistentClass;
 
@@ -102,6 +106,9 @@ public abstract class DBManager<T extends DBObject> {
                 String fields = String.join(",", keys);
                 String valuesC = String.join(",", values);
                 String insertString = "insert into " + tableName + "(" + fields + ") values(" + valuesC + ")";
+
+                LOG.info("create certificate object {}",insertString);
+
                 try {
                     c.createStatement().executeUpdate(insertString);
                 } catch (SQLException e) {
@@ -181,6 +188,8 @@ public abstract class DBManager<T extends DBObject> {
         List<T> users = new ArrayList<>();
         String instr=value!=null && !value.isEmpty()?value.stream().map(r->"'"+r+"'").collect(Collectors.joining(",")):null;
         String insertString = "select * from "+tableName+" " + (name!=null ? " where "+name+" in (" + instr +")" : "");
+
+        LOG.info("insertString {} ",insertString);
         try (Connection c = ConnectionUtil.getConnection();Statement st=c.createStatement()) {
             ResultSet rs = st.executeQuery(insertString);
             int count = rs.getMetaData().getColumnCount();

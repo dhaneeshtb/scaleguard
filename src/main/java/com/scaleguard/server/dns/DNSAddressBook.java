@@ -93,7 +93,11 @@ public class DNSAddressBook {
     }
 
     private static void load(){
-        DNSEntriesDB.getInstance().readAll().forEach(r-> add(r.getName(),r.getValue(),r.getType(),r.getTtl(),r.getId(),false));
+        try {
+            DNSEntriesDB.getInstance().readAll().forEach(r -> add(r.getName(), r.getValue(), r.getType(), r.getTtl(), r.getId(), false));
+        }catch (Exception e){
+            e.printStackTrace();
+        }
     }
 
     private static void save(WrappedDNSRecord dnsRecord){

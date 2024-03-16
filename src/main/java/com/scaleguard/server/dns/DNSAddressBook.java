@@ -126,11 +126,12 @@ public class DNSAddressBook {
     private static void save(WrappedDNSRecord dnsRecord){
         try {
             List<DNSEntry> entries = DNSEntriesDB.getInstance().readItems("name", dnsRecord.getName());
-            entries = entries.stream().filter(e -> e.getValue().equalsIgnoreCase(dnsRecord.getIp())).collect(Collectors.toList());
+            entries = entries.stream().filter(e ->e.getValue().equalsIgnoreCase("base")|| e.getValue().equalsIgnoreCase(dnsRecord.getIp())).collect(Collectors.toList());
             if (!entries.isEmpty()) {
                 DNSEntry entry = entries.get(0);
                 entry.setTtl(dnsRecord.getTtl());
                 entry.setType(dnsRecord.getType());
+                entry.setValue(dnsRecord.getIp());
                 DNSEntriesDB.getInstance().save(entry);
             }else{
                 DNSEntry entry = new DNSEntry();

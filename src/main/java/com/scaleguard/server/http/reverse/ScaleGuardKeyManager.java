@@ -1,6 +1,8 @@
 package com.scaleguard.server.http.reverse;
 
 import io.netty.handler.ssl.CertificateStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.*;
 import java.net.Socket;
@@ -9,6 +11,9 @@ import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 
 public final class ScaleGuardKeyManager extends X509ExtendedKeyManager {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(ScaleGuardKeyManager.class);
+
 	private final X509ExtendedKeyManager keyManager;
 	private final String defaultAlias = "test1.example.com";
 
@@ -44,6 +49,8 @@ public final class ScaleGuardKeyManager extends X509ExtendedKeyManager {
 		for (SNIServerName name : session.getRequestedServerNames()) {
 			if (name.getType() == StandardConstants.SNI_HOST_NAME) {
 				hostname = ((SNIHostName) name).getAsciiName();
+
+				LOGGER.info("ani host name => {}",hostname);
 				break;
 			}
 		}
@@ -57,10 +64,14 @@ public final class ScaleGuardKeyManager extends X509ExtendedKeyManager {
 
 	@Override
 	public X509Certificate[] getCertificateChain(String alias) {
+		LOGGER.info("getCertificateChain name => {}",alias);
+
 		return CertificateStore.get(alias).getKeyCertChain();
 	}
 	@Override
 	public PrivateKey getPrivateKey(String alias) {
+		LOGGER.info("getPrivateKey name => {}",alias);
+
 		return CertificateStore.get(alias).getKey();
 	}
 }

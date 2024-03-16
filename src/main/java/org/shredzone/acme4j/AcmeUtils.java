@@ -282,7 +282,7 @@ public class AcmeUtils {
     }
 
     public static Set<String> listCertificateIds()  {
-        return CertificateOrdersDB.getInstance().readAll().stream().filter(s->Status.VALID.name().equals(s.getStatus())).map(s->s.getId()).collect(Collectors.toSet());
+        return CertificateOrdersDB.getInstance().readAll().stream().map(s->s.getId()).collect(Collectors.toSet());
 
     }
     public static Set<String> listCertificateIdsFromFile() throws IOException {

@@ -67,6 +67,9 @@ const pruneObject = (object, type) => {
         to[s] = object[s];
     })
     to.id = object.id;
+    if(to.scheme=="https" && to.port=="80"){
+        to.port="443";
+    }
     return to;
 }
 

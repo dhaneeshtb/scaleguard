@@ -21,8 +21,8 @@ public class DNSRoute implements RequestRoute {
         String ip =node.has("ip")? node.get("ip").asText():null;
         String type = node.has("type")? node.get("type").asText():"record";
 
-        if("base".equalsIgnoreCase(type)||ip==null){
-            ip = SystemManager.getAddressIfMapped(name);
+        if("base".equalsIgnoreCase(type)||ip==null||ip.isEmpty()){
+            ip ="base";// SystemManager.getAddressIfMapped(name);
         }
 
         long ttl = node.has("ttl")? node.get("ttl").asLong():DNSAddressBook.DEFAULT_TTL;

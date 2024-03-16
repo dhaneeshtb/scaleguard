@@ -47,20 +47,35 @@ public class SystemManager {
         }
     }
 
-
-
-    public static List<String> readNetworks() throws SocketException {
-        List<NetworkInterface> nil = NetworkInterface.networkInterfaces().collect(Collectors.toList());
-        ArrayList<String> node =new ArrayList();
-        for(NetworkInterface ni:nil) {
-            ni.getInetAddresses().asIterator().forEachRemaining(i->{
-                String ha =i.getHostAddress();
-                if(!ha.contains(":") && !i.isMCGlobal()) {
-                    node.add(i.getHostAddress());
+    private static List<String> networks;
+    public static List<String> readNetworksCached() {
+        if(networks==null||networks.isEmpty()){
+            synchronized (SystemManager.class) {
+                if(networks==null||networks.isEmpty()) {
+                    networks = readNetworks();
                 }
-            });
+            }
         }
-        return node;
+        return networks;
+    }
+
+    public static List<String> readNetworks() {
+        try {
+            List<NetworkInterface> nil = NetworkInterface.networkInterfaces().collect(Collectors.toList());
+            ArrayList<String> node = new ArrayList();
+            for (NetworkInterface ni : nil) {
+                ni.getInetAddresses().asIterator().forEachRemaining(i -> {
+                    String ha = i.getHostAddress();
+                    if (!ha.contains(":") && !i.isMCGlobal()) {
+                        node.add(i.getHostAddress());
+                    }
+                });
+            }
+            return node;
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+        return List.of();
     }
     public ArrayNode systemProperties() throws Exception {
 

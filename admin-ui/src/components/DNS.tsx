@@ -29,7 +29,7 @@ export default function DNS() {
   const { auth } = useAuth() as any;
 
   const [name, setName] = useState<string>();
-  const [type, setType] = useState<string>();
+  const [type, setType] = useState<string>("base");
   const [ttl, setTTL] = useState<number>(600);
   const [ip, setIp] = useState<string>();
 
@@ -105,7 +105,7 @@ export default function DNS() {
             </p>
             <div className="flex flex-col lg:flex-row items-center bg-white rounded-lg overflow-hidden px-2 py-1 justify-between gap-2">
               <input value={name} onChange={(e)=>setName(e.target.value)} className="w-full  text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="DNS base domain name" />
-              <input  value={ip} onChange={(e)=>setIp(e.target.value)} className="w-full text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="IP Address" />
+              <input disabled={type=="base"}  value={ip} onChange={(e)=>setIp(e.target.value)} className="w-full text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="IP Address" />
               <div className="flex items-center rounded-lg w-full gap-2">
                 <select  value={type} onChange={(e)=>setType(e.target.value)}  id="type" className="w-1/2 text-base text-gray-800 outline-none border-2 px-4 py-2 rounded-lg">
                   <option value="base" selected>base</option>

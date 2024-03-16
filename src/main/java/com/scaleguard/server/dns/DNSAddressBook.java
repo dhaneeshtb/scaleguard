@@ -3,15 +3,18 @@ package com.scaleguard.server.dns;
 import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.DNSEntry;
 import com.scaleguard.server.db.DNSEntriesDB;
+import com.scaleguard.server.system.SystemManager;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.dns.*;
 import io.netty.util.NetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.SocketException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class DNSAddressBook {
     private static final Logger LOGGER
@@ -24,6 +27,16 @@ public class DNSAddressBook {
     public static class WrappedDNSRecord{
         private String name;
         private String ip;
+
+        private boolean base;
+
+        public boolean isBase() {
+            return base;
+        }
+
+        public void setBase(boolean base) {
+            this.base = base;
+        }
 
         public String getId() {
             return id;
@@ -166,12 +179,17 @@ public class DNSAddressBook {
         }
         return null;
     }
+    private static Stream<WrappedDNSRecord> expand(WrappedDNSRecord ddr)  {
+        if(ddr.getIp().equalsIgnoreCase("base")){
+            return SystemManager.readNetworksCached().stream().map(n-> new WrappedDNSRecord(ddr.getName(), n,ddr.type,ddr.ttl));
+        }else return Stream.of(ddr);
+    }
     private static DefaultDnsResponse generateResponse(List<WrappedDNSRecord> dnsList,DnsQuery query) {
         DefaultDnsResponse response = new DefaultDnsResponse(query.id());
         response.setAuthoritativeAnswer(true);
         DnsQuestion question = query.recordAt(DnsSection.QUESTION);
         response.addRecord(DnsSection.QUESTION, question);
-        dnsList.forEach(rec-> response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name())));
+        dnsList.stream().flatMap(d->expand(d)).forEach(rec-> response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name())));
         return response;
     }
 }

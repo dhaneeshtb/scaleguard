@@ -114,25 +114,24 @@ public class AppServer implements Server{
 
     public void start() throws Exception {
         try {
-
             DnsServer dnsServer = new DnsServer();
             dnsServer.start();
-
-
-
-
-            if(!ports.contains(String.valueOf(HTTP_PORT))){
+            String httpPort=String.valueOf(HTTP_PORT);
+            String httpsPort=String.valueOf(HTTPS_PORT);
+            if(!ports.contains(httpPort)){
                 SourceSystem temp = new SourceSystem();
-                temp.setPort(String.valueOf(HTTP_PORT));
+                temp.setPort(httpPort);
                 logger.info("Starting scaleguard base http port on {}",HTTP_PORT);
                 futureChannels.add(startHttp(temp, bossGroup, workerGroup));
+                ports.add(httpPort);
             }
 
-            if(!ports.contains(String.valueOf(HTTPS_PORT))){
+            if(!ports.contains(httpsPort)){
                 SourceSystem temp = new SourceSystem();
-                temp.setPort(String.valueOf(HTTPS_PORT));
+                temp.setPort(httpsPort);
                 logger.info("Starting scaleguard base http port on {}",HTTPS_PORT);
                 futureChannels.add(startHttpSSL(temp, bossGroup, workerGroup));
+                ports.add(httpsPort);
             }
 
             RouteTable.getInstance().getSourceSystsems().forEach(s -> {

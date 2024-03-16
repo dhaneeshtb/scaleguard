@@ -77,7 +77,6 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       if (ts == null) {
         new DefaultResponseHandler().handle(ctx, null, msg);
       } else {
-        logger.info("Crossing... " + ts.getTargetHost());
         if (ts.getTargetSystem().isEnableCache()) {
           inboundHandler.handle(ctx, msg, ts, key -> proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey()));
         } else {

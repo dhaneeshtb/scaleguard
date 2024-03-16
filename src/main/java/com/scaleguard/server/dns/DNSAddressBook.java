@@ -75,6 +75,7 @@ public class DNSAddressBook {
         add(name,ip,type,ttl,UUID.randomUUID().toString(),true);
     }
     private static void add(String name,String ip,String type,long ttl,String id,boolean save){
+        LOGGER.info("{} {} {} {} {}",name,ip,type,ttl,id,save);
         List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(name,k->new ArrayList<>());
         List<WrappedDNSRecord> filtered= dnsList.stream().filter(s->s.getIp().equalsIgnoreCase(ip)).collect(Collectors.toList());
         WrappedDNSRecord dnsRecord;

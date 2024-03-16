@@ -30,7 +30,9 @@ public class DNSRoute implements RequestRoute {
             name=name+".";
         }
         if(method.equalsIgnoreCase("delete")){
-            String id =node.has("id")?node.get("id").asText():null;
+
+            String[] tuples = uri.split("/");
+            String id =!tuples[tuples.length-1].equalsIgnoreCase("dns")?tuples[tuples.length-1]:null;
             if(id!=null){
                 DNSAddressBook.remove(id);
             }else {

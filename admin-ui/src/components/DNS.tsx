@@ -49,7 +49,7 @@ export default function DNS() {
 
   const deleteItem = async (id) => {
     setLoading(true)
-    await axios.delete(auth.data.host + "/certificates/" + id + "?scaleguard=true", {
+    await axios.delete(auth.data.host + "/dns/" + id + "?scaleguard=true", {
       headers: {
         Authorization: auth.data.token
       }
@@ -148,7 +148,7 @@ export default function DNS() {
                       <td className="px-6 py-4 font-medium">{system.ttl}</td>
 
                       <td><div className=" px-6 py-4 flex gap-2 justify-center items-center">
-                        <DeleteSystem id={system.id} source={"Certificate"} onAction={() => deleteItem(system.id) as any} buttonType='big'></DeleteSystem>
+                        <DeleteSystem id={system.id} source={"dns"} onAction={() => deleteItem(system.id) as any} buttonType='big'></DeleteSystem>
                       </div> </td>
                     </tr>
                     })

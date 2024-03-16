@@ -67,6 +67,8 @@ const ManageHost = () => {
     const RenderScreen = ({type, bs, baseObject, setBaseObject }) => {
 
         const compScreen = (k) => {
+
+
             switch (k) {
                 case "certificateId": 
                     return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >

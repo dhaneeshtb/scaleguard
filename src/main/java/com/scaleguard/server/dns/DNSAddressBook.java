@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class DNSAddressBook {
+
+    private DNSAddressBook(){}
     private static final Logger LOGGER
             = LoggerFactory.getLogger(DNSAddressBook.class);
     private static Map<String, List<WrappedDNSRecord>> dnsAddressMap=new ConcurrentHashMap<>();
@@ -88,9 +90,9 @@ public class DNSAddressBook {
         add(name,ip,type,ttl,UUID.randomUUID().toString(),true);
     }
     private static void add(String name,String ip,String type,long ttl,String id,boolean save){
-        LOGGER.info("{} {} {} {} {}",name,ip,type,ttl,id,save);
+        LOGGER.info("{} {} {} {} {} {}",name,ip,type,ttl,id,save);
         List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(name,k->new ArrayList<>());
-        List<WrappedDNSRecord> filtered= dnsList.stream().filter(s->s.getIp().equalsIgnoreCase(ip)).collect(Collectors.toList());
+        List<WrappedDNSRecord> filtered="base".equalsIgnoreCase(ip)?dnsList: dnsList.stream().filter(s->s.getIp().equalsIgnoreCase(ip)).collect(Collectors.toList());
         WrappedDNSRecord dnsRecord;
         if(filtered.isEmpty()){
             dnsRecord= new WrappedDNSRecord(name,ip,type,ttl);
@@ -148,18 +150,22 @@ public class DNSAddressBook {
         List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(name,k->new ArrayList<>());
         Iterator<WrappedDNSRecord> iterator = dnsList.iterator();
         iterator.forEachRemaining(s->{
-            if(s.getIp().equalsIgnoreCase(ip)){
+            if("base".equalsIgnoreCase(ip) || s.getIp().equalsIgnoreCase(ip)){
                 iterator.remove();
+                try {
+                    DNSEntriesDB.getInstance().delete(s.id);
+                } catch (Exception e) {
+                    throw new GenericServerProcessingException(e);
+                }
             }
         });
     }
     public static boolean isEntryExist(String name){
-        return baseMappedName(name)!=null;//dnsAddressMap.containsKey(name);
+        return baseMappedName(name)!=null;
     }
     public static DefaultDnsResponse get(String name,DnsQuery query){
         String bName=baseMappedName(name);
         LOGGER.info("name=> {} mappedName=>{}",name,bName);
-        LOGGER.info("keys=> {}",name,dnsAddressMap.keySet());
         if(bName!=null) {
             List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(bName, k -> new ArrayList<>());
             return generateResponse(dnsList, query);
@@ -189,7 +195,7 @@ public class DNSAddressBook {
         response.setAuthoritativeAnswer(true);
         DnsQuestion question = query.recordAt(DnsSection.QUESTION);
         response.addRecord(DnsSection.QUESTION, question);
-        dnsList.stream().flatMap(d->expand(d)).forEach(rec-> response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name())));
+        dnsList.stream().flatMap(DNSAddressBook::expand).forEach(rec-> response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name())));
         return response;
     }
 }

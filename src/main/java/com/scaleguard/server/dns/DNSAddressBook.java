@@ -6,12 +6,16 @@ import com.scaleguard.server.db.DNSEntriesDB;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.dns.*;
 import io.netty.util.NetUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class DNSAddressBook {
+    private static final Logger LOGGER
+            = LoggerFactory.getLogger(DNSAddressBook.class);
 
     static {
         load();
@@ -138,6 +142,8 @@ public class DNSAddressBook {
     }
     public static DefaultDnsResponse get(String name,DnsQuery query){
         String bName=baseMappedName(name);
+        LOGGER.info("name=> {} mappedName=>{}",name,bName);
+        LOGGER.info("keys=> {}",name,dnsAddressMap.keySet());
         if(bName!=null) {
             List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(bName, k -> new ArrayList<>());
             return generateResponse(dnsList, query);

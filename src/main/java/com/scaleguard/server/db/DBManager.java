@@ -167,6 +167,7 @@ public abstract class DBManager<T extends DBObject> {
         try {
             return readItems(null, (List<String>) null);
         }catch (Exception e){
+            e.printStackTrace();
             throw new GenericServerProcessingException(e);
         }
     }

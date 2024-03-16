@@ -17,7 +17,7 @@ public class DNSRoute implements RequestRoute {
            return RequestRoutingResponse.succes(JSON.toString(DNSAddressBook.get()));
         }
         JsonNode node = JSON.parse(body);
-        String name = node.get("name").asText();
+        String name =node.has("name")?node.get("name").asText():null;
         String ip =node.has("ip")? node.get("ip").asText():null;
         String type = node.has("type")? node.get("type").asText():"record";
 
@@ -30,7 +30,12 @@ public class DNSRoute implements RequestRoute {
             name=name+".";
         }
         if(method.equalsIgnoreCase("delete")){
-            DNSAddressBook.remove(name,ip);
+            String id =node.has("id")?node.get("id").asText():null;
+            if(id!=null){
+                DNSAddressBook.remove(id);
+            }else {
+                DNSAddressBook.remove(name, ip);
+            }
             return RequestRoutingResponse.succes("{}");
         }else if(method.equalsIgnoreCase("post")){
             DNSAddressBook.add(name,ip,type,ttl);

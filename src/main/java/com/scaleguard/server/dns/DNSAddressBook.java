@@ -162,6 +162,14 @@ public class DNSAddressBook {
             }
         });
     }
+
+    public static void remove(String id) throws Exception {
+        for(Map.Entry<String,List<WrappedDNSRecord>> entry:dnsAddressMap.entrySet() ){
+            List<WrappedDNSRecord> rec=   entry.getValue().stream().filter(s->!s.id.equalsIgnoreCase(id)).collect(Collectors.toList());
+            entry.setValue(rec);
+        }
+        DNSEntriesDB.getInstance().delete(id);
+    }
     public static boolean isEntryExist(String name){
         return baseMappedName(name)!=null;
     }

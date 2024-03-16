@@ -104,10 +104,10 @@ public class CertificateManager {
             LOG.info("Checking status" +order.getStatus());
 
             if (order.getStatus() == Status.INVALID) {
-                throw new AcmeException("Challenge failed... Giving up.");
+                LOG.info("Challenge failed... Giving up.");
+                break;
             } else if (order.getStatus().equals(Status.READY)) {
                 LOG.info("Executing inner ready" +order.getStatus());
-
                 order.execute(context.getDomainKeyPair());
             }
             try {

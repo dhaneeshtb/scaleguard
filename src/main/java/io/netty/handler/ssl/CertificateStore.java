@@ -54,7 +54,7 @@ public class CertificateStore {
         if (certificateMap.containsKey(alias)) {
             return certificateMap.get(alias);
         }
-        //load(alias);
+        load(alias);
         return certificateMap.get(alias);
     }
 

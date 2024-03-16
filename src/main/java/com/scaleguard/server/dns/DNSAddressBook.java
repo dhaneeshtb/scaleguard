@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 public class DNSAddressBook {
     private static final Logger LOGGER
             = LoggerFactory.getLogger(DNSAddressBook.class);
+    private static Map<String, List<WrappedDNSRecord>> dnsAddressMap=new ConcurrentHashMap<>();
 
     static {
         load();
@@ -69,7 +70,6 @@ public class DNSAddressBook {
         }
     }
     public static final long DEFAULT_TTL=600l;
-    private static Map<String, List<WrappedDNSRecord>> dnsAddressMap=new ConcurrentHashMap<>();
 
     public static void add(String name,String ip,String type,long ttl){
         add(name,ip,type,ttl,UUID.randomUUID().toString(),true);

@@ -138,7 +138,7 @@ public class DNSAddressBook {
         });
     }
     public static boolean isEntryExist(String name){
-        return dnsAddressMap.containsKey(name);
+        return baseMappedName(name)!=null;//dnsAddressMap.containsKey(name);
     }
     public static DefaultDnsResponse get(String name,DnsQuery query){
         String bName=baseMappedName(name);

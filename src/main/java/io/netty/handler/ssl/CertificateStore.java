@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.exceptions.GenericServerProcessingException;
 import org.shredzone.acme4j.AcmeUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,6 +16,9 @@ import java.util.Map;
 import java.util.Set;
 
 public class CertificateStore {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CertificateStore.class);
+
     private static final ObjectMapper mapper = new ObjectMapper();
 
     public static class CertificateInfo {
@@ -72,13 +77,13 @@ public class CertificateStore {
                     node.get("identifiers").forEach(ident->{
                        String domainName =  ident.get("value").asText();
                        certificateMap.put(domainName,cinfo);
+                       LOGGER.info("Loaded certificate => {} ",domainName);
                     });
                 } catch (IOException e) {
                     throw new GenericServerProcessingException(e);
                 }
             });
 
-            System.out.println(an);
         } catch (Exception e) {
             throw new GenericServerProcessingException(e);
         }

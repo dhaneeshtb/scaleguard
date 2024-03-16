@@ -2,6 +2,8 @@ package com.scaleguard.server.db;
 
 
 import com.scaleguard.server.licencing.licensing.LicenceUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sqlite.mc.SQLiteMCConfig;
 
 import java.io.File;
@@ -11,6 +13,10 @@ import java.sql.DriverManager;
 import java.util.Properties;
 
 public class ConnectionUtil {
+
+    private static final Logger LOGGER
+            = LoggerFactory.getLogger(ConnectionUtil.class);
+
 
     public static boolean isPostgres() {
         return postgres;
@@ -36,7 +42,9 @@ public class ConnectionUtil {
 
             return DriverManager.getConnection(connectionURL, new SQLiteMCConfig.Builder().withKey(devId).build().toProperties());
         }finally {
-            System.out.println("time taken to get connection->"+(System.currentTimeMillis()-start));
+            if(LOGGER.isDebugEnabled()) {
+                LOGGER.debug("time taken to get connection->{}", (System.currentTimeMillis() - start));
+            }
         }
     }
 }

@@ -12,6 +12,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import org.shredzone.acme4j.AcmeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +37,7 @@ public class AppServer implements Server{
         AppServer server= new AppServer();
         EventSubscriber subscriber = new EventSubscriber(server);
         ConfigManager.getPublisher().subscribe(subscriber);
-
+        AcmeUtils.getContext();
         server.start();
         server.listen();
     }

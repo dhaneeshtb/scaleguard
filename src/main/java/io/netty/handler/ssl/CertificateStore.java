@@ -2,6 +2,7 @@ package io.netty.handler.ssl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.scaleguard.exceptions.GenericServerProcessingException;
 import org.shredzone.acme4j.AcmeUtils;
 
 import java.io.File;
@@ -73,13 +74,13 @@ public class CertificateStore {
                        certificateMap.put(domainName,cinfo);
                     });
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    throw new GenericServerProcessingException(e);
                 }
             });
 
             System.out.println(an);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (Exception e) {
+            throw new GenericServerProcessingException(e);
         }
 
     }

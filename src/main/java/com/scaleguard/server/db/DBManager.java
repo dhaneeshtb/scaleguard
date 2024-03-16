@@ -1,6 +1,7 @@
 package com.scaleguard.server.db;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.licencing.licensing.LicenceManager;
 
 import java.lang.reflect.ParameterizedType;
@@ -25,9 +26,59 @@ public abstract class DBManager<T extends DBObject> {
                 .getGenericSuperclass()).getActualTypeArguments()[0];
     }
 
+    protected String ddl(){
+        String sql = ConnectionUtil.isPostgres() ? "CREATE TABLE IF NOT EXISTS "+tableName+" (\n"
+                + "	id text PRIMARY KEY,\n"
+                + "	name text NOT NULL,\n"
+                + "	groupId text,\n"
+                + "	target text,\n"
+                + "	payload text,\n"
+                + "	status text,\n"
+                + "	uts bigint,\n"
+                + "	mts bigint\n"
+                + ");" :
+                "CREATE TABLE IF NOT EXISTS "+tableName+" (\n"
+                        + "	id text PRIMARY KEY,\n"
+                        + "	name text NOT NULL,\n"
+                        + "	groupId text,\n"
+                        + "	target text,\n"
+                        + "	payload text,\n"
+                        + "	status text,\n"
+                        + "	uts integer,\n"
+                        + "	mts integer\n"
+                        + ");";
+        sql+="\nCREATE INDEX IF NOT EXISTS system_group_id_idx ON "+tableName+" (groupId);\n" +
+                "CREATE INDEX IF NOT EXISTS system_target_idx ON "+tableName+" (target);\n" +
+                "CREATE INDEX IF NOT EXISTS system_status_idx ON "+tableName+" (status);\n" +
+                "CREATE INDEX IF NOT EXISTS system_name_idx ON "+tableName+" (name);";
+        return sql;
+    }
+
     public void create(T u) throws Exception {
         create(List.of(u));
     }
+    public void save(T u) throws Exception {
+        save(List.of(u));
+    }
+    public void save(List<T> ulist) throws Exception {
+       List<String> sl=readItems("id", ulist.stream().map(u->u.getId()).collect(Collectors.toList())).stream().map(m->m.getId()).collect(Collectors.toList());
+        List<T> insert=new ArrayList<>();
+        List<T> update=new ArrayList<>();
+        ulist.forEach(u->{
+                if(sl.contains(u.getId()))
+                    update.add(u);
+                else
+                    insert.add(u);
+        });
+        if(!insert.isEmpty()){
+            create(insert);
+        }
+        if(!update.isEmpty()){
+            edit(update);
+        }
+    }
+
+
     public void create(List<T> cl) throws Exception {
         init();
 
@@ -39,7 +90,8 @@ public abstract class DBManager<T extends DBObject> {
                     f.setAccessible(true);
                     try {
                         Object o = f.get(u);
-                        if (o != null) {
+                        boolean allowed=!(f.getName().equalsIgnoreCase("status") && !isStatusSupported());
+                        if (o != null && allowed) {
                             keys.add(f.getName());
                             values.add("'" + f.get(u).toString() + "'");
                         }
@@ -70,7 +122,8 @@ public abstract class DBManager<T extends DBObject> {
                 Arrays.stream(persistentClass.getDeclaredFields()).forEach(f -> {
                     f.setAccessible(true);
                     try {
-                        if (!f.getName().equalsIgnoreCase("id")) {
+                        boolean allowed=!(f.getName().equalsIgnoreCase("status") && !isStatusSupported());
+                        if (!f.getName().equalsIgnoreCase("id") && allowed) {
                             Object o = f.get(folder);
                             if (o != null) {
                                 keys.add(f.getName() + " = " + "'" + f.get(folder).toString() + "'");
@@ -110,16 +163,23 @@ public abstract class DBManager<T extends DBObject> {
         }
     }
 
-    public List<T> readAll() throws Exception {
-        return readItems(null,null);
+    public List<T> readAll()  {
+        try {
+            return readItems(null, (List<String>) null);
+        }catch (Exception e){
+            throw new GenericServerProcessingException(e);
+        }
     }
 
 
-
     public List<T> readItems(String name,String value) throws Exception {
+       return readItems(name,List.of(value));
+    }
+    public List<T> readItems(String name,List<String> value) throws Exception {
         init();
         List<T> users = new ArrayList<>();
-        String insertString = "select * from "+tableName+" " + (name!=null ? " where "+name+"=" + value  : "");
+        String instr=value!=null && !value.isEmpty()?value.stream().map(r->"'"+r+"'").collect(Collectors.joining(",")):null;
+        String insertString = "select * from "+tableName+" " + (name!=null ? " where "+name+" in (" + instr +")" : "");
         try (Connection c = ConnectionUtil.getConnection();Statement st=c.createStatement()) {
             ResultSet rs = st.executeQuery(insertString);
             int count = rs.getMetaData().getColumnCount();
@@ -150,6 +210,10 @@ public abstract class DBManager<T extends DBObject> {
 
         }
         return users;
+    }
+
+    public boolean isStatusSupported(){
+        return false;
     }
 
 

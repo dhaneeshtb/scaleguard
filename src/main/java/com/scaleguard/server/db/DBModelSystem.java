@@ -6,6 +6,16 @@ public class DBModelSystem implements DBObject{
     private String name;
     private String groupId;
 
+    private String status;
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     private String payload;
 
     private long mts;

@@ -309,8 +309,6 @@ public class AcmeUtils {
         } catch (Exception e) {
             throw new GenericServerProcessingException(e);
         }
-
-        Files.delete(Path.of(DOMAIN_HASH_PATH + File.separator + hashKey));
     }
 
     public static JsonNode readCertificate(String hashKey) throws IOException {

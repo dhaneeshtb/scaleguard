@@ -102,6 +102,7 @@ public class DNSAddressBook {
             dnsRecord= filtered.get(0);
             dnsRecord.setTtl(ttl);
             dnsRecord.type=type;
+            dnsRecord.ip=ip;
         }
         if(save) {
             save(dnsRecord);

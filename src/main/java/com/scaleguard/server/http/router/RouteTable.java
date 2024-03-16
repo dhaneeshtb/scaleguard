@@ -150,7 +150,7 @@ public class RouteTable {
 
   public RouteTarget findTarget(SourceSystem source){
     SourceSystem ss =sourceSystsems.stream().filter(s->isMatchedSpecific(source,s)).findFirst().orElse(sourceSystsems.stream().filter(s->isMatched(source,s)).findFirst().orElse(null)) ;
-    if(ss!=null){
+    if(ss!=null && ss.getTarget()!=null){
       TargetSystem ts =  targetSystemMap.get(ss.getTarget());
       return new RouteTarget(ss,ts);
     }

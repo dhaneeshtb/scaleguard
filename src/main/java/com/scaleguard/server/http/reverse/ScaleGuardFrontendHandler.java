@@ -61,29 +61,31 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void channelActive(ChannelHandlerContext ctx) {
     final Channel inboundChannel = ctx.channel();
-    //inboundChannel.read();
     inboundChannel.config().setAutoRead(true);
   }
 
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
     String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
-
-    RouteTarget ts = inboundHandler.matchTarget(ctx,msg,port);
-    if(!rateLimitManager.checkRate(ts,inAddress)){
-      logger.info("Discard due to rate exceeded....");
-      return;
-    }
-
-    if(ts==null){
-      new DefaultResponseHandler().handle(ctx,null, msg);
-    }else {
-      logger.debug("Crossing... "+ts.getTargetHost());
-      if(ts.getTargetSystem().isEnableCache()) {
-        inboundHandler.handle(ctx, msg,ts, key -> proeedToTarget(ts, ctx, msg, key==null?null: key.getKey()));
-      }else{
-        proeedToTarget(ts, ctx, msg, null);
+    try {
+      RouteTarget ts = inboundHandler.matchTarget(ctx, msg, port);
+      if (!rateLimitManager.checkRate(ts, inAddress)) {
+        logger.info("Discard due to rate exceeded....");
+        return;
       }
+
+      if (ts == null) {
+        new DefaultResponseHandler().handle(ctx, null, msg);
+      } else {
+        logger.debug("Crossing... " + ts.getTargetHost());
+        if (ts.getTargetSystem().isEnableCache()) {
+          inboundHandler.handle(ctx, msg, ts, key -> proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey()));
+        } else {
+          proeedToTarget(ts, ctx, msg, null);
+        }
+      }
+    }catch (Exception e){
+      e.printStackTrace();
     }
   }
 

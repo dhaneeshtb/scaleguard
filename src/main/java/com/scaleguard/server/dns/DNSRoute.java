@@ -15,11 +15,16 @@ public class DNSRoute implements RequestRoute {
         JsonNode node = JSON.parse(body);
         String name = node.get("name").asText();
         String ip = node.get("ip").asText();
+        String type = node.has("type")? node.get("type").asText():"record";
+        long ttl = node.has("ttl")? node.get("ttl").asLong():DNSAddressBook.DEFAULT_TTL;
+        if(!name.endsWith(".")){
+            name=name+".";
+        }
         if(method.equalsIgnoreCase("delete")){
             DNSAddressBook.remove(name,ip);
             return RequestRoutingResponse.succes("{}");
         }else if(method.equalsIgnoreCase("post")){
-            DNSAddressBook.add(name,ip);
+            DNSAddressBook.add(name,ip,type,ttl);
             return RequestRoutingResponse.succes(node.toString());
         }else{
             return RequestRoutingResponse.response(405,"{}");

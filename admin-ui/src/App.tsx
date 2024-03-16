@@ -17,6 +17,7 @@ import Certificates from './components/Certificates';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import SignIn from './sign-in/SignIn';
 import Landing from './landing';
+import DNS from './components/DNS';
 
 function App() {
 
@@ -36,6 +37,7 @@ function App() {
           <Route path="/managehost" element={<ManageHost />} />
           <Route path="/managehost/:type/:id" element={<ManageHost />} />
           <Route path="/certificates" element={<Certificates />} />
+          <Route path="/dns" element={<DNS />} />
 
         </Route>
       </Routes>

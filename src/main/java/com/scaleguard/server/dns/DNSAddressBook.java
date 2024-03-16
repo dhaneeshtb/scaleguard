@@ -71,14 +71,14 @@ public class DNSAddressBook {
     }
     private static void add(String name,String ip,String type,long ttl,String id,boolean save){
         List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(name,k->new ArrayList<>());
-        dnsList= dnsList.stream().filter(s->s.getIp().equalsIgnoreCase(ip)).collect(Collectors.toList());
+        List<WrappedDNSRecord> filtered= dnsList.stream().filter(s->s.getIp().equalsIgnoreCase(ip)).collect(Collectors.toList());
         WrappedDNSRecord dnsRecord;
-        if(dnsList.isEmpty()){
+        if(filtered.isEmpty()){
             dnsRecord= new WrappedDNSRecord(name,ip,type,ttl);
             dnsRecord.setId(id);
             dnsList.add(dnsRecord);
         }else {
-            dnsRecord= dnsList.get(0);
+            dnsRecord= filtered.get(0);
             dnsRecord.setTtl(ttl);
             dnsRecord.type=type;
         }

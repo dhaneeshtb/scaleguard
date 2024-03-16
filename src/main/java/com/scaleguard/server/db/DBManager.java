@@ -112,6 +112,7 @@ public abstract class DBManager<T extends DBObject> {
                 try {
                     c.createStatement().executeUpdate(insertString);
                 } catch (SQLException e) {
+                    e.printStackTrace();
                     throw new RuntimeException(e);
                 }
             });
@@ -146,6 +147,7 @@ public abstract class DBManager<T extends DBObject> {
                 try {
                     c.createStatement().executeUpdate(insertString);
                 } catch (SQLException e) {
+
                     throw new RuntimeException(e);
                 }
 
@@ -189,7 +191,6 @@ public abstract class DBManager<T extends DBObject> {
         String instr=value!=null && !value.isEmpty()?value.stream().map(r->"'"+r+"'").collect(Collectors.joining(",")):null;
         String insertString = "select * from "+tableName+" " + (name!=null ? " where "+name+" in (" + instr +")" : "");
 
-        LOG.info("insertString {} ",insertString);
         try (Connection c = ConnectionUtil.getConnection();Statement st=c.createStatement()) {
             ResultSet rs = st.executeQuery(insertString);
             int count = rs.getMetaData().getColumnCount();

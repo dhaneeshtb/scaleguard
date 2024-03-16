@@ -130,7 +130,7 @@ public class AcmeUtils {
 
 
             StringBuilder message = new StringBuilder();
-            message.append("Please create a file in your web server's base directory.\n\n");
+            message.append("Please create a file in your web server base directory.\n\n");
             message.append("http://")
                     .append(auth.getIdentifier().getDomain())
                     .append("/.well-known/acme-challenge/")

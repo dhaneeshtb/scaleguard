@@ -87,6 +87,10 @@ public class DNSAddressBook {
         }
     }
 
+    public static Map<String, List<WrappedDNSRecord>> get(){
+        return dnsAddressMap;
+    }
+
     private static void load(){
         DNSEntriesDB.getInstance().readAll().forEach(r-> add(r.getName(),r.getValue(),r.getType(),r.getTtl(),r.getId(),false));
     }

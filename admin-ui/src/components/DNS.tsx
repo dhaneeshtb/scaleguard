@@ -286,23 +286,26 @@ export default function DNS() {
     <div className="flex flex-col dark:bg-slate-900 ">
       
 
-<div className="bg-gray flex justify-center items-center ">
+<div className="bg-black flex justify-center items-center mt-1">
 	<div className="container mx-auto bg-indigo-800 dark:bg-indigo-900 rounded-lg p-14">
 		<div>
 			<h1 className="text-center font-bold text-white text-4xl">Set your dns base domain name</h1>
 				<p className="mx-auto font-normal text-sm my-6 max-w-lg">Enter your select domain name and choose any
 					extension name in the next step (choose between .com, .online, .tech, .site, .net, and more)</p>
-				<div className="sm:flex items-center bg-white rounded-lg overflow-hidden px-2 py-1 justify-between">
-					<input className="text-base text-gray-400 flex-grow outline-none px-2 " type="text" placeholder="DNS base domain name" />
-					<div className="ms:flex items-center px-2 rounded-lg space-x-4 mx-auto ">
-						<select id="Com" className="text-base text-gray-800 outline-none border-2 px-4 py-2 rounded-lg">
-            <option value="com" selected>com</option>
-            <option value="net">net</option>
-            <option value="org">org</option>
-            <option value="io">io</option>
+				<div className="sm:flex items-center bg-white rounded-lg overflow-hidden px-2 py-1 justify-between gap-2">
+					<input className="text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="DNS base domain name" />
+          <input className="text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="IP Address" />
+					<div className="ms:flex items-center rounded-lg">
+						<select id="type" className="text-base text-gray-800 outline-none border-2 px-4 py-2 rounded-lg">
+            <option value="base" selected>base</option>
+            <option value="record">record</option>
           </select>
-						<Button leftIcon={<FaSave></FaSave>} bg={"bg-indigo-500"} className="bg-indigo-500 text-white text-base rounded-lg px-4 py-2 font-thin">Save</Button>
 					</div>
+          <div className="items-center rounded-lg">
+          <input className="text-base text-gray-400  rounded-lg border-2 px-2 py-2" type="text" placeholder="TTL" />
+          </div>
+          <Button leftIcon={<FaSave></FaSave>} bg={"bg-indigo-500"} className="bg-indigo-500 text-white text-base rounded-lg px-4 py-2 font-thin">Save</Button>
+
 				</div>
 		</div>
 	</div>

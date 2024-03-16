@@ -36,6 +36,19 @@ public class SystemManager {
         return  readNetworks().contains(host);
     }
 
+    public static String getAddressIfMapped(String hostName) throws UnknownHostException, SocketException {
+        InetAddress addr = InetAddress.getByName(hostName);
+        String host = addr.getHostAddress();
+        LOGGER.info("hostname {} resolved address {}",hostName,host);
+        if(readNetworks().contains(host)){
+            return host;
+        }else{
+            return null;
+        }
+    }
+
+
+
     public static List<String> readNetworks() throws SocketException {
         List<NetworkInterface> nil = NetworkInterface.networkInterfaces().collect(Collectors.toList());
         ArrayList<String> node =new ArrayList();

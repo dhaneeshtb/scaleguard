@@ -58,18 +58,7 @@ export default function DNS() {
     setLoading(false);
 
   }
-  const verify = async (id) => {
-    setLoading(true)
-    await axios.get(auth.data.host + "/certificates/" + id + "/verify?scaleguard=true", {
-      headers: {
-        Authorization: auth.data.token
-      }
-    })
-    await load()
-    setLoading(false);
-
-  }
-
+  
   const save=async ()=>{
     setLoading(true)
     await axios.post(auth.data.host + "/dns?scaleguard=true",{
@@ -99,7 +88,7 @@ export default function DNS() {
       <div className="bg-black flex justify-center items-center">
         <div className="container mx-auto bg-indigo-800 dark:bg-indigo-900 rounded-sm p-14">
           <div>
-            <h1 className="text-center font-bold text-white text-4xl">Set your dns base domain name</h1>
+            <h1 className="text-center font-bold text-white text-4xl">Configure dns entries</h1>
             <p className="text-black dark:text-white mx-auto font-normal text-sm my-6 max-w-lg">
               
             </p>

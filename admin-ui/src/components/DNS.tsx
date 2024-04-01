@@ -85,7 +85,7 @@ export default function DNS() {
     <div className="flex flex-col dark:bg-slate-900 ">
 
 
-      <div className="bg-black flex justify-center items-center">
+      <div className="bg-black flex justify-center items-center mt-1">
         <div className="container mx-auto bg-indigo-800 dark:bg-indigo-900 rounded-sm p-14">
           <div>
             <h1 className="text-center font-bold text-white text-4xl">Configure dns entries</h1>
@@ -108,7 +108,7 @@ export default function DNS() {
         </div>
       </div>
 
-      <div className="overflow-x-auto sm:-mx-6 lg:-mx-8">
+      <div className="overflow-x-auto sm:-mx-6 ">
         <div className="inline-block min-w-full py-2 sm:px-6 lg:px-8">
           <div className="overflow-hidden">
             <table className="min-w-full text-left text-sm font-light dark:text-white">

@@ -15,7 +15,7 @@ export default function Stats(){
         }).then(r=>setStats(r.data))
 
     },[])
-    return  <div className="flex gap-2 flex-wrap  w-full">
+    return  <div className="flex gap-2 flex-wrap  w-full p-2">
     { stats && stats.map((stat:any)=>{
 
         return   <div className="bg-white dark:bg-slate-900 rounded-lg px-3 py-3 ring-1 ring-slate-500/5 shadow-2xl w-full md:max-w-[300px]">

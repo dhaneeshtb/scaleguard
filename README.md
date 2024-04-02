@@ -1,6 +1,8 @@
 # scaleguard
 
 
+![Alt](scaleguard.svg)
+
 ### git clone https://github.com/dhaneeshtb/scaleguard.git
 #### cd admin-ui
 #### npm install

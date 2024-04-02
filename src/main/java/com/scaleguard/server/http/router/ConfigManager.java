@@ -180,31 +180,34 @@ public class ConfigManager {
         RouteTable.getInstance().remapSourceSystems();
     }
 
-    private static DBModelSystem toDBModel(SourceSystem d){
+    public static DBModelSystem toDBModel(SourceSystem d){
         DBModelSystem dm = new DBModelSystem();
         dm.setId(d.getId()!=null?d.getId():UUID.randomUUID().toString());
         dm.setName(d.getGroupId());
         dm.setMts(System.currentTimeMillis());
         dm.setUts(System.currentTimeMillis());
+        dm.setGroupId(d.getGroupId());
         dm.setPayload(mapper.valueToTree(d).toString());
         return dm;
     }
 
-    private static DBModelSystem toDBModel(TargetSystem d){
+    public static DBModelSystem toDBModel(TargetSystem d){
         DBModelSystem dm = new DBModelSystem();
         dm.setId(d.getId()!=null?d.getId():UUID.randomUUID().toString());
         dm.setName(d.getGroupId());
         dm.setMts(System.currentTimeMillis());
         dm.setUts(System.currentTimeMillis());
+        dm.setGroupId(d.getGroupId());
         dm.setPayload(mapper.valueToTree(d).toString());
         return dm;
     }
-    private static DBModelSystem toDBModel(HostGroup d){
+    public static DBModelSystem toDBModel(HostGroup d){
         DBModelSystem dm = new DBModelSystem();
         dm.setId(d.getId()!=null?d.getId():UUID.randomUUID().toString());
         dm.setName(d.getGroupId());
         dm.setMts(System.currentTimeMillis());
         dm.setUts(System.currentTimeMillis());
+        dm.setGroupId(d.getGroupId());
         dm.setPayload(mapper.valueToTree(d).toString());
         return dm;
     }

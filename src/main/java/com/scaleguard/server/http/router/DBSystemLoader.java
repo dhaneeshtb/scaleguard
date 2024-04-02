@@ -87,7 +87,11 @@ public class DBSystemLoader implements SystemLoader {
     try {
       return HostGroupsDB.getInstance().readAll().stream().map(s-> {
         try {
-          return mapper.readValue(s.getPayload(),HostGroup.class);
+          HostGroup hgd= mapper.readValue(s.getPayload(),HostGroup.class);
+          if(s.getGroupId()!=null)
+          hgd.setGroupId(s.getGroupId());
+          hgd.setId(s.getId());
+          return hgd;
         } catch (IOException e) {
           throw new RuntimeException(e);
         }

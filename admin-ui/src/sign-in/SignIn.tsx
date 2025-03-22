@@ -1,10 +1,11 @@
-import styles from '@/styles/Home.module.css'
 import React, { useEffect, useState } from 'react';
 import Typewriter from 'typewriter-effect';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button } from "@chakra-ui/react";
+import { motion } from "framer-motion";
+import Loader from '../loaders/loader';
 
 export default function SignIn() {
   const [isLoading, setLoading] = useState(false);
@@ -69,8 +70,9 @@ export default function SignIn() {
 
   return (
     <main className="min-h-screen flex flex-col lg:flex-row">
-      <div className="hidden lg:flex lg:w-3/5 bg-gray-900 text-white p-10 justify-center items-center">
-        <div className="text-5xl font-bold">
+      <div className="hidden lg:flex lg:w-3/5 bg-black text-white p-10 justify-center items-center flex-col">
+
+        <div className="text-3xl font-bold">
           <Typewriter
             options={{
               strings: [
@@ -84,8 +86,15 @@ export default function SignIn() {
             }}
           />
         </div>
+        <Loader></Loader>
+
       </div>
-      <div className="w-full lg:w-2/5 flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 50 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="w-full lg:w-2/5 flex items-center justify-center p-6"
+      >
         <div className="shadow-lg bg-white rounded-3xl p-6 w-full max-w-md">
           <img src="/lb.svg" className="w-20 mb-4 mx-auto" alt="Logo" />
           <h2 className="text-2xl text-center text-cyan-900 font-bold">Sign in to Scaleguard</h2>
@@ -104,14 +113,14 @@ export default function SignIn() {
                 <p className="text-left text-slate-400 pb-2">Host URL</p>
                 <Input defaultValue={host as any | ""} id="hostURL" name="hostURL" type="text" placeholder="Enter host URL" />
               </label>
-              <Button type="submit" bg="slategray" color="white" w={"full"} isLoading={isLoading} borderRadius="full">
+              <Button type="submit" bg="black" _hover={{ bg: "blue.800" }} color="white" w={"full"} isLoading={isLoading} borderRadius="full">
                 Sign In
               </Button>
             </div>
           </form>
           <p className="mt-4 text-xs text-center text-gray-600">By proceeding, you agree to our <a href="#" className="underline">Terms of Use</a> and confirm you have read our <a href="#" className="underline">Privacy and Cookie Statement</a>.</p>
         </div>
-      </div>
+      </motion.div>
     </main>
   );
 }

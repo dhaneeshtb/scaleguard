@@ -1,7 +1,12 @@
 # scaleguard
 
+### Scaleguard Architecture
 
 ![Alt](scaleguard.svg)
+
+### Landing Screen
+
+![Alt](screen1.png)
 
 ### Running Admin UI
 ### git clone https://github.com/dhaneeshtb/scaleguard.git

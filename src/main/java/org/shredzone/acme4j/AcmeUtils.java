@@ -36,6 +36,11 @@ import java.util.stream.Stream;
 
 public class AcmeUtils {
 
+    private static void validateHashKey(String hashKey) {
+        if (hashKey.contains("..") || hashKey.contains("/") || hashKey.contains("\\")) {
+            throw new IllegalArgumentException("Invalid hashKey");
+        }
+    }
     private static final Logger LOGGER = LoggerFactory.getLogger(AcmeUtils.class);
 
     private AcmeUtils(){
@@ -313,6 +318,7 @@ public class AcmeUtils {
     }
 
     public static JsonNode readCertificate(String hashKey) throws IOException {
+        validateHashKey(hashKey);
         ObjectNode on =  mapper.createObjectNode();
         String certificatePath = CERTS_PATH+File.separator+hashKey;
         on.put("id",hashKey);
@@ -320,9 +326,9 @@ public class AcmeUtils {
         on.put("certificate", Files.readString(Path.of(certificatePath+"/server.crt")));
         return on;
 
-
     }
     public static void saveCertificate(String hashKey,Order order,AcmeContext context){
+        validateHashKey(hashKey);
         String certificatePath = CERTS_PATH+File.separator+hashKey;
         File f = new File(certificatePath);
         if(!f.exists())

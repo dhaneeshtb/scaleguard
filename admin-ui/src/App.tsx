@@ -20,31 +20,32 @@ import Landing from './landing';
 import DNS from './components/DNS';
 
 function App() {
-
-  
   return (
-
-
     <BrowserRouter>
       <Routes>
-
-      <Route path="/sign-in" element={<SignIn />}></Route>
-      <Route path="/home" element={<Landing></Landing>}></Route>
-
-        <Route  element={<ProtectedRoute />}>
-          <Route index element={<Home />} />
-          <Route path="/hostgroups" element={<HostGroups />} />
-          <Route path="/managehost" element={<ManageHost />} />
-          <Route path="/managehost/:type/:id" element={<ManageHost />} />
-          <Route path="/certificates" element={<Certificates />} />
-          <Route path="/dns" element={<DNS />} />
-
-        </Route>
+        <Route path="/sign-in" element={<SignIn />} />
+        <Route path="/" element={<Landing />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute
+              element={
+                <Layout>
+                  <Routes>
+                    <Route path="/home" element={<Home />} />
+                    <Route path="hostgroups" element={<HostGroups />} />
+                    <Route path="managehost" element={<ManageHost />} />
+                    <Route path="managehost/:type/:id" element={<ManageHost />} />
+                    <Route path="certificates" element={<Certificates />} />
+                    <Route path="dns" element={<DNS />} />
+                  </Routes>
+                </Layout>
+              }
+            />
+          }
+        />
       </Routes>
     </BrowserRouter>
-    
-    
-   
   );
 }
 

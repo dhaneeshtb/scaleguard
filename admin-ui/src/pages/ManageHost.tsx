@@ -47,7 +47,7 @@ const ManageHost = () => {
         }
         await updateSource(baseObject, type, auth);
         setLoading(false);
-        navigate("/")
+        navigate("/home")
     }
 
     const [certificates, setCertificates] = useState<any>([]);

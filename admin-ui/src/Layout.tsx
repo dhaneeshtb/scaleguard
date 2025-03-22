@@ -18,7 +18,10 @@ import { useAuth } from "./contexts/AuthContext";
 import { FaUserAlt, FaUserCircle } from "react-icons/fa";
 import { ConfigureSystem } from "./components/ConfigureSystem";
 
-const Layout = () => {
+interface LayoutProps {
+  children: React.ReactNode;
+}
+const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     
     const className = "justify-center navbar flex items-center w-sceen";
@@ -57,7 +60,7 @@ const Layout = () => {
               <div className="hidden md:block w-full">
                 <div className="ml-10 flex items-baseline space-x-4 justify-end">
                   <a
-                    href="/"
+                    href="/home"
                     className=" hover:bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Home
@@ -198,7 +201,7 @@ initial={{ opacity: 0, scale: 0.5 }}
    
 
     {/* <div className=" md:px-[100px] dark:bg-slate-800"> */}
-    <Outlet />
+    {children}
 
     {/* </div> */}
     </motion.div>

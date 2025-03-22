@@ -5,7 +5,7 @@ import { Button, IconButton, Select } from "@chakra-ui/react";
 import { FaCross, FaSave, FaWindowClose } from "react-icons/fa";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
-import { formatData, getBaseSchema, updateSource } from "../components/sourceupdate";
+import { formatData, getBaseSchema, getBaseSchemaDef, updateSource } from "../components/sourceupdate";
 import { useAuth } from "../contexts/AuthContext";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
@@ -66,6 +66,8 @@ const ManageHost = () => {
 
     const RenderScreen = ({type, bs, baseObject, setBaseObject }) => {
 
+        const schmaDef = getBaseSchemaDef(type)
+
         const compScreen = (k) => {
 
 
@@ -78,6 +80,14 @@ const ManageHost = () => {
                                     })
                                 }
                             </Select>;
+                case "type": 
+                return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
+                        {
+                            ( ["active", "standby"]).map(c => {
+                                return <option value={c}>{c}</option>
+                            })
+                        }</Select>
+
                 case "scheme": 
                     return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
                             {
@@ -137,11 +147,19 @@ const ManageHost = () => {
 
         }
         return <>{Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems" ? filterField(baseObject["scheme"],k,baseObject):true)).map((k) => {
-            return  <div>
+            return  <div className="flex flex-col">
                 <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
-                    <span className="capitalize">{k}</span> {getHint(baseObject["scheme"],k)}
+                    <span className="capitalize">{schmaDef?schmaDef[k].displayName :k} </span> 
+                    
+                    {schmaDef && schmaDef[k].mandatory ?<span className="text-red-400 text-lg">*</span>:<></>}
+
+                       {getHint(baseObject["scheme"],k)}
                 </label>
                 {compScreen(k)}
+
+                {schmaDef && schmaDef[k].hint ?<span className="italic text-gray-400 text-xs">{schmaDef[k].hint}</span>:<></>}
+
+
 
                 </div>
 

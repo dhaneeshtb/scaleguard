@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.CertificateOrdersDB;
 import com.scaleguard.server.db.DBModelSystem;
+import io.netty.handler.ssl.CertificateStore;
 import org.shredzone.acme4j.challenge.Dns01Challenge;
 import org.shredzone.acme4j.challenge.Http01Challenge;
 import org.shredzone.acme4j.exception.AcmeException;
@@ -56,7 +57,7 @@ public class AcmeUtils {
             context.setAccount(findOrRegisterAccount(new Session("acme://letsencrypt.org"), loadKeyPair()));
             context.setDomainKeyPair(loadOrCreateDomainKeyPair());
             AcmeUtils.context=context;
-            migrate();
+            //migrate();
         }
         return context;
     }
@@ -338,6 +339,7 @@ public class AcmeUtils {
             throw new GenericServerProcessingException(e);
         }
         saveOrder(order,hashKey);
+        CertificateStore.loadAllCerts();
     }
 
     public static void main(String[] args) throws IOException, AcmeException {

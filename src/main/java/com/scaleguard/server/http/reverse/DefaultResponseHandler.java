@@ -89,6 +89,8 @@ public class DefaultResponseHandler {
                     type = "targetsystems";
                 } else if (uri.contains("hostgroups")) {
                     type = "hostgroups";
+                }else if (uri.contains("renewcert")) {
+                    type = "renewcert";
                 }
 
                 if (request.getMethod().name().equalsIgnoreCase("post")||request.getMethod().name().equalsIgnoreCase("delete")) {

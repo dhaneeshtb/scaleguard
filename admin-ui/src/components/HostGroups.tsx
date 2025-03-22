@@ -38,8 +38,8 @@ export default function HostGroups() {
             <table className="min-w-full text-left text-sm font-light dark:text-white">
               <thead className="border-b font-medium dark:border-neutral-500">
                 <tr>
-                  <th scope="col" className="px-6 py-4 ">#id</th>
-                  <th scope="col" className="px-6 py-4">Group Id</th>
+                  <th scope="col" className="px-6 py-4 ">ID</th>
+                  <th scope="col" className="px-6 py-4">Group ID</th>
                   <th scope="col" className="px-6 py-4 ">Host</th>
                   <th scope="col" className="px-6 py-4">Type</th>
                   <th scope="col" className="px-6 py-4">Status</th>

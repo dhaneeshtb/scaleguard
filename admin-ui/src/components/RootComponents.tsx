@@ -16,23 +16,26 @@ export default function RootComponents() {
     }
     return <Tabs index={tabIndex} onChange={(index) => onChangeTabIndex(index)} colorScheme='teal' className='dark:text-gray-400 dark:bg-slate-900 mt-4 rounded-xl px-[20px]'>
         <TabList>
-            <Tab>Host Groups</Tab>
-            <Tab>Target Systems</Tab>
             <Tab>Source Systems</Tab>
+            <Tab>Target Systems</Tab>
+            <Tab>Host Groups</Tab>
+
+           
         </TabList>
 
         <TabPanels>
-            <TabPanel>
-                <HostGroups></HostGroups>
-            </TabPanel>
-            <TabPanel>
-                <Targets></Targets>
-            </TabPanel>
-
+            
             <TabPanel >
                 <Systems></Systems>
 
             </TabPanel>
+            <TabPanel>
+                <Targets></Targets>
+            </TabPanel>
+            <TabPanel>
+                <HostGroups></HostGroups>
+            </TabPanel>
+            
 
 
 

@@ -1,8 +1,8 @@
 import { Select,Button, IconButton, Link, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, useDisclosure } from '@chakra-ui/react';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
-import { FaArrowAltCircleUp, FaArrowCircleDown, FaCogs, FaEdit, FaPlusCircle, FaTrash, FaTrashAlt } from "react-icons/fa";
-import { formatData, updateSource } from './sourceupdate';
+import { FaArrowAltCircleUp, FaArrowCircleDown, FaCheckCircle, FaCogs, FaEdit, FaMinusCircle, FaPlusCircle, FaTrash, FaTrashAlt } from "react-icons/fa";
+import { formatData, renewCertificate, updateSource } from './sourceupdate';
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
 
@@ -35,6 +35,7 @@ export default function Systems() {
         const [selectedId,setSelectedId] = useState<string>(id);
         const [selectedCert,setSelectedCert] = useState<any>(null);
 
+        const [currentMessage,setCurrentMessage] = useState<string>("");
 
 
         
@@ -45,6 +46,7 @@ export default function Systems() {
             }})
             r.data.forEach(d=>{
                 d.json=JSON.parse(d.json)
+                d.name=d.json.identifiers.map(s => s.value)[0]
                 if(d.id==selectedId){
                     setSelectedCert(d);
                 }
@@ -71,6 +73,20 @@ export default function Systems() {
   
       }
 
+      const procureCertificate=async ()=>{
+        setSaving(true)
+        setCurrentMessage("")
+        try{
+          await renewCertificate(source.id,auth)
+          await onUpdate()
+          onClose();
+        }catch(e){
+          setCurrentMessage("failed to procure the certificates");
+        }
+        setSaving(false);
+  
+      }
+
       useEffect(()=>{
 
         onLoad();
@@ -89,13 +105,18 @@ export default function Systems() {
                 <ModalHeader>Configure Certificate</ModalHeader>
                 <ModalCloseButton />
                 <ModalBody className='dark:text-white'>
+                <p className='m-3 w-full text-center text-red-600'>{currentMessage}</p>
+
+                  <Button w="full" isLoading={saving} variant='outline' colorScheme='teal' onClick={procureCertificate}>Generate Certificate</Button>
+
+                  <p className='m-3 w-full text-center'>OR</p>
                     <label className="block text-sm font-bold mb-1">
-                        Certificate List
+                       Choose Certificate
                       </label>
                       <Select placeholder='Select option' value={selectedId} onChange={(e)=>onSelectId(e.target.value)}>
                         {
                             certificates.map(c=>{
-                                return  <option value={c.id}>{c.id}</option>
+                                return  <option value={c.id}>{c.name+"-"+c.id}</option>
                             })
                         }
                     </Select>
@@ -109,10 +130,10 @@ export default function Systems() {
                 </ModalBody>
       
                 <ModalFooter className='dark:text-white'>
-                  <Button colorScheme='blue' mr={3} onClick={onClose}>
+                  <Button rounded={"3xl"} colorScheme='gray' mr={3} onClick={onClose}>
                     Close
                   </Button>
-                  <Button isLoading={saving} variant='outline' colorScheme='teal' onClick={onSave}>Save</Button>
+                  <Button rounded={"3xl"} isLoading={saving} variant='outline' colorScheme='teal' onClick={onSave}>Save</Button>
                 </ModalFooter>
               </ModalContent>
             </Modal>
@@ -137,8 +158,8 @@ export default function Systems() {
             <table className="min-w-full text-left text-sm font-light dark:text-white table-auto w-full">
               <thead className="border-b font-medium dark:border-neutral-500">
                 <tr>
-                  <th scope="col" className="px-6 py-4 text-[12px]">Id</th>
-                  <th scope="col" className="px-6 py-4 text-[12px]">Group Id</th>
+                  <th scope="col" className="px-6 py-4 text-[12px]">ID</th>
+                  <th scope="col" className="px-6 py-4 text-[12px]">Group ID</th>
                   <th scope="col" className="px-6 py-4 text-[12px]">Scheme</th>
                   <th scope="col" className="px-6 py-4 text-[12px]">Host</th>
                   <th scope="col" className="px-6 py-4 text-[12px]">Port</th>
@@ -168,7 +189,7 @@ export default function Systems() {
                         {/* <td className="px-6 py-4 break-all	">{system.targetSystem && (system.targetSystem.hostGroups as Array<any>).map(hg=>(hg).groupId+"-"+system.targetSystem.scheme+"://"+(hg).host+":"+(hg).port).join(",")}</td> */}
 
                         <td className=" px-6 py-4">{system.basePath}</td>
-                        <td className=" px-6 py-4"><div className='flex gap-2 items-center'>{system.scheme=="https"? (<>{system.certificateId?(<FaArrowAltCircleUp color='green'></FaArrowAltCircleUp>):(<FaArrowCircleDown color='red'></FaArrowCircleDown>)}  {system.certificateId||"Not Configured"} <AttachCertificate source={system} id={system.certificateId} onUpdate={onLoad}></AttachCertificate></>):"Not Applicable"}</div></td>
+                        <td className=" px-6 py-4"><div className='flex gap-2 items-center'>{system.scheme=="https"? (<>{system.certificateId?(<FaCheckCircle className='w-8 h-8' color='green'></FaCheckCircle>):(<FaMinusCircle className='w-8 h-8'  color='red'></FaMinusCircle>)}  {system.certificateId||"Not Configured"} <AttachCertificate source={system} id={system.certificateId} onUpdate={onLoad}></AttachCertificate></>):"Not Applicable"}</div></td>
 
                         <td className=" px-6 py-4">
                             <div className='flex gap-2'>

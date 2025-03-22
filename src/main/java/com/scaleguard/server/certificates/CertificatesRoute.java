@@ -28,24 +28,29 @@ public class CertificatesRoute implements RequestRoute {
 
     @Override
     public RequestRoutingResponse handle(String method, String uri, String body) throws AcmeException, IOException {
+        JsonNode node =body!=null && !body.isEmpty()? mapper.readTree(body):null;
+        String[] tuples = uri.split("/");
+        String action = tuples[tuples.length-1];
+        String challengeType = node!=null && node.has("challengeType")?
+                node.get("challengeType").asText():"http";
+
         if(method.equalsIgnoreCase("delete")){
-            String[] tuples = uri.split("/");
             cm.delete(tuples[tuples.length-1]);
             return RequestRoutingResponse.succes("{}");
         }else if(method.equalsIgnoreCase("post")){
-            JsonNode node = mapper.readTree(body);
-            ArrayNode an = (ArrayNode) node.get("domainNames");
-            List<String> domainNames = new ArrayList<>();
-            an.forEach(a->domainNames.add(a.asText()));
-            return RequestRoutingResponse.succes(cm.orderCertificate(domainNames,null).toString());
+            if("verify".equalsIgnoreCase(action)){
+                String id = tuples[tuples.length-2];
+                return RequestRoutingResponse.succes("{\"status\":\""+cm.verifyOrder(id,challengeType)+"\"}");
+            }else {
+                ArrayNode an = (ArrayNode) node.get("domainNames");
+                List<String> domainNames = new ArrayList<>();
+                an.forEach(a -> domainNames.add(a.asText()));
+                return RequestRoutingResponse.succes(cm.orderCertificate(domainNames, null).toString());
+            }
         }else{
 
-            String[] tuples = uri.split("/");
-            String action = tuples[tuples.length-1];
 
-            JsonNode node =body!=null && !body.isEmpty()? mapper.readTree(body):null;
-            String challengeType = node!=null && node.has("challengeType")?
-                    node.get("challengeType").asText():"http";
+
 
             if("verify".equalsIgnoreCase(action)){
                 String id = tuples[tuples.length-2];

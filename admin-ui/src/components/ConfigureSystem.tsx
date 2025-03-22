@@ -17,6 +17,10 @@ export function ConfigureSystem({ onUpdate,auth ,load=true}) {
 
   const onCreate = async () => {
     setSaving(true)
+    onCreateInternal();
+  }
+
+  const onCreateInternal = async () => {
     try{
     await axios.post(auth.data.host + "/systems/configure?scaleguard=true", {
      "hostName":domainNames,

@@ -11,10 +11,11 @@ import java.security.Key;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 public class AuthUtils{
-  private static String adminUser = System.getProperty("adminUser",System.getenv("adminUser"));
-  private static String adminPassword = System.getProperty("adminPassword",System.getenv("adminPassword"));
+  private static String adminUser = System.getProperty("adminUser", Optional.ofNullable(System.getenv("adminUser")).orElse("scaleguard"));
+  private static String adminPassword = System.getProperty("adminPassword",Optional.ofNullable(System.getenv("adminPassword")).orElse("Scaleguard123$"));
   private static String issuer = System.getProperty("issuer","scaleguard");
   private static String SECRET_KEY = Base64.getEncoder().encodeToString((adminUser+":"+adminPassword).getBytes());
   public static AuthInfo getAuthInfo(String token) {

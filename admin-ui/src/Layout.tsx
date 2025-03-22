@@ -45,11 +45,14 @@ const Layout = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center w-full">
               <div className="flex-shrink-0">
+                <div className="flex items-center text-white font-bold">
                 <img
                   className="h-16 w-16"
                   src="/lb.svg"
                   alt="Workflow"
                 />
+                Scaleguard
+                </div>
               </div>
               <div className="hidden md:block w-full">
                 <div className="ml-10 flex items-baseline space-x-4 justify-end">

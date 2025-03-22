@@ -58,7 +58,7 @@ public class CertificateStore {
         return certificateMap.get(alias);
     }
 
-    private static void loadAllCerts(){
+    public static void loadAllCerts(){
         try {
             Set<String> ceritifcateIds= AcmeUtils.listCertificateIds();
             ArrayNode an =mapper.createArrayNode();

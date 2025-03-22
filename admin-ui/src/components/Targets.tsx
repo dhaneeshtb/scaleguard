@@ -37,8 +37,8 @@ export default function Targets() {
             <table className="min-w-full text-left text-sm font-light dark:text-white w-full">
               <thead className="border-b font-medium dark:border-neutral-500">
                 <tr>
-                  <th scope="col" className="px-6 py-4 ">#id</th>
-                  <th scope="col" className="px-6 py-4">Group Id</th>
+                  <th scope="col" className="px-6 py-4 ">ID</th>
+                  <th scope="col" className="px-6 py-4">Group ID</th>
                   <th scope="col" className="px-6 py-4">Scheme</th>
                   <th scope="col" className="px-6 py-4">Basepath</th>
                   <th scope="col" className="px-6 py-4">Hostgroup</th>

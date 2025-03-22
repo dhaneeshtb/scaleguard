@@ -29,11 +29,16 @@ public class SystemManager {
 
 
     public static boolean isSystemMapped(String hostName) throws UnknownHostException, SocketException {
-
-        InetAddress addr = InetAddress.getByName(hostName);
-        String host = addr.getHostAddress();
-        LOGGER.info("hostname {} resolved address {}",hostName,host);
-        return  readNetworks().contains(host);
+        try {
+            InetAddress addr = InetAddress.getByName(hostName);
+            String host = addr.getHostAddress();
+            LOGGER.info("hostname {} resolved address {}", hostName, host);
+            return readNetworks().contains(host);
+        }catch (Exception e){
+            e.printStackTrace();
+            LOGGER.info("hostname failed to resolve {}", hostName);
+            return false;
+        }
     }
 
     public static String getAddressIfMapped(String hostName) throws UnknownHostException, SocketException {

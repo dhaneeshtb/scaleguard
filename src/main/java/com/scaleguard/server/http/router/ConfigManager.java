@@ -35,6 +35,25 @@ public class ConfigManager {
     public static JsonNode update(String type, String method, String[] params, String json) throws Exception {
         JsonNode out = null;
         switch (type) {
+
+            case "renewcert":
+                if ("post".equalsIgnoreCase(method)) {
+                    List<DBModelSystem> ssList = SourceSystemDB.getInstance().readItems("id", List.of(params[params.length - 1]));
+                    if(ssList.size()>0){
+                        SourceSystem ss=  mapper.readValue(ssList.get(0).getPayload(),SourceSystem.class);
+                        try {
+                            renewSourceCertificate(ss);
+                        }catch (Exception e){
+                            throw new RuntimeException("failed to renew certificate");
+                        }
+                        out = mapper.valueToTree(ss);
+                    }else{
+                        throw new RuntimeException("invalid source id");
+                    }
+                } else {
+                    throw new RuntimeException("not allowed");
+                }
+                break;
             case "sourcesystems":
                 if ("delete".equalsIgnoreCase(method)) {
                     SourceSystemDB.getInstance().delete(params[params.length - 1]);
@@ -142,22 +161,8 @@ public class ConfigManager {
         if(ss.getId()==null){
             ss.setId(UUID.randomUUID().toString());
             RouteTable.getInstance().getSourceSystsems().add(ss);
-            boolean isCertificateOrdered=false;
-            if(ss.isAutoProcure() && (ss.getCertificateId()==null || ss.getCertificateId().isEmpty())) {
-                try {
-                    boolean isMapped =  SystemManager.isSystemMapped(ss.getHost());
-                    if(isMapped) {
-                        String certificateId = UUID.randomUUID().toString();
-                         CertificatesRoute.getCm().orderCertificate(List.of(ss.getHost()), certificateId);
-                        ss.setCertificateId(certificateId);
-                        isCertificateOrdered=true;
-                    }else{
-                        logger.error("unable to autoprocure the certificate : host not mapped");
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
+            boolean isCertificateOrdered=orderCertificate(ss);
+
             try {
                 SourceSystemDB.getInstance().create(toDBModel(ss));
                 if(isCertificateOrdered){
@@ -178,6 +183,41 @@ public class ConfigManager {
         }
         publisher.submit(ss);
         RouteTable.getInstance().remapSourceSystems();
+    }
+
+    public static boolean renewSourceCertificate(SourceSystem ss) {
+            boolean isCertificateOrdered=orderCertificate(ss);
+            try {
+                if(isCertificateOrdered){
+                    SourceSystemDB.getInstance().edit(toDBModel(ss));
+                    CertificatesRoute.getCm().verifyOrder(ss.getCertificateId(),"http");
+                }else{
+                    throw  new RuntimeException("failed to order certificate");
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            return isCertificateOrdered;
+    }
+
+    public static boolean orderCertificate(SourceSystem ss){
+        boolean isCertificateOrdered=false;
+        if(ss.isAutoProcure() && (ss.getCertificateId()==null || ss.getCertificateId().isEmpty())) {
+            try {
+                boolean isMapped =  SystemManager.isSystemMapped(ss.getHost());
+                if(isMapped) {
+                    String certificateId = UUID.randomUUID().toString();
+                    CertificatesRoute.getCm().orderCertificate(List.of(ss.getHost()), certificateId);
+                    ss.setCertificateId(certificateId);
+                    isCertificateOrdered=true;
+                }else{
+                    logger.error("unable to autoprocure the certificate : host not mapped");
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return isCertificateOrdered;
     }
 
     public static DBModelSystem toDBModel(SourceSystem d){

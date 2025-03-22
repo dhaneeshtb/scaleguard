@@ -20,6 +20,7 @@ import { useToast } from '@chakra-ui/react'
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
 import { formatData } from './sourceupdate';
+import VerificationMethodModal from './Verification';
 
 
 export default function Certificates() {
@@ -54,9 +55,11 @@ export default function Certificates() {
     setLoading(false);
 
   }
-  const verify = async (id) => {
+  const verify = async (id,method) => {
     setLoading(true)
-    await axios.get(auth.data.host + "/certificates/" + id + "/verify?scaleguard=true", {
+    await axios.post(auth.data.host + "/certificates/" + id + "/verify?scaleguard=true",{
+      challengeType:method
+    }, {
       headers: {
         Authorization: auth.data.token
       }
@@ -318,7 +321,8 @@ export default function Certificates() {
                       <td className=" px-6 py-4">{system.json.status == "valid" ? "Validated" : <DnsChallenge info={system}></DnsChallenge>}</td>
                       <td className=" px-6 py-4"><HttpChallenge id={system.id}></HttpChallenge></td>
                       <td><div className=" px-6 py-4 flex gap-2 justify-center items-center">
-                      {system.json.status != "valid" && <Button isLoading={loading} onClick={() => verify(system.id)} colorScheme='green' leftIcon={<FaCheck></FaCheck>} variant={"outline"} size={"xs"}>Verify</Button> }
+                      {system.json.status != "valid" &&  <VerificationMethodModal id={system.id} onContinue={verify}></VerificationMethodModal> }
+                      {/* <Button isLoading={loading} onClick={() => verify(system.id)} colorScheme='green' leftIcon={<FaCheck></FaCheck>} variant={"outline"} size={"xs"}>Verify</Button> } */}
                         
                         <DeleteSystem id={system.id} source={"Certificate"} onAction={()=>deleteItem(system.id) as any} buttonType='big'></DeleteSystem>
                         {/* <Button isLoading={loading} onClick={() => deleteItem(system.id)} colorScheme='red' leftIcon={<FaTrash></FaTrash>} variant={"outline"} size={"xs"}>Delete</Button> */}

@@ -7,6 +7,7 @@ import axios from 'axios';
 import { ConfigureSystem } from '../components/ConfigureSystem';
 import { setPriority } from 'os';
 import { ConfigureServer } from '../components/ConfigureServer';
+import LoadingScreen from './Loading';
 
 const SystemContext = createContext<any>(null);
 
@@ -63,7 +64,7 @@ export const SystemContextProvider = ({ children }: { children: any }) => {
     <SystemContext.Provider value={{ properties, updateProperties }}>
 
       {
-        !discovery ? <>Loading</> :
+        !discovery ? <LoadingScreen></LoadingScreen> :
 
           (properties ? (properties.hostName ? children : <ConfigureSystem onUpdate={loadProperties} auth={auth}></ConfigureSystem>) :
             (auth.data ? (<ConfigureServer onUpdate={loadProperties} ></ConfigureServer>) : children))

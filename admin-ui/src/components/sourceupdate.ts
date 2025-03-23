@@ -97,6 +97,7 @@ const sourceSystemSchemaDef ={
 const sourceSystemSchema = {
     "scheme": "https",
     "host": "localhost",
+    "secappid":"",
     "port": "80",
     "basePath": "/",
     "name": "",

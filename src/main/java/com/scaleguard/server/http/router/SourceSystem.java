@@ -28,6 +28,16 @@ public class SourceSystem {
 
   private String certificateId;
 
+  public String getSecappid() {
+    return secappid;
+  }
+
+  public void setSecappid(String secappid) {
+    this.secappid = secappid;
+  }
+
+  private String secappid;
+
   public boolean isAutoProcure() {
     return autoProcure;
   }

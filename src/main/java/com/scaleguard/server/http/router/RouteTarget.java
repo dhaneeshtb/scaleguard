@@ -1,5 +1,7 @@
 package com.scaleguard.server.http.router;
 
+import io.netty.handler.codec.http.HttpHeaders;
+
 public class RouteTarget {
 
     private SourceSystem sourceSystem;
@@ -9,6 +11,16 @@ public class RouteTarget {
     private String targetHost;
 
     private String clientIp;
+
+    public HttpHeaders getHeaders() {
+        return headers;
+    }
+
+    public void setHeaders(HttpHeaders headers) {
+        this.headers = headers;
+    }
+
+    private HttpHeaders headers;
 
     public String getClientIp() {
         return clientIp;

@@ -34,6 +34,8 @@ public class AppServer implements Server{
     ArrayList<ChannelFuture> futureChannels = new ArrayList<>();
 
     public static void main(String[] args) throws Exception {
+        System.setProperty("io.netty.leakDetection.level", "PARANOID");
+
         AppServer server= new AppServer();
         EventSubscriber subscriber = new EventSubscriber(server);
         ConfigManager.getPublisher().subscribe(subscriber);

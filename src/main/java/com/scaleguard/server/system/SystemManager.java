@@ -27,6 +27,9 @@ public class SystemManager {
             = LoggerFactory.getLogger(SystemManager.class);
 
 
+    public static ObjectMapper getMapper(){
+        return mapper;
+    }
 
     public static boolean isSystemMapped(String hostName) throws UnknownHostException, SocketException {
         try {

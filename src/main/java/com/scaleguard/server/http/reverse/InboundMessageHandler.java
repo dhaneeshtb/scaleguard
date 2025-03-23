@@ -67,7 +67,7 @@ public class InboundMessageHandler {
   public RouteTarget matchTarget(ChannelHandlerContext ctx, Object msg,int port) {
     SourceSystem ss = new SourceSystem();
     String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
-
+    HttpHeaders headers =null;
     if (msg instanceof HttpRequest) {
 
       HttpRequest request = (HttpRequest) msg;
@@ -90,7 +90,7 @@ public class InboundMessageHandler {
         return null;
       }
 
-      HttpHeaders headers = request.headers();
+      headers = request.headers();
 
       QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
       Map<String, List<String>> params = queryStringDecoder.parameters();
@@ -114,6 +114,7 @@ public class InboundMessageHandler {
     RouteTarget rt= routeTable.findTarget(ss);
     if(rt!=null){
       rt.setClientIp(inAddress);
+      rt.setHeaders(headers);
     }
     return rt;
   }

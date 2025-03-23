@@ -233,6 +233,8 @@ public class DefaultResponseHandler {
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
         response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+
+        //content.release();
         ctx.writeAndFlush(response).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
@@ -262,8 +264,7 @@ public class DefaultResponseHandler {
         response.headers().set("Access-Control-Allow-Private-Network", "true");
 
 
-
-
+        ByteBuf finalContent = content;
         ctx.writeAndFlush(response).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
@@ -272,6 +273,7 @@ public class DefaultResponseHandler {
                     ctx.channel().read();
                 } else {
                     future.channel().close();
+
                 }
             }
         });

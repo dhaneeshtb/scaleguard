@@ -18,6 +18,8 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import SignIn from './sign-in/SignIn';
 import Landing from './landing';
 import DNS from './components/DNS';
+import Security from './pages/security/Security';
+import ManageSource from './pages/ManageSource';
 
 function App() {
   return (
@@ -33,8 +35,12 @@ function App() {
                 <Layout>
                   <Routes>
                     <Route path="/home" element={<Home />} />
+                    <Route path="/security" element={<Security />} />
                     <Route path="hostgroups" element={<HostGroups />} />
                     <Route path="managehost" element={<ManageHost />} />
+                    
+                    <Route path="managehost/sourcesystems/:id" element={<ManageSource />} />
+
                     <Route path="managehost/:type/:id" element={<ManageHost />} />
                     <Route path="certificates" element={<Certificates />} />
                     <Route path="dns" element={<DNS />} />

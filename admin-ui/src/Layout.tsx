@@ -80,6 +80,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     Certificates
                   </a>
 
+                  <a
+                    href="/security"
+                    className="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    App Security
+                  </a>
+
                 <ConfigureSystem onUpdate={()=>{}} auth={auth} load={false}></ConfigureSystem>
 
 

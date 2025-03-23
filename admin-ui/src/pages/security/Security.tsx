@@ -3,6 +3,7 @@ import { Input, Button, Table, Tbody, Tr, Td, Th, Thead, Modal, ModalOverlay, Mo
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
+import { FaPlusCircle, FaTrashAlt } from 'react-icons/fa';
 
 type Client = {
   id: string;
@@ -158,7 +159,8 @@ export default function AppManagement() {
         <Input placeholder="App Name" value={appName} onChange={(e) => setAppName(e.target.value)} />
         <Input placeholder="App Description" value={appDescription} onChange={(e) => setAppDescription(e.target.value)} />
         {errorMessage && <Text color="red.500">{errorMessage}</Text>}
-        <Button onClick={createApp} colorScheme="blue">Create App</Button>
+        
+        <Button onClick={createApp}  variant={"outline"} colorScheme='teal' size={"xs"} leftIcon={<FaPlusCircle></FaPlusCircle>}>Create App</Button>
       </div>
       <Table variant="simple">
         <Thead>
@@ -176,18 +178,19 @@ export default function AppManagement() {
               <Td>{app.description}</Td>
               <Td>
                 {app.clients && app.clients.map(client => (
-                  <div key={client.id} className="mb-2">
+                  <div key={client.id} className="flex flex-col mb-2 gap-2">
                     <p><strong>Client Name:</strong> {client.name}</p>
                     <p><strong>Client ID:</strong> {client.clientid}</p>
                     <p><strong>Client Secret:</strong> {client.clientsecret}</p>
                     <p><strong>Expiry Date:</strong> {client.expiry === 0 ? 'No Expiry' : new Date(client.expiry).toLocaleDateString()}</p>
-                    <Button colorScheme="red" size="xs" onClick={() => confirmDelete('client', app.id, client.id)}>Delete</Button>
+                    
+                    <Button w={"100px"} size={"xs"}  leftIcon={<FaTrashAlt></FaTrashAlt>} colorScheme="red"  onClick={() => confirmDelete('client', app.id, client.id)}>Delete</Button>
                   </div>
                 ))}
               </Td>
               <Td>
-                <Button onClick={() => openAddClientModal(app.id)} colorScheme="green">Add Client</Button>
-                <Button colorScheme="red" ml={2} onClick={() => confirmDelete('app', app.id)}>Delete App</Button>
+                <Button size={"xs"} leftIcon={<FaPlusCircle></FaPlusCircle>} onClick={() => openAddClientModal(app.id)} colorScheme="green">Add Client</Button>
+                <Button size={"xs"}  leftIcon={<FaTrashAlt></FaTrashAlt>} colorScheme="red" ml={2} onClick={() => confirmDelete('app', app.id)}>Delete App</Button>
               </Td>
             </Tr>
           ))}

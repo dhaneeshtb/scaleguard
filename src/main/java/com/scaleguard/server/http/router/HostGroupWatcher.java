@@ -80,6 +80,31 @@ public class HostGroupWatcher {
         }
     }
 
+    public static String getResponseData(String urlToRead)  {
+        StringBuilder result = new StringBuilder();
+
+        try {
+           URL url = new URL(urlToRead);
+           HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+           try {
+               conn.setReadTimeout(15000);
+               conn.setRequestMethod("GET");
+               try (BufferedReader reader = new BufferedReader(
+                       new InputStreamReader(conn.getInputStream()))) {
+                   for (String line; (line = reader.readLine()) != null; ) {
+                       result.append(line);
+                   }
+               }
+           } finally {
+               conn.disconnect();
+           }
+           return result.toString();
+       }catch (Exception e){
+            e.printStackTrace();
+            return  result.toString();
+        }
+    }
+
     public static void main(String[] args) {
         AtomicInteger ai = new AtomicInteger(0);
         AtomicInteger aiSuccess = new AtomicInteger(0);

@@ -13,7 +13,7 @@ import {
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import {
-  FaArrowCircleDown, FaArrowCircleUp, FaCheck, FaClipboard, FaEdit, FaFileDownload, FaInfoCircle, FaPlusCircle, FaTrash,
+  FaArrowCircleDown, FaArrowCircleUp, FaCheck, FaCheckCircle, FaClipboard, FaEdit, FaFileDownload, FaInfoCircle, FaPlusCircle, FaTrash,
 } from "react-icons/fa";
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { useToast } from '@chakra-ui/react'
@@ -29,7 +29,7 @@ export default function Certificates() {
   const [loading, setLoading] = useState<boolean>(false);
   const { auth } = useAuth() as any;
 
-  
+
 
   const load = async () => {
     const r = await axios.get(auth.data.host + "/certificates?scaleguard=true", {
@@ -55,18 +55,23 @@ export default function Certificates() {
     setLoading(false);
 
   }
-  const verify = async (id,method) => {
+  const verify = async (id, method) => {
     setLoading(true)
-    await axios.post(auth.data.host + "/certificates/" + id + "/verify?scaleguard=true",{
-      challengeType:method
-    }, {
-      headers: {
-        Authorization: auth.data.token
-      }
-    })
-    await load()
-    setLoading(false);
+    try {
+      const resp = await axios.post(auth.data.host + "/certificates/" + id + "/verify?scaleguard=true", {
+        challengeType: method
+      }, {
+        headers: {
+          Authorization: auth.data.token
+        }
+      })
+      setLoading(false);
 
+      await load()
+      return resp;
+    } catch (e: any) {
+      return e.response;
+    }
   }
 
 
@@ -129,7 +134,7 @@ export default function Certificates() {
     const { isOpen, onOpen, onClose } = useDisclosure()
     return (
       <>
-        <Button onClick={onOpen} leftIcon={<FaInfoCircle></FaInfoCircle>}>DNS Challenge Info</Button>
+        <Button onClick={onOpen} leftIcon={<FaInfoCircle></FaInfoCircle>}  size={"xs"} variant={"outline"}>DNS Challenge Info</Button>
 
         <Modal isOpen={isOpen} onClose={onClose}>
           <ModalOverlay />
@@ -225,7 +230,7 @@ export default function Certificates() {
     }, [id])
     return (
       <>
-        <Button size={"sm"} variant={"outline"} colorScheme='gray.400' isLoading={loading} onClick={openView} leftIcon={<FaInfoCircle></FaInfoCircle>}>Download</Button>
+        <Button size={"xs"} variant={"outline"} colorScheme='gray.400' isLoading={loading} onClick={openView} leftIcon={<FaInfoCircle></FaInfoCircle>}>Download</Button>
 
         <Modal isOpen={isOpen} onClose={onClose} size={"xl"}>
           <ModalOverlay />
@@ -318,13 +323,15 @@ export default function Certificates() {
                       <td className=" px-6 py-4  "><div className='flex gap-2 uppercase justify-center'>{system.json.status} {system.json.status == "valid" ? <FaArrowCircleUp color='green'></FaArrowCircleUp> : <FaArrowCircleDown color='red'></FaArrowCircleDown>}</div></td>
                       <td className=" px-6 py-4">{system.json.status == "valid" ? new Date(system.expiryTime).toLocaleString() : system.json.expires}</td>
                       <td className="px-6 py-4">{system.json.identifiers.map(s => s.value).join(",")}</td>
-                      <td className=" px-6 py-4">{system.json.status == "valid" ? "Validated" : <DnsChallenge info={system}></DnsChallenge>}</td>
+                      <td className=" px-6 py-4">{system.json.status == "valid" ?       
+                        <Button isDisabled colorScheme='green' leftIcon={<FaCheckCircle></FaCheckCircle>}  size={"xs"} variant={"outline"}>Validated</Button>
+  : <DnsChallenge info={system}></DnsChallenge>}</td>
                       <td className=" px-6 py-4"><HttpChallenge id={system.id}></HttpChallenge></td>
-                      <td><div className=" px-6 py-4 flex gap-2 justify-center items-center">
-                      {system.json.status != "valid" &&  <VerificationMethodModal id={system.id} onContinue={verify}></VerificationMethodModal> }
-                      {/* <Button isLoading={loading} onClick={() => verify(system.id)} colorScheme='green' leftIcon={<FaCheck></FaCheck>} variant={"outline"} size={"xs"}>Verify</Button> } */}
-                        
-                        <DeleteSystem id={system.id} source={"Certificate"} onAction={()=>deleteItem(system.id) as any} buttonType='big'></DeleteSystem>
+                      <td><div className=" px-6 py-4 flex gap-2 justify-start items-center">
+                        {system.json.status != "valid" && <VerificationMethodModal id={system.id} onContinue={verify}></VerificationMethodModal>}
+                        {/* <Button isLoading={loading} onClick={() => verify(system.id)} colorScheme='green' leftIcon={<FaCheck></FaCheck>} variant={"outline"} size={"xs"}>Verify</Button> } */}
+
+                        <DeleteSystem id={system.id} source={"Certificate"} onAction={() => deleteItem(system.id) as any} buttonType='big'></DeleteSystem>
                         {/* <Button isLoading={loading} onClick={() => deleteItem(system.id)} colorScheme='red' leftIcon={<FaTrash></FaTrash>} variant={"outline"} size={"xs"}>Delete</Button> */}
                       </div> </td>
                     </tr>

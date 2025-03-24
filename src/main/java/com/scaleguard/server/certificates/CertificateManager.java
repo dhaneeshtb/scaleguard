@@ -3,6 +3,8 @@ package com.scaleguard.server.certificates;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.scaleguard.server.http.reverse.ChallengeVerifiers;
+import com.scaleguard.server.http.reverse.DnsTxtLookup;
 import org.shredzone.acme4j.*;
 import org.shredzone.acme4j.challenge.Challenge;
 import org.shredzone.acme4j.challenge.Dns01Challenge;
@@ -22,17 +24,19 @@ public class CertificateManager {
     private static final Logger LOG = LoggerFactory.getLogger(CertificateManager.class);
     private static final ObjectMapper mapper = new ObjectMapper();
     AcmeContext context;
-    public CertificateManager(){
+
+    public CertificateManager() {
         try {
             context = AcmeUtils.getContext();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
     public JsonNode loadAll() throws AcmeException, IOException {
-       Set<String> ceritifcateIds= AcmeUtils.listCertificateIds();
-        ArrayNode an =mapper.createArrayNode();
-        ceritifcateIds.forEach(s-> {
+        Set<String> ceritifcateIds = AcmeUtils.listCertificateIds();
+        ArrayNode an = mapper.createArrayNode();
+        ceritifcateIds.forEach(s -> {
             try {
                 an.add(AcmeUtils.readCachedCertificate(s));
             } catch (IOException e) {
@@ -41,17 +45,18 @@ public class CertificateManager {
         });
         return an;
     }
-    public JsonNode orderCertificate(List<String> domains,String id) throws AcmeException, IOException {
-        LoadOrder loader= new LoadOrder(context);
-        return loader.createOrder(domains,id==null? UUID.randomUUID().toString():id);
+
+    public JsonNode orderCertificate(List<String> domains, String id) throws AcmeException, IOException {
+        LoadOrder loader = new LoadOrder(context);
+        return loader.createOrder(domains, id == null ? UUID.randomUUID().toString() : id);
     }
 
     public JsonNode checkStatus(String orderId) throws AcmeException, IOException {
-        LoadOrder loader= new LoadOrder(context);
+        LoadOrder loader = new LoadOrder(context);
         return loader.loadOrderStatus(orderId);
     }
 
-    public JsonNode readCertificates(String orderId) throws  IOException {
+    public JsonNode readCertificates(String orderId) throws IOException {
         return AcmeUtils.readCertificate(orderId);
     }
 
@@ -60,31 +65,48 @@ public class CertificateManager {
     }
 
     public Order getOrder(String orderId) throws AcmeException, IOException {
-        LoadOrder loader= new LoadOrder(context);
+        LoadOrder loader = new LoadOrder(context);
         return loader.loadOrder(orderId);
     }
 
-    public String verifyOrder(String id,String challengeType) throws AcmeException, IOException {
+    //c71175ea-bc39-44c1-a90e-210083ad549f
+    public String verifyOrder(String id, String challengeType) throws AcmeException, IOException {
         Order order = getOrder(id);
         order.update();
         List<Challenge> challenges = new ArrayList<>();
-        LOG.info("Location {}",order.getLocation());
+        LOG.info("Location {}", order.getLocation());
         //String challengeType="http";//http or dns
 
 
-        if(order.getStatus().equals(Status.PENDING)) {
+        if (order.getStatus().equals(Status.PENDING)) {
             order.getAuthorizations().forEach(auth -> {
-                TokenChallenge challenge=null;
+                TokenChallenge challenge = null;
                 Http01Challenge challengeHTTP = auth.findChallenge(Http01Challenge.class).orElse(null);
                 Dns01Challenge challengeDNS = auth.findChallenge(Dns01Challenge.class).orElse(null);
-                if("http".equalsIgnoreCase(challengeType) && challengeHTTP!=null){
+                if ("http".equalsIgnoreCase(challengeType) && challengeHTTP != null) {
                     challenge = challengeHTTP;
-                }else if("dns".equalsIgnoreCase(challengeType) && challengeDNS!=null){
+                } else if ("dns".equalsIgnoreCase(challengeType) && challengeDNS != null) {
                     challenge = challengeDNS;
 
                 }
 //                TokenChallenge challenge= "http".equalsIgnoreCase(challengeType)?challengeHTTP:challengeDNS;
-                if(challenge!=null) {
+                if (challenge != null) {
+                    boolean configDone = false;
+                    try {
+                        JsonNode x = AcmeUtils.readCachedCertificate(id);
+                        if ("dns".equalsIgnoreCase(challengeType)) {
+                            ChallengeVerifiers.verifyDNS(x.get("dnsChallenge"));
+                        } else {
+                            ChallengeVerifiers.verifyHTTP(x.get("httpChallenge"));
+                        }
+                        if (configDone) {
+                            LOG.info("Proceeding to validate. Config success");
+                        } else {
+                            throw new RuntimeException("invalid configuration.Configure ");
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
                     try {
                         challenge.trigger();
                         challenges.add(challenge);
@@ -95,7 +117,7 @@ public class CertificateManager {
             });
         }
 
-        if (order.getStatus().equals(Status.READY)){
+        if (order.getStatus().equals(Status.READY)) {
 
             LOG.info("Executing Domain Order ###");
             order.execute(context.getDomainKeyPair());
@@ -108,16 +130,15 @@ public class CertificateManager {
 
         int attempts = 10;
         while (order.getStatus() != Status.VALID && attempts-- > 0) {
-            LOG.info("Checking status" +order.getStatus());
+            LOG.info("Checking status" + order.getStatus());
 
             if (order.getStatus() == Status.INVALID) {
-
 
 
                 LOG.info("Challenge failed... Giving up.");
                 break;
             } else if (order.getStatus().equals(Status.READY)) {
-                LOG.info("Executing inner ready" +order.getStatus());
+                LOG.info("Executing inner ready" + order.getStatus());
                 order.execute(context.getDomainKeyPair());
             }
             try {
@@ -128,18 +149,16 @@ public class CertificateManager {
             order.update();
         }
 
-        if(order.getStatus().equals(Status.VALID)){
-            LOG.info("Final status {}",order.getStatus());
+        if (order.getStatus().equals(Status.VALID)) {
+            LOG.info("Final status {}", order.getStatus());
 
-            AcmeUtils.saveCertificate(id,order,context);
-        }else{
-            AcmeUtils.saveOrder(order,id);
+            AcmeUtils.saveCertificate(id, order, context);
+        } else {
+            AcmeUtils.saveOrder(order, id);
         }
         return order.getStatus().toString();
 
     }
-
-
 
 
 }

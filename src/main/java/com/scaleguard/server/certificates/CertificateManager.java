@@ -74,9 +74,16 @@ public class CertificateManager {
 
         if(order.getStatus().equals(Status.PENDING)) {
             order.getAuthorizations().forEach(auth -> {
+                TokenChallenge challenge=null;
                 Http01Challenge challengeHTTP = auth.findChallenge(Http01Challenge.class).orElse(null);
                 Dns01Challenge challengeDNS = auth.findChallenge(Dns01Challenge.class).orElse(null);
-                TokenChallenge challenge= "http".equalsIgnoreCase(challengeType)?challengeHTTP:challengeDNS;
+                if("http".equalsIgnoreCase(challengeType) && challengeHTTP!=null){
+                    challenge = challengeHTTP;
+                }else if("dns".equalsIgnoreCase(challengeType) && challengeDNS!=null){
+                    challenge = challengeDNS;
+
+                }
+//                TokenChallenge challenge= "http".equalsIgnoreCase(challengeType)?challengeHTTP:challengeDNS;
                 if(challenge!=null) {
                     try {
                         challenge.trigger();
@@ -104,6 +111,9 @@ public class CertificateManager {
             LOG.info("Checking status" +order.getStatus());
 
             if (order.getStatus() == Status.INVALID) {
+
+
+
                 LOG.info("Challenge failed... Giving up.");
                 break;
             } else if (order.getStatus().equals(Status.READY)) {

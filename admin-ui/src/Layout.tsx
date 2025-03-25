@@ -81,6 +81,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </a>
 
                   <a
+                    href="/dns"
+                    className="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    DNS
+                  </a>
+
+                  <a
                     href="/security"
                     className="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
                   >

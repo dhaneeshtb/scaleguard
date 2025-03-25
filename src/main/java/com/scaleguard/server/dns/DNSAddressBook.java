@@ -1,5 +1,6 @@
 package com.scaleguard.server.dns;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.DNSEntry;
 import com.scaleguard.server.db.DNSEntriesDB;
@@ -178,6 +179,11 @@ public class DNSAddressBook {
         LOGGER.info("name=> {} mappedName=>{}",name,bName);
         if(bName!=null) {
             List<WrappedDNSRecord> dnsList = dnsAddressMap.computeIfAbsent(bName, k -> new ArrayList<>());
+            try {
+                LOGGER.info(SystemManager.getMapper().writeValueAsString(dnsList));
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
             return generateResponse(dnsList, query);
         }else{
             return null;

@@ -13,7 +13,8 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
-  ModalFooter
+  ModalFooter,
+  Heading
 } from "@chakra-ui/react";
 import { DeleteIcon } from "@chakra-ui/icons";
 
@@ -45,9 +46,11 @@ const NameServers = ({nameServers,onSave,onDelete}:{nameServers:any[],onSave: (n
 
   return (
     <Box p={4} w="400px" borderWidth={1} borderRadius="lg" boxShadow="md">
+        <Heading size={"md"}>Name Servers</Heading>
       <VStack spacing={4} align="stretch">
         {nameServers.map((server, index) => (
           <HStack key={index} justifyContent="space-between" p={2} borderWidth={1} borderRadius="md">
+            <Text>{index+1}</Text>
             <Text>{server.name}</Text>
             <IconButton
               aria-label="Delete Name Server"

@@ -91,7 +91,6 @@ public class CertificateManager {
                 }
 //                TokenChallenge challenge= "http".equalsIgnoreCase(challengeType)?challengeHTTP:challengeDNS;
                 if (challenge != null) {
-                    boolean configDone = false;
                     try {
                         JsonNode x = AcmeUtils.readCachedCertificate(id);
                         if ("dns".equalsIgnoreCase(challengeType)) {
@@ -99,11 +98,7 @@ public class CertificateManager {
                         } else {
                             ChallengeVerifiers.verifyHTTP(x.get("httpChallenge"));
                         }
-                        if (configDone) {
-                            LOG.info("Proceeding to validate. Config success");
-                        } else {
-                            throw new RuntimeException("invalid configuration.Configure ");
-                        }
+
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }

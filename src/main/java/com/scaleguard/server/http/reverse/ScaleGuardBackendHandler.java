@@ -17,12 +17,14 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CacheManager;
 import com.scaleguard.server.http.cache.InMemoryCacheLooker;
+import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.RouteLogger;
 import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
 
 public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
@@ -53,6 +55,39 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(final ChannelHandlerContext ctx, Object msg) {
         Object cachedObject;
         int statusCode;
+
+        if(msg instanceof FullHttpResponse) {
+            FullHttpResponse response= (FullHttpResponse) msg;
+            if (response.status().code() >= 300 && response.status().code() < 400) {
+                // Handle Redirect
+                String location = response.headers().get(HttpHeaderNames.LOCATION);
+                if (location != null) {
+                    if(rt!=null){
+                       String sfqdn =  rt.getSourceSystem().getScheme()+"://"+rt.getSourceSystem().getHost();
+                       int port = Integer.valueOf(rt.getSourceSystem().getPort());
+                       if(port!=80 && port!=443){
+                           sfqdn=sfqdn+":"+port;
+                       }
+                        HostGroup hg = rt.getTargetSystem().getHostGroup();
+                        if(hg!=null) {
+                            String tfqdn = hg.getScheme() + "://" + hg.getHost();
+                            int dport = Integer.valueOf(hg.getPort());
+                            if (dport != 80 &&  dport != 443) {
+                                tfqdn = tfqdn + ":" + dport;
+                            }
+                            String cLocation = location.replace(tfqdn, sfqdn);
+
+                            response.headers().set(HttpHeaderNames.LOCATION, cLocation);
+                            System.out.println("Redirecting to: " + location);
+                        }
+                    }
+
+//                    request.setUri(location);
+//                    followRedirects(ctx, request, redirectCount + 1);
+//                    return;
+                }
+            }
+        }
         if(cacheKey!=null){
             if(msg instanceof ByteBuf){
                 cachedObject = ((ByteBuf) msg).duplicate().retain();

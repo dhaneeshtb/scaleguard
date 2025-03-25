@@ -53,7 +53,6 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 		// and server in the real world.
 
 		pipeline.addLast(new LoggingHandler(LogLevel.DEBUG));
-
 		if (isSecureBackend) {
 
 			pipeline.addLast(sslContext.newHandler(ch.alloc()));

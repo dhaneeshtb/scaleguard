@@ -16,28 +16,29 @@ public class DNSRoute implements RequestRoute {
         if(method.equalsIgnoreCase("get")){
            return RequestRoutingResponse.succes(JSON.toString(DNSAddressBook.get()));
         }
-        JsonNode node = JSON.parse(body);
-        String name =node.has("name")?node.get("name").asText():null;
-        String ip =node.has("ip")? node.get("ip").asText():null;
-        String type = node.has("type")? node.get("type").asText():"record";
-        if("base".equalsIgnoreCase(type) || (ip==null||ip.isEmpty())){
-            ip ="base";
-        }
-        long ttl = node.has("ttl")? node.get("ttl").asLong():DNSAddressBook.DEFAULT_TTL;
-        if(!name.endsWith(".")){
-            name=name+".";
-        }
+
         if(method.equalsIgnoreCase("delete")){
 
             String[] tuples = uri.split("/");
             String id =!tuples[tuples.length-1].equalsIgnoreCase("dns")?tuples[tuples.length-1]:null;
             if(id!=null){
                 DNSAddressBook.remove(id);
-            }else {
-                DNSAddressBook.remove(name, ip);
             }
             return RequestRoutingResponse.succes("{}");
         }else if(method.equalsIgnoreCase("post")){
+
+            JsonNode node = JSON.parse(body);
+            String name =node.has("name")?node.get("name").asText():null;
+            String ip =node.has("ip")? node.get("ip").asText():null;
+            String type = node.has("type")? node.get("type").asText():"record";
+            if("base".equalsIgnoreCase(type) || (ip==null||ip.isEmpty())){
+                ip ="base";
+            }
+            long ttl = node.has("ttl")? node.get("ttl").asLong():DNSAddressBook.DEFAULT_TTL;
+            if(!name.endsWith(".")){
+                name=name+".";
+            }
+
             DNSAddressBook.add(name,ip,type,ttl);
             return RequestRoutingResponse.succes(node.toString());
         }else{

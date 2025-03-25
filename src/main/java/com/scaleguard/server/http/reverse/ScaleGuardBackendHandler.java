@@ -76,15 +76,10 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
                                 tfqdn = tfqdn + ":" + dport;
                             }
                             String cLocation = location.replace(tfqdn, sfqdn);
-
                             response.headers().set(HttpHeaderNames.LOCATION, cLocation);
                             System.out.println("Redirecting to: " + location);
                         }
                     }
-
-//                    request.setUri(location);
-//                    followRedirects(ctx, request, redirectCount + 1);
-//                    return;
                 }
             }
         }

@@ -5,6 +5,7 @@ import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.DNSEntry;
 import com.scaleguard.server.db.DNSEntriesDB;
 import com.scaleguard.server.system.SystemManager;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.dns.*;
 import io.netty.util.NetUtil;
@@ -12,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -71,6 +73,17 @@ public class DNSAddressBook {
             return  new DefaultDnsRawRecord(
                     inName!=null?inName:name,
                     DnsRecordType.A, ttl, Unpooled.wrappedBuffer(NetUtil.createByteArrayFromIpAddressString(ip)));
+        }
+        public DefaultDnsRawRecord getRecord(String inName,String type) {
+            if(type.equalsIgnoreCase("txt")){
+                return new DefaultDnsRawRecord(
+                        inName != null ? inName : name,
+                        DnsRecordType.TXT, ttl,  Unpooled.wrappedBuffer(ip.getBytes(StandardCharsets.UTF_8)));
+            }else {
+                return new DefaultDnsRawRecord(
+                        inName != null ? inName : name,
+                        DnsRecordType.A, ttl, Unpooled.wrappedBuffer(NetUtil.createByteArrayFromIpAddressString(ip)));
+            }
         }
         public String getName() {
             return name;
@@ -174,7 +187,7 @@ public class DNSAddressBook {
     public static boolean isEntryExist(String name){
         return baseMappedName(name)!=null;
     }
-    public static DefaultDnsResponse get(String name,DnsQuery query){
+    public static DefaultDnsResponse get(String name,DnsQuery query,String type){
         String bName=baseMappedName(name);
         LOGGER.info("name=> {} mappedName=>{}",name,bName);
         if(bName!=null) {
@@ -184,7 +197,7 @@ public class DNSAddressBook {
             } catch (JsonProcessingException e) {
                 throw new RuntimeException(e);
             }
-            return generateResponse(dnsList, query);
+            return generateResponse(dnsList, query,type);
         }else{
             return null;
         }
@@ -206,12 +219,12 @@ public class DNSAddressBook {
             return SystemManager.readNetworksCached().stream().map(n-> new WrappedDNSRecord(ddr.getName(), n,ddr.type,ddr.ttl));
         }else return Stream.of(ddr);
     }
-    private static DefaultDnsResponse generateResponse(List<WrappedDNSRecord> dnsList,DnsQuery query) {
+    private static DefaultDnsResponse generateResponse(List<WrappedDNSRecord> dnsList,DnsQuery query,String type) {
         DefaultDnsResponse response = new DefaultDnsResponse(query.id());
         response.setAuthoritativeAnswer(true);
         DnsQuestion question = query.recordAt(DnsSection.QUESTION);
         response.addRecord(DnsSection.QUESTION, question);
-        dnsList.stream().flatMap(DNSAddressBook::expand).forEach(rec-> response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name())));
+        dnsList.stream().flatMap(DNSAddressBook::expand).forEach(rec-> response.addRecord(DnsSection.ANSWER, rec.getRecord(question.name(),type)));
         return response;
     }
 }

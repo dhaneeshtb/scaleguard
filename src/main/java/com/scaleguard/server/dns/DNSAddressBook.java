@@ -5,6 +5,7 @@ import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.DNSEntry;
 import com.scaleguard.server.db.DNSEntriesDB;
 import com.scaleguard.server.system.SystemManager;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.dns.*;
@@ -76,14 +77,23 @@ public class DNSAddressBook {
         }
         public DefaultDnsRawRecord getRecord(String inName,String type) {
             if(type.equalsIgnoreCase("txt")){
+                ByteBuf content = createTxtRecord(ip);
+
                 return new DefaultDnsRawRecord(
                         inName != null ? inName : name,
-                        DnsRecordType.TXT, ttl,  Unpooled.wrappedBuffer(ip.getBytes(StandardCharsets.UTF_8)));
+                        DnsRecordType.TXT, ttl, content );
             }else {
                 return new DefaultDnsRawRecord(
                         inName != null ? inName : name,
                         DnsRecordType.A, ttl, Unpooled.wrappedBuffer(NetUtil.createByteArrayFromIpAddressString(ip)));
             }
+        }
+        private ByteBuf createTxtRecord(String text) {
+            ByteBuf buf = Unpooled.buffer();
+            byte[] txtBytes = text.getBytes(StandardCharsets.UTF_8);
+            buf.writeByte(txtBytes.length);  // TXT record length prefix
+            buf.writeBytes(txtBytes);
+            return buf;
         }
         public String getName() {
             return name;

@@ -69,21 +69,29 @@ public class SystemManager {
 
     public static List<String> readNetworks() {
         try {
-            List<NetworkInterface> nil = NetworkInterface.networkInterfaces().collect(Collectors.toList());
-            ArrayList<String> node = new ArrayList();
-            for (NetworkInterface ni : nil) {
-                ni.getInetAddresses().asIterator().forEachRemaining(i -> {
-                    String ha = i.getHostAddress();
-                    if (!ha.contains(":") && !i.isMCGlobal()) {
-                        node.add(i.getHostAddress());
+            List<NetworkInterface> interfaces = NetworkInterface.networkInterfaces().collect(Collectors.toList());
+            List<String> publicIps = new ArrayList<>();
+
+            for (NetworkInterface ni : interfaces) {
+                ni.getInetAddresses().asIterator().forEachRemaining(inetAddress -> {
+                    String ip = inetAddress.getHostAddress();
+                    if (isPublicIp(inetAddress)) {
+                        publicIps.add(ip);
                     }
                 });
             }
-            return node;
-        }catch (Exception e){
+            return publicIps;
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return List.of();
+    }
+
+    private static boolean isPublicIp(InetAddress address) {
+        if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()) {
+            return false;  // Exclude local, private, and link-local IPs
+        }
+        return true;  // Accept only public addresses
     }
     public ArrayNode systemProperties() throws Exception {
 

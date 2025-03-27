@@ -5,6 +5,7 @@ import com.scaleguard.server.application.AppRoute;
 import com.scaleguard.server.application.ClientRoute;
 import com.scaleguard.server.certificates.CertificatesRoute;
 import com.scaleguard.server.dns.DNSRoute;
+import com.scaleguard.server.dns.TunnelRoute;
 import com.scaleguard.server.login.LoginRoute;
 import com.scaleguard.server.registration.RegisterRoute;
 import com.scaleguard.server.system.SystemsRoute;
@@ -23,6 +24,7 @@ public class RequestRoutingContexts {
         routesMap.put("systems",new SystemsRoute());
         routesMap.put("signin",new LoginRoute());
         routesMap.put("dns",new DNSRoute());
+        routesMap.put("tunnel",new TunnelRoute());
         routesMap.put("register",new RegisterRoute());
         routesMap.put("apps",new AppRoute());
         routesMap.put("clients",new ClientRoute());

@@ -154,31 +154,31 @@ export default function AppManagement() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-4">App Management</h2>
-      <div className="mb-4 space-y-2">
+      <h2 className="text-2xl font-bold mb-4 dark:text-white">App Management</h2>
+      <div className="mb-4 space-y-2 dark:text-white">
         <Input placeholder="App Name" value={appName} onChange={(e) => setAppName(e.target.value)} />
         <Input placeholder="App Description" value={appDescription} onChange={(e) => setAppDescription(e.target.value)} />
         {errorMessage && <Text color="red.500">{errorMessage}</Text>}
         
-        <Button onClick={createApp}  variant={"outline"} colorScheme='teal' size={"xs"} leftIcon={<FaPlusCircle></FaPlusCircle>}>Create App</Button>
+        <Button onClick={createApp}  variant={"solid"} colorScheme='green' size={"xs"} leftIcon={<FaPlusCircle></FaPlusCircle>}>Create App</Button>
       </div>
-      <Table variant="simple">
+      <Table variant="simple" className='dark:text-white'>
         <Thead>
-          <Tr>
-            <Th>App Name</Th>
-            <Th>Description</Th>
-            <Th>Clients</Th>
-            <Th>Actions</Th>
+          <Tr className='dark:text-white'>
+            <Th className='dark:text-white'>App Name</Th>
+            <Th className='dark:text-white'>Description</Th>
+            <Th className='dark:text-white'>Clients</Th>
+            <Th className='dark:text-white'>Actions</Th>
           </Tr>
         </Thead>
         <Tbody>
           {apps.map((app) => (
-            <Tr key={app.id}>
-              <Td>{app.name}</Td>
+            <Tr key={app.id} className='dark:text-white'>
+              <Td className='dark:text-white'>{app.name}</Td>
               <Td>{app.description}</Td>
               <Td>
                 {app.clients && app.clients.map(client => (
-                  <div key={client.id} className="flex flex-col mb-2 gap-2">
+                  <div key={client.id} className="flex flex-col mb-2 gap-2 dark:text-white">
                     <p><strong>Client Name:</strong> {client.name}</p>
                     <p><strong>Client ID:</strong> {client.clientid}</p>
                     <p><strong>Client Secret:</strong> {client.clientsecret}</p>

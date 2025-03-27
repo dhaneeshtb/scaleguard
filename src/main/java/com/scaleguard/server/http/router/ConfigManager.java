@@ -8,6 +8,7 @@ import com.scaleguard.server.db.HostGroupsDB;
 import com.scaleguard.server.db.SourceSystemDB;
 import com.scaleguard.server.db.TargetSystemDB;
 import com.scaleguard.server.system.SystemManager;
+import io.netty.handler.ssl.CertificateStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,6 +54,10 @@ public class ConfigManager {
                 } else {
                     throw new RuntimeException("not allowed");
                 }
+                break;
+
+            case "quickmapping":
+                out = QuickSystemMapper.mapSystem(mapper.readTree(json));
                 break;
             case "sourcesystems":
                 if ("delete".equalsIgnoreCase(method)) {
@@ -206,10 +211,15 @@ public class ConfigManager {
             try {
                 boolean isMapped =  SystemManager.isSystemMapped(ss.getHost());
                 if(isMapped) {
-                    String certificateId = UUID.randomUUID().toString();
-                    CertificatesRoute.getCm().orderCertificate(List.of(ss.getHost()), certificateId);
-                    ss.setCertificateId(certificateId);
-                    isCertificateOrdered=true;
+                    CertificateStore.CertificateInfo certInfo =  CertificateStore.get(ss.getHost());
+                    if(certInfo==null) {
+                        String certificateId = UUID.randomUUID().toString();
+                        CertificatesRoute.getCm().orderCertificate(List.of(ss.getHost()), certificateId);
+                        ss.setCertificateId(certificateId);
+                        isCertificateOrdered = true;
+                    }else{
+                        ss.setCertificateId(certInfo.getId());
+                    }
                 }else{
                     logger.error("unable to autoprocure the certificate : host not mapped");
                 }
@@ -223,7 +233,7 @@ public class ConfigManager {
     public static DBModelSystem toDBModel(SourceSystem d){
         DBModelSystem dm = new DBModelSystem();
         dm.setId(d.getId()!=null?d.getId():UUID.randomUUID().toString());
-        dm.setName(d.getGroupId());
+        dm.setName(d.getName()!=null?d.getName():d.getGroupId());
         dm.setMts(System.currentTimeMillis());
         dm.setUts(System.currentTimeMillis());
         dm.setGroupId(d.getGroupId());

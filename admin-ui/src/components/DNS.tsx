@@ -107,19 +107,19 @@ export default function DNS() {
 
   return (
     <div className="flex flex-col dark:bg-slate-900 ">
- <div className="flex w-full justify-center ">
+ <div className="flex w-full justify-center dark:text-white ">
       <NameServers nameServers={nameServers} onSave={saveNameserver} onDelete={deleteItem}></NameServers>
       </div>
 
 
       <div className="rounded-lg shadow-lg flex justify-center items-center mt-1">
-        <div className="container mx-auto bg-indigo-800 dark:bg-indigo-900 rounded-lg p-14">
+        <div className="container mx-auto bg-indigo-800 dark:bg-slate-800 rounded-lg p-14 dark:text-white">
           <div>
-            <h1 className="text-center font-bold text-white text-4xl">Configure DNS entries</h1>
+            <h1 className="text-center font-bold text-4xl dark:text-white">Configure DNS entries</h1>
             <p className="text-black dark:text-white mx-auto font-normal text-sm my-6 max-w-lg">
               
             </p>
-            <div className="flex flex-col lg:flex-row items-center bg-white rounded-lg overflow-hidden px-2 py-1 justify-between gap-2 items-center">
+            <div className="flex flex-col lg:flex-row items-center bg-white rounded-lg overflow-hidden px-2 py-1 justify-between gap-2 items-center dark:text-white">
               <div className='w-full lg:w-1/3 flex flex-col justify-start'>
                 <Text>Name</Text>
               <input value={name} onChange={(e)=>setName(e.target.value.trim())} className="w-full  text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="DNS base domain name" />
@@ -149,7 +149,7 @@ export default function DNS() {
                   </div>
                   <div className=' flex flex-col justify-start'>
                   <div className='h-6'> </div>
-              <Button isDisabled={!name||!ttl} onClick={()=>save()} leftIcon={<FaSave></FaSave>} bg={"bg-indigo-500"} className="w-full lg:w-[200px] bg-indigo-500 text-white text-base rounded-lg px-4 py-2 font-thin">Save</Button>
+              <Button isDisabled={!name||!ttl||!ip} onClick={()=>save()} leftIcon={<FaSave></FaSave>} colorScheme='green' className="w-full lg:w-[200px] bg-indigo-500 text-white text-base rounded-lg px-4 py-2 font-thin">Save</Button>
                   </div>
             </div>
           </div>

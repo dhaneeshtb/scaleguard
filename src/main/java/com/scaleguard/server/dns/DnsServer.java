@@ -171,7 +171,7 @@ public final class DnsServer {
                 return;
             }
             logger.info("dns in query {} {} {}",question.name(),ctx.channel().remoteAddress(),question.type().name());
-            if ("txt".equalsIgnoreCase(question.type().name()) && DNSAddressBook.isEntryExist(question.name().trim().toLowerCase())) {
+            if (DNSAddressBook.isEntryExist(question.name().trim().toLowerCase())) {
                 DefaultDnsResponse dr = DNSAddressBook.get(question.name().trim().toLowerCase(),msg,question.type().name());
                 send(ctx, msg, dr);
             } else {

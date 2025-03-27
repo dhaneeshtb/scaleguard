@@ -17,6 +17,7 @@ import {
   Heading
 } from "@chakra-ui/react";
 import { DeleteIcon } from "@chakra-ui/icons";
+import { FaPlusCircle } from "react-icons/fa";
 
 const NameServers = ({nameServers,onSave,onDelete}:{nameServers:any[],onSave: (name,ip)=>Promise<void>,onDelete:(id)=>Promise<void>}) => {
 //   const [nameServers, setNameServers] = useState(serverlist);
@@ -50,13 +51,14 @@ const NameServers = ({nameServers,onSave,onDelete}:{nameServers:any[],onSave: (n
       <VStack spacing={4} align="stretch">
         {nameServers.map((server, index) => (
           <HStack key={index} justifyContent="space-between" p={2} borderWidth={1} borderRadius="md">
-            <Text>{index+1}</Text>
+            <Text className="bg-black text-white dark:bg-white dark:text-black w-6 h-6 text-center shadow-lg" rounded={"full"}>{index+1}</Text>
             <Text>{server.name}</Text>
             <IconButton
               aria-label="Delete Name Server"
               icon={<DeleteIcon />}
               onClick={() => confirmDelete(server.id)}
               colorScheme="red"
+              rounded={"full"}
               size="sm"
             />
           </HStack>
@@ -67,9 +69,9 @@ const NameServers = ({nameServers,onSave,onDelete}:{nameServers:any[],onSave: (n
             value={newNameServer}
             onChange={(e) => setNewNameServer(e.target.value)}
           />
-          <Button colorScheme="blue" onClick={addNameServer}>
+          <IconButton rounded={"full"} icon={<FaPlusCircle></FaPlusCircle>} aria-label="Add" size={"md"} colorScheme="green" onClick={addNameServer}>
             Add
-          </Button>
+          </IconButton>
         </HStack>
       </VStack>
 

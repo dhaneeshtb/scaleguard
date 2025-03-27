@@ -134,8 +134,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       try {
         f = b.connect(ts.getTargetSystem().getHost(), Integer.valueOf(ts.getTargetSystem().getPort()));
       }catch (Exception e){
-        new DefaultResponseHandler().handleFailure(ctx,"failed to connect to "+ts.getTargetSystem().getHost()+":"+ts.getTargetSystem().getPort(),
-                HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        handleConnectionError(ts,ctx);
         return;
       }
     }
@@ -146,13 +145,27 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         inboundChannel.config().setAutoRead(true);
         outboundChannel.writeAndFlush(msg);
       } else {
-        Object obj = future.get();
-        if(obj instanceof Exception){
-          logger.error(((Exception) obj).getMessage());
+        try {
+          Object obj = future.get();
+          if (obj instanceof Exception) {
+            logger.error(((Exception) obj).getMessage());
+          }
+        }finally {
+          handleConnectionError(ts,ctx);
+          inboundChannel.close();
         }
-        inboundChannel.close();
       }
     });
+  }
+
+  private void handleConnectionError(RouteTarget ts,final ChannelHandlerContext ctx){
+    if(ts.getTargetSystem().getHostGroup()!=null) {
+      new DefaultResponseHandler().handleFailure(ctx, "failed to connect to " + ts.getTargetSystem().getHostGroup().getHost() + ":" + ts.getTargetSystem().getHostGroup().getPort(),
+              HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    }else{
+      new DefaultResponseHandler().handleFailure(ctx, "failed to connect to " + ts.getTargetSystem().getGroupId(),
+              HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 
   public void handleExistingOutboundChannel(final ChannelHandlerContext ctx, Object msg, RouteTarget ts) {

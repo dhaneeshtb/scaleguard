@@ -3,6 +3,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.exceptions.GenericServerProcessingException;
+import io.jsonwebtoken.lang.Strings;
 import org.shredzone.acme4j.AcmeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,17 @@ public class CertificateStore {
 
     public static class CertificateInfo {
         X509Certificate[] keyCertChain;
+
+        private String id;
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
         public X509Certificate[] getKeyCertChain() {
             return keyCertChain;
         }
@@ -43,6 +55,7 @@ public class CertificateStore {
         }
     }
     private static Map<String, CertificateInfo> certificateMap = new HashMap<>();
+    private static Map<String, CertificateInfo> wildcardCertsMap = new HashMap<>();
 
     static{
         java.security.Security.addProvider(
@@ -54,8 +67,17 @@ public class CertificateStore {
         if (certificateMap.containsKey(alias)) {
             return certificateMap.get(alias);
         }
+        CertificateInfo wCert = getWildcardCheck(alias);
+        if(wCert!=null){
+            return wCert;
+        }
         load(alias);
         return certificateMap.get(alias);
+    }
+
+    private static CertificateInfo getWildcardCheck(String alias){
+        String wTups=alias.substring(alias.indexOf("."));
+        return wildcardCertsMap.get(wTups);
     }
 
     public static void loadAllCerts(){
@@ -72,11 +94,17 @@ public class CertificateStore {
             an.forEach(s->{
                 String id = s.get("id").asText();
                 CertificateInfo cinfo=loadFromPath("certs/"+id);
+                cinfo.setId(id);
                 try {
                     JsonNode node  = mapper.readTree(s.get("json").asText());
                     node.get("identifiers").forEach(ident->{
                        String domainName =  ident.get("value").asText();
                        certificateMap.put(domainName,cinfo);
+                       if(domainName.startsWith("*.")){
+                           String wDomain=  domainName.split("[*]")[1];
+                           LOGGER.info("Widlcard certificate => {} ",wDomain);
+                           wildcardCertsMap.put(wDomain,cinfo);
+                       }
                        LOGGER.info("Loaded certificate => {} ",domainName);
                     });
                 } catch (IOException e) {

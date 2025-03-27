@@ -4,6 +4,7 @@ import com.scaleguard.server.http.router.ConfigManager;
 import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.kafka.KafkaEventsConsumer;
+import com.scaleguard.server.ssh.SshServerWithTunnelListener;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -118,6 +119,13 @@ public class AppServer implements Server{
         try {
             DnsServer dnsServer = new DnsServer();
             dnsServer.start();
+            try {
+                SshServerWithTunnelListener.startServer();
+                logger.info("ssh server started");
+
+            }catch (Exception e){
+                e.printStackTrace();
+            }
             String httpPort=String.valueOf(HTTP_PORT);
             String httpsPort=String.valueOf(HTTPS_PORT);
             if(!ports.contains(httpPort)){

@@ -5,6 +5,7 @@ import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.kafka.KafkaEventsConsumer;
 import com.scaleguard.server.ssh.SshServerWithTunnelListener;
+import com.scaleguard.server.system.SystemAdapter;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -18,7 +19,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 
 public class AppServer implements Server{
     private static final int HTTP_PORT = Integer.parseInt(System.getProperty("port", "80"));
@@ -37,10 +40,40 @@ public class AppServer implements Server{
     public static void main(String[] args) throws Exception {
         System.setProperty("io.netty.leakDetection.level", "PARANOID");
 
+        Map<String, String> parameters = new HashMap<>();
+
+        for (String arg : args) {
+            if (arg.startsWith("--") && arg.contains("=")) {
+                String[] parts = arg.substring(2).split("=", 2);
+                if (parts.length == 2) {
+                    parameters.put(parts[0], parts[1]);
+                }
+            }
+        }
+
+        // Print parsed key-value pairs
+        parameters.forEach((key, value) -> System.out.println(key + " = " + value));
+
+
         AppServer server= new AppServer();
         EventSubscriber subscriber = new EventSubscriber(server);
         ConfigManager.getPublisher().subscribe(subscriber);
         AcmeUtils.getContext();
+
+        if(parameters.containsKey("hostname")){
+            String hostname= parameters.get("hostname");
+            while (true) {
+                try {
+                    SystemAdapter.configure(hostname);
+                    break;
+                }catch (Exception e){
+                    logger.error("Failed to configure system host : "+e.getMessage());
+                    logger.error("The system will not start until the DNS is mapped to the ScaleGuard server hostname-> : "+hostname);
+
+                    Thread.sleep(10000);
+                }
+            }
+        }
         server.start();
         server.listen();
     }

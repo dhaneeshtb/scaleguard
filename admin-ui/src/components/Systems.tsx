@@ -1,7 +1,7 @@
 import { Select,Button, IconButton, Link, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, useDisclosure } from '@chakra-ui/react';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
-import { FaArrowAltCircleUp, FaArrowCircleDown, FaCheckCircle, FaCogs, FaEdit, FaMinusCircle, FaPlusCircle, FaTrash, FaTrashAlt } from "react-icons/fa";
+import { FaArrowAltCircleUp, FaArrowCircleDown, FaCheckCircle, FaCogs, FaEdit, FaMinusCircle, FaPiedPiper, FaPlusCircle, FaTrash, FaTrashAlt } from "react-icons/fa";
 import { formatData, renewCertificate, updateSource } from './sourceupdate';
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
@@ -183,7 +183,7 @@ export default function Systems() {
                         <td className=" px-6 py-4">{system.groupId}</td>
                         <td className=" px-6 py-4">{system.scheme}</td>
 
-                        <td className=" px-6 py-4 text-white"><Link className="text-white bg-black  dark:bg-white dark:text-black  rounded-lg p-1 flex items-center gap-2" href={system.scheme+"://"+system.host} target='_blank'><LinkIcon></LinkIcon>{system.host}</Link></td>
+                        <td className=" px-6 py-4 text-white"><Link className="text-white bg-black  dark:bg-white dark:text-black  rounded-lg p-1 flex items-center gap-2" href={system.scheme+"://"+system.host} target='_blank'>{system.tunnel?<FaPiedPiper className='text-red-500 font-bold'></FaPiedPiper>:<></>}<LinkIcon></LinkIcon>{system.host}</Link></td>
                         <td className=" px-6 py-4">{system.port}</td>
 
                         <td className=" px-6 py-4">{system.target}</td>

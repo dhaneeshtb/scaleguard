@@ -15,6 +15,17 @@ import java.util.Map;
 public class SourceSystem {
 
   private String host;
+
+  private boolean tunnel;
+
+  public boolean isTunnel() {
+    return tunnel;
+  }
+
+  public void setTunnel(boolean tunnel) {
+    this.tunnel = tunnel;
+  }
+
   private String port;
   private String scheme;
   private String basePath;

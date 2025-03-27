@@ -72,7 +72,7 @@ public class QuickSystemMapper {
         public static JsonNode mapSystem(JsonNode node) throws MalformedURLException, NoSuchAlgorithmException {
         String sourceURL = node.get("sourceURL").asText();
         String systemName = node.has("name") ? node.get("name").asText() : getDigest(sourceURL);
-
+        boolean isTunnel = node.has("tunnel")? node.get("tunnel").asBoolean():false;
         ArrayNode targets = (ArrayNode) node.get("targets");
         String gid =systemName!=null?systemName: generateShortUUID();
         String hostGroupId = "h-" + gid;
@@ -86,6 +86,7 @@ public class QuickSystemMapper {
 
         TargetSystem targetSystem = createTarget(hostGroups.get(0), targets.get(0).asText(), targetGroupId);
         SourceSystem sourceSystem = createSource(sourceURL, targetSystem, sourceGroupId);
+        sourceSystem.setTunnel(isTunnel);
         sourceSystem.setName(systemName);
 
         ObjectNode outNode = SystemManager.getMapper().createObjectNode();

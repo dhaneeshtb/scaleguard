@@ -205,6 +205,8 @@ public class TunnelBook {
         ObjectNode request = SystemManager.getMapper().createObjectNode();
         request.put("sourceURL", tr.getFqdn());
         request.put("name", tr.getName());
+        request.put("tunnel", true);
+
 
         ArrayNode targets = SystemManager.getMapper().createArrayNode();
         targets.add(tr.getLfqdn());

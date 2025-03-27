@@ -11,3 +11,5 @@ admin-ui/node_modules/*
 admin-ui/build/*
 domains/*
 certs/*
+domain.key
+user.key

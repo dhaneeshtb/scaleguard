@@ -29,6 +29,8 @@ Below is a screenshot of the Scaleguard landing screen:
 - **Request Caching**: Stores frequently requested content at the load balancer level to improve response times and reduce load on backend servers.
 - **High Scalability**: Efficiently handles a large number of concurrent connections and scales horizontally as demand increases.
 
+
+
 ## Getting Started
 
 ### Prerequisites
@@ -62,6 +64,11 @@ mvn clean install
 java -DadminUser=scaleguard -DadminPassword=Scaleguard123$ -jar target/scaleguard-1.0-SNAPSHOT.jar
 ```
 
+### SafeExpose: Secure Application Exposure
+Scaleguard provides a `SafeExpose` mechanism that allows users to expose their locally running applications to the public in a secure manner. This is achieved through the `safeexpose` script, available at [Scaleguard SafeExpose](https://github.com/dhaneeshtb/scalegurad-safeexpose.git).
+
+For installation and usage details, please refer to the official [Scaleguard SafeExpose repository](https://github.com/dhaneeshtb/scalegurad-safeexpose.git).
+
 ### Disabling Default System DNS Server (If Required)
 If you need to disable the system's default DNS service:
 ```sh
@@ -73,4 +80,22 @@ sudo systemctl stop systemd-resolved
 Contributions are welcome! Please follow these steps:
 1. Fork the repository.
 2. Create a feature branch (`git checkout -b feature-branch`).
-3. Commit your changes (`git commit -m
+3. Commit your changes (`git commit -m "Add new feature"`).
+4. Push to the branch (`git push origin feature-branch`).
+5. Create a pull request.
+
+We appreciate your contributions to make Scaleguard even better!
+
+## License
+Scaleguard is released under the MIT License.
+
+## Contact
+For any inquiries, please contact: dhaneeshtnair@gmail.com  Contributions are welcome! Please follow these steps:
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature-branch`).
+3. Commit your changes (`git commit -m "Add new feature"`).
+4. Push to the branch (`git push origin feature-branch`).
+5. Create a pull request.
+
+We appreciate your contributions to make Scaleguard even better!
+

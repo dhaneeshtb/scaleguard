@@ -8,6 +8,12 @@ Scaleguard's architecture ensures high availability, security, and ease of manag
 
 ![Scaleguard Architecture](scaleguard.svg)
 
+## Landing Screen
+
+Below is a screenshot of the Scaleguard landing screen:
+
+![Scaleguard Landing Screen](screen1.png)
+
 ## Features
 - **Load Balancer**: Distributes incoming traffic across multiple backend servers to ensure optimal resource utilization and reliability.
 - **Reverse Proxy**: Acts as an intermediary to handle client requests, improving security and performance.
@@ -67,13 +73,4 @@ sudo systemctl stop systemd-resolved
 Contributions are welcome! Please follow these steps:
 1. Fork the repository.
 2. Create a feature branch (`git checkout -b feature-branch`).
-3. Commit your changes (`git commit -m 'Add new feature'`).
-4. Push to the branch (`git push origin feature-branch`).
-5. Open a Pull Request.
-
-## License
-This project is licensed under the MIT License.
-
-## Contact
-For any inquiries, reach out via [GitHub Issues](https://github.com/dhaneeshtb/scaleguard/issues) or email **dhaneeshtnair@gmail.com**.
-
+3. Commit your changes (`git commit -m

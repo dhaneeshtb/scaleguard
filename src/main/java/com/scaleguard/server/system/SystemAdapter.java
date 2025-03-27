@@ -18,13 +18,7 @@ public class SystemAdapter {
         return configure(d,id,failOnError);
     }
 
-    public static void main(String[] args) {
-        try {
-            System.out.println(checkConfiguration("router.unkloud.io"));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
+
 
     private static SystemProperty getHostNameProperty(){
        return SystemPropertyDB.getInstance().readAll().stream().filter(s->s.getName().equalsIgnoreCase("hostName")).findFirst().orElse(null);

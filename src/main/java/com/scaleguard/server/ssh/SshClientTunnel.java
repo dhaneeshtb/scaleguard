@@ -72,7 +72,7 @@ public class SshClientTunnel {
     public static void main(String[] args) {
 
         SshClientTunnel sshClientTunnel = new SshClientTunnel();
-        PortForard pf = new PortForard("router.unkloud.io","user","password",8099,8081);
+        PortForard pf = new PortForard("localhost","user","password",8099,8081);
         Thread t= sshClientTunnel.forwardPort(pf);
 
         try {

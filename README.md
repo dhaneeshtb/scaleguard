@@ -48,13 +48,6 @@ git clone https://github.com/dhaneeshtb/scaleguard.git
 cd scaleguard
 ```
 
-### Running Admin UI
-
-```sh
-cd admin-ui
-npm install
-npm start
-```
 
 ### Running Scaleguard Server
 
@@ -63,6 +56,15 @@ npm start
 mvn clean install
 java -DadminUser=scaleguard -DadminPassword=Scaleguard123$ -jar target/scaleguard-1.0-SNAPSHOT.jar
 ```
+
+### Running Admin UI
+
+```sh
+cd admin-ui
+npm install
+npm start
+```
+#### hosturl: http[s]://<ip/hostname of scaleguard> username and password provided above
 
 ### SafeExpose: Secure Application Exposure
 Scaleguard provides a `SafeExpose` mechanism that allows users to expose their locally running applications to the public in a secure manner. This is achieved through the `safeexpose` script, available at [Scaleguard SafeExpose](https://github.com/dhaneeshtb/scalegurad-safeexpose.git).

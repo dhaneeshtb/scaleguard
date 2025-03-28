@@ -62,7 +62,13 @@
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <version>1.4.12</version>
+      <version>1.5.13</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.codehaus.janino</groupId>
+      <artifactId>janino</artifactId>
+      <version>3.1.9</version>  <!-- Ensure Janino is included -->
     </dependency>
 
 

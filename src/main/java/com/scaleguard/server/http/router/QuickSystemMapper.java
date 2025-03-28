@@ -72,7 +72,7 @@ public class QuickSystemMapper {
         public static JsonNode mapSystem(JsonNode node) throws MalformedURLException, NoSuchAlgorithmException {
         String sourceURL = node.get("sourceURL").asText();
         String systemName = node.has("name") ? node.get("name").asText() : getDigest(sourceURL);
-        boolean isTunnel = node.has("tunnel")? node.get("tunnel").asBoolean():false;
+        boolean isTunnel = node.has("tunnel") && node.get("tunnel").asBoolean();
         ArrayNode targets = (ArrayNode) node.get("targets");
         String gid =systemName!=null?systemName: generateShortUUID();
         String hostGroupId = "h-" + gid;
@@ -166,12 +166,13 @@ public class QuickSystemMapper {
 
     public static void main(String[] args) {
         ObjectNode request = SystemManager.getMapper().createObjectNode();
-        request.put("sourceURL", "https://mycrm.app.unkloud.io");
+        request.put("sourceURL", "https://test.com");
         ArrayNode targets = SystemManager.getMapper().createArrayNode();
         targets.add("http://localhost:8099");
         request.put("targets", targets);
         try {
-            mapSystem(request);
+            System.out.println(request);
+            //mapSystem(request);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

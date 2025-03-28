@@ -31,6 +31,7 @@ public class TunnelRoute implements RequestRoute {
             String name =node.has("name")?node.get("name").asText():null;
             int port =node.has("port")?node.get("port").asInt():0;
             String host =node.has("host")?node.get("host").asText():null;
+            String baseDNSInput =node.has("baseDNS")?node.get("baseDNS").asText():null;
             List<DNSAddressBook.WrappedDNSRecord> dnsrecords = DNSAddressBook.get().entrySet().stream().flatMap(s->s.getValue().stream()).filter(y->y.getType().equalsIgnoreCase("base")).collect(Collectors.toList());
             String baseName=null;
             if(dnsrecords.size()>0){

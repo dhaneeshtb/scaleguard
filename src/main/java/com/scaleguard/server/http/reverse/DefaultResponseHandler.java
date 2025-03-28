@@ -91,6 +91,8 @@ public class DefaultResponseHandler {
                     type = "hostgroups";
                 }else if (uri.contains("renewcert")) {
                     type = "renewcert";
+                }else if (uri.contains("quickmapping")) {
+                    type = "quickmapping";
                 }
 
                 if (request.getMethod().name().equalsIgnoreCase("post")||request.getMethod().name().equalsIgnoreCase("delete")) {

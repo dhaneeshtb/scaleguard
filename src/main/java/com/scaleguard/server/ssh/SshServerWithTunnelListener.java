@@ -1,6 +1,7 @@
 package com.scaleguard.server.ssh;
 import com.scaleguard.server.ssh.tunnel.TunnelBook;
 import org.apache.sshd.common.session.Session;
+import org.apache.sshd.common.session.SessionHeartbeatController;
 import org.apache.sshd.common.util.net.SshdSocketAddress;
 import org.apache.sshd.server.SshServer;
 import org.apache.sshd.server.command.Command;
@@ -10,6 +11,7 @@ import org.apache.sshd.common.forward.PortForwardingEventListener;
 import org.apache.sshd.server.shell.ProcessShellFactory;
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.time.Duration;
 
 
 public class SshServerWithTunnelListener {
@@ -21,6 +23,8 @@ public class SshServerWithTunnelListener {
         new Thread(() -> {
             SshServer sshd = SshServer.setUpDefaultServer();
             sshd.setPort(sshPort);
+            sshd.getSessionFactory().getServer().setSessionHeartbeat(SessionHeartbeatController.HeartbeatType.IGNORE, Duration.ofMillis(10000));
+
             sshd.setKeyPairProvider(new SimpleGeneratorHostKeyProvider(Paths.get("hostkey.ser")));
             sshd.setPasswordAuthenticator((username, password, session) ->{
 //                "user".equals(username) && "password".equals(password)

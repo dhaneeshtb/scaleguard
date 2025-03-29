@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Input, Button, Table, Tbody, Tr, Td, Th, Thead, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, Text } from '@chakra-ui/react';
+import { Input, Button, Table, Tbody, Tr, Td, Th, Thead, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, Text, ModalCloseButton } from '@chakra-ui/react';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
@@ -199,6 +199,8 @@ export default function AppManagement() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
         <ModalOverlay />
         <ModalContent>
+        <ModalCloseButton />
+
           <ModalHeader>Add Client</ModalHeader>
           <ModalBody>
             <label className="block text-gray-700 text-sm font-bold mb-2">Client Name</label>

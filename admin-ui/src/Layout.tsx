@@ -98,7 +98,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
 
                   <Menu>
-  <MenuButton colorScheme="black" className="hover:bg-gray-700" as={Button} rightIcon={<ChevronDownIcon />}>
+  <MenuButton  colorScheme="black" className="hover:bg-gray-700" as={Button} rightIcon={<ChevronDownIcon />}>
    <div className="flex gap-2 items-center"> <FaUserCircle></FaUserCircle>{auth.data.username}</div>
   </MenuButton>
   <MenuList >

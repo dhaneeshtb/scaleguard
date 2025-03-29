@@ -123,7 +123,7 @@ export default function QuickMapping({onMappingComplete}) {
                 />
                 
                 </VStack>
-                <Button leftIcon={<AddIcon />} onClick={handleAddTarget} colorScheme="blue" w="full">
+                <Button rounded={"full"} leftIcon={<FaPlusCircle  />} onClick={handleAddTarget} colorScheme="blue" w="full">
                   Add Target
                 </Button>
                 <Text className=" text-sm text-gray-400 text-left w-full">Target URL:(http://17.1.2.4:9000)</Text>
@@ -149,10 +149,10 @@ export default function QuickMapping({onMappingComplete}) {
           </ModalBody>
 
           <ModalFooter className='dark:text-white'>
-            <Button colorScheme='blue' mr={3} onClick={onClose}>
+            <Button rounded={"full"} colorScheme='blue' mr={3} onClick={onClose}>
               Close
             </Button>
-            <Button isLoading={saving} variant='outline' colorScheme='teal' onClick={onSave}>Confirm</Button>
+            <Button rounded={"full"} isLoading={saving}  colorScheme='green' onClick={onSave}>Confirm</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

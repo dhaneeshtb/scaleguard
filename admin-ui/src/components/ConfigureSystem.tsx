@@ -51,7 +51,7 @@ export function ConfigureSystem({ onUpdate,auth ,load=true}) {
 
   return (
     <>
-     {!load && <Button onClick={onOpen} leftIcon={<FaCogs></FaCogs>} variant={"outline"} colorScheme='teal'>System</Button>}
+     {!load && <Button rounded={"full"} onClick={onOpen} leftIcon={<FaCogs></FaCogs>} variant={"outline"} colorScheme='teal'>System</Button>}
 
 
       <Modal isOpen={isOpen} onClose={onClose} closeOnOverlayClick={false} closeOnEsc={false}>

@@ -13,6 +13,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.*;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.util.CharsetUtil;
 
 import java.lang.reflect.InvocationTargetException;
@@ -106,6 +107,12 @@ public class InboundMessageHandler {
       }
 
       inAddress=headers.get("X-Forwarded-For",inAddress);
+
+      if(request.headers().contains(HttpHeaderNames.HOST)) {
+        headers.set("X-Forwarded-Host", request.headers().get(HttpHeaderNames.HOST));
+        headers.set("X-Forwarded-Proto", ctx.pipeline().get(SslHandler.class) != null ? "https" : "http");
+      }
+
 
       headers.forEach(h->ss.setJwtKeylookup(h.getKey()+":"+h.getValue()));
       ss.setHost(request.headers().get(HttpHeaderNames.HOST, "unknown").toString());

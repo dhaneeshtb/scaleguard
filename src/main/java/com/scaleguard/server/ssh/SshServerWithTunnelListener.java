@@ -23,7 +23,6 @@ public class SshServerWithTunnelListener {
         new Thread(() -> {
             SshServer sshd = SshServer.setUpDefaultServer();
             sshd.setPort(sshPort);
-            sshd.getSessionFactory().getServer().setSessionHeartbeat(SessionHeartbeatController.HeartbeatType.IGNORE, Duration.ofMillis(10000));
 
             sshd.setKeyPairProvider(new SimpleGeneratorHostKeyProvider(Paths.get("hostkey.ser")));
             sshd.setPasswordAuthenticator((username, password, session) ->{
@@ -57,6 +56,7 @@ public class SshServerWithTunnelListener {
             });
 
             try {
+
                 sshd.start();
             } catch (IOException e) {
                 throw new RuntimeException(e);

@@ -85,7 +85,11 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         if (ts.getTargetSystem().isEnableCache()) {
           inboundHandler.handle(ctx, msg, ts, key -> proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey()));
         } else {
-          proeedToTarget(ts, ctx, msg, null);
+          if(ts.getSourceSystem().isAsync()){
+            inboundHandler.handleAsync(ctx, msg, ts,null);
+          }else {
+            proeedToTarget(ts, ctx, msg, null);
+          }
         }
       }
     }catch (Exception e){

@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.cache;
 
+import java.util.HashMap;
 import java.util.Map;
 
 public class ProxyRequest {

@@ -1,7 +1,9 @@
 package com.scaleguard.server.http.reverse;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.scaleguard.server.http.async.RequestFlowDriver;
 import com.scaleguard.server.http.auth.AuthInfo;
 import com.scaleguard.server.http.cache.*;
 import com.scaleguard.server.http.router.*;
@@ -155,6 +157,34 @@ public class InboundMessageHandler {
     }
   }
 
+  public void handleAsync(ChannelHandlerContext ctx, Object msg,RouteTarget ts, Consumer<CachedResponse> consumer){
+    ProxyRequest pr=toProxyRequest(ts.getTargetSystem(),msg);
+    ProxyResponse response=RequestFlowDriver.publish(pr);
+    try {
+      writeResponse(ctx,LocalSystemLoader.mapper.writeValueAsString(response));
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException(e);
+
+    }
+  }
+
+  public ProxyRequest toProxyRequest(TargetSystem ts,Object msg){
+    ProxyRequest pr = new ProxyRequest();
+    Map<String,String> headerMap=new HashMap<>();
+    if (msg instanceof HttpRequest) {
+      HttpRequest request =  (HttpRequest) msg;
+      pr.setPort(ts.getPort());
+      pr.setHost(ts.getHost());
+      pr.setUri(request.uri());
+      request.headers().forEach((k)->headerMap.put(k.getKey(),k.getValue()));
+      pr.setMethod(request.method().name().toString());
+      pr.setId(UUID.randomUUID().toString());
+      pr.setBody(parseJosnRequest((FullHttpRequest) msg));
+      pr.setHeaders(headerMap);
+    }
+    return pr;
+  }
+
   private JsonNode toResponse(ProxyRequest pr){
     ProxyResponse prs = new ProxyResponse();
     prs.setId(pr.getId());
@@ -174,7 +204,7 @@ public class InboundMessageHandler {
     FullHttpResponse httpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
             HttpResponseStatus.OK ,
             Unpooled.copiedBuffer(responseData, CharsetUtil.UTF_8));
-    httpResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain; charset=UTF-8");
+    httpResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json; charset=UTF-8");
     if (keepAlive) {
       httpResponse.headers().setInt(HttpHeaderNames.CONTENT_LENGTH,
               httpResponse.content().readableBytes());

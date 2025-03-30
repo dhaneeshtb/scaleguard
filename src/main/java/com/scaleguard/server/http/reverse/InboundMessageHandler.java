@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.server.http.async.AsyncFlowDrivers;
-import com.scaleguard.server.http.async.EmbeddedAsyncFlowDriver;
 import com.scaleguard.server.http.auth.AuthInfo;
 import com.scaleguard.server.http.cache.*;
 import com.scaleguard.server.http.router.*;
@@ -75,6 +74,7 @@ public class InboundMessageHandler {
     SourceSystem ss = new SourceSystem();
     String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
     HttpHeaders headers =null;
+    String uri=null;
     if (msg instanceof HttpRequest) {
 
       HttpRequest request = (HttpRequest) msg;
@@ -123,11 +123,13 @@ public class InboundMessageHandler {
       headers.forEach(h->ss.setJwtKeylookup(h.getKey()+":"+h.getValue()));
       ss.setHost(request.headers().get(HttpHeaderNames.HOST, "unknown").toString());
       ss.setPort(port+"");
+      uri=request.uri();
     }
     RouteTarget rt= routeTable.findTarget(ss);
     if(rt!=null){
       rt.setClientIp(inAddress);
       rt.setHeaders(headers);
+      rt.setUri(uri);
     }
     return rt;
   }
@@ -163,35 +165,44 @@ public class InboundMessageHandler {
 
   public void handleAsync(ChannelHandlerContext ctx, Object msg,RouteTarget ts, Consumer<CachedResponse> consumer){
     ProxyRequest pr=toProxyRequest(ts.getTargetSystem(),msg);
+    ObjectNode node = JSON.object();
+
     if(ts.getSourceSystem().getAsyncEngine()!=null) {
       ProxyResponse response = Objects.requireNonNull(AsyncFlowDrivers.get(ts.getSourceSystem().getAsyncEngine())).publish(pr);
       try {
         writeResponse(ctx, LocalSystemLoader.mapper.writeValueAsString(response));
       } catch (JsonProcessingException e) {
-        throw new RuntimeException(e);
+        node.put("message","error while processing messsage :"+e.getMessage());
+        writeResponse(ctx,HttpResponseStatus.INTERNAL_SERVER_ERROR,node.toString());
       }
     }else{
-      throw new RuntimeException("no async engine configured");
+      node.put("message","no async engine configured");
+      writeResponse(ctx,HttpResponseStatus.INTERNAL_SERVER_ERROR,node.toString());
     }
   }
 
   public void handleSubSystem(ChannelHandlerContext ctx, Object msg,RouteTarget ts, Consumer<CachedResponse> consumer){
+    ObjectNode node = JSON.object();
     try {
       ProxyRequest pr=toProxyRequest(ts.getTargetSystem(),msg);
       String scheme = ts.getTargetSystem().getScheme();
+      node.put("scheme",scheme);
+
       switch (scheme){
         case "kafka":
           SubsystemHandler subsystemHandler= SubsytemHandlers.get(ts);
-          subsystemHandler.publish(ts, JSON.parse(pr.getBody()));
+          String topic=subsystemHandler.publish(ts, JSON.parse(pr.getBody()));
+          node.put("topic",topic);
           break;
         default:
           break;
       }
-      ObjectNode node = JSON.object();
+
       node.put("status","published");
       writeResponse(ctx,node.toString());
     }catch (Exception e){
-      throw new RuntimeException("no async engine configured");
+      node.put("message","Error while publishing: "+e.getMessage());
+      writeResponse(ctx,HttpResponseStatus.INTERNAL_SERVER_ERROR,node.toString());
     }
   }
 
@@ -229,9 +240,14 @@ public class InboundMessageHandler {
 
   private void writeResponse(ChannelHandlerContext ctx,
                              String responseData) {
+    writeResponse(ctx,HttpResponseStatus.OK,responseData);
+  }
+
+  private void writeResponse(ChannelHandlerContext ctx,HttpResponseStatus status,
+                             String responseData) {
     boolean keepAlive=false;
     FullHttpResponse httpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-            HttpResponseStatus.OK ,
+            status ,
             Unpooled.copiedBuffer(responseData, CharsetUtil.UTF_8));
     httpResponse.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json; charset=UTF-8");
     if (keepAlive) {

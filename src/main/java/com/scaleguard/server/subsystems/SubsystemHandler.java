@@ -5,5 +5,5 @@ import com.scaleguard.server.http.router.RouteTarget;
 
 public interface SubsystemHandler {
 
-    void publish(RouteTarget rt, JsonNode message);
+    String publish(RouteTarget rt, JsonNode message);
 }

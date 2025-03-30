@@ -20,12 +20,17 @@ public class KafkaSubsystemHandler implements SubsystemHandler{
         publisher = ProducerCreator.createAsyncEventProducer(brokerURL,rt.getTargetSystem().getGroupId());
     }
     @Override
-    public void publish(RouteTarget rt, JsonNode message) {
-        String topicName = rt.getTargetSystem().getBasePath();
+    public String publish(RouteTarget rt, JsonNode message) {
+        //String topicName = rt.getTargetSystem().getBasePath();
+        String topicName = String.join("-",rt.getUri().substring(1,rt.getUri().length()).split("/"));
+        if(topicName.length()<3||topicName.length()>20){
+            throw new RuntimeException("invalid topic name evaluated "+topicName);
+        }
         String id = message.has("id")?message.get("id").asText(): UUID.randomUUID().toString();
         publisher.send(new ProducerRecord<>(topicName,0,
                 id,
                 message));
         publisher.flush();
+        return topicName;
     }
 }

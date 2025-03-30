@@ -135,7 +135,7 @@ const ManageHost = () => {
            if(scheme=="tcp"){
             return k!="host" && k!="basePath" && k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
            }else if(scheme=="kafka"){
-            return k!="host" &&  k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
+            return k!="host" &&  k!="basePath" && k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
            }else{
             return true;
            }

@@ -10,6 +10,16 @@ public class RouteTarget {
 
     private String targetHost;
 
+    private String uri;
+
+    public String getUri() {
+        return uri;
+    }
+
+    public void setUri(String uri) {
+        this.uri = uri;
+    }
+
     private String clientIp;
 
     public HttpHeaders getHeaders() {

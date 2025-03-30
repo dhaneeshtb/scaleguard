@@ -82,14 +82,20 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
           new DefaultResponseHandler().handleFailure(ctx, "invalid auth credentials", HttpResponseStatus.FORBIDDEN);
           return;
         }
-        if (ts.getTargetSystem().isEnableCache()) {
-          inboundHandler.handle(ctx, msg, ts, key -> proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey()));
-        } else {
-          if(ts.getSourceSystem().isAsync()){
-            inboundHandler.handleAsync(ctx, msg, ts,null);
-          }else {
-            proeedToTarget(ts, ctx, msg, null);
+        if("http".equalsIgnoreCase(ts.getTargetSystem().getScheme()) || "https".equalsIgnoreCase(ts.getTargetSystem().getScheme())) {
+          if (ts.getTargetSystem().isEnableCache()) {
+            inboundHandler.handle(ctx, msg, ts, key -> proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey()));
+          } else {
+            if (ts.getSourceSystem().isAsync()) {
+              inboundHandler.handleAsync(ctx, msg, ts, null);
+            } else {
+              proeedToTarget(ts, ctx, msg, null);
+            }
           }
+        }else if("tcp".equalsIgnoreCase(ts.getTargetSystem().getScheme())){
+          proeedToTarget(ts, ctx, msg, null);
+        }else{
+          inboundHandler.handleSubSystem(ctx, msg, ts, null);
         }
       }
     }catch (Exception e){

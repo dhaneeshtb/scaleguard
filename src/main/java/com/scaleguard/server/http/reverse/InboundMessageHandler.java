@@ -9,6 +9,9 @@ import com.scaleguard.server.http.auth.AuthInfo;
 import com.scaleguard.server.http.cache.*;
 import com.scaleguard.server.http.router.*;
 import com.scaleguard.server.http.utils.AppProperties;
+import com.scaleguard.server.subsystems.SubsystemHandler;
+import com.scaleguard.server.subsystems.SubsytemHandlers;
+import com.scaleguard.utils.JSON;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -168,6 +171,26 @@ public class InboundMessageHandler {
         throw new RuntimeException(e);
       }
     }else{
+      throw new RuntimeException("no async engine configured");
+    }
+  }
+
+  public void handleSubSystem(ChannelHandlerContext ctx, Object msg,RouteTarget ts, Consumer<CachedResponse> consumer){
+    try {
+      ProxyRequest pr=toProxyRequest(ts.getTargetSystem(),msg);
+      String scheme = ts.getTargetSystem().getScheme();
+      switch (scheme){
+        case "kafka":
+          SubsystemHandler subsystemHandler= SubsytemHandlers.get(ts);
+          subsystemHandler.publish(ts, JSON.parse(pr.getBody()));
+          break;
+        default:
+          break;
+      }
+      ObjectNode node = JSON.object();
+      node.put("status","published");
+      writeResponse(ctx,node.toString());
+    }catch (Exception e){
       throw new RuntimeException("no async engine configured");
     }
   }

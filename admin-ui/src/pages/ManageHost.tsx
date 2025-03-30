@@ -91,7 +91,7 @@ const ManageHost = () => {
                 case "scheme": 
                     return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
                             {
-                                (type=="sourcesystems"? ["http", "https", "tcp","kafka"]: ["http", "https", "tcp"]).map(c => {
+                                (type=="sourcesystems"? ["http", "https", "tcp","kafka"]: ["http", "https", "tcp","kafka"]).map(c => {
                                     return <option value={c}>{c}</option>
                                 })
                             }</Select>
@@ -101,6 +101,10 @@ const ManageHost = () => {
                             onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.checked })}
                           >
                           </Checkbox>
+
+                case "basePath":
+                    return <input onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} value={ baseObject['scheme']=="kafka" && baseObject[k]=="/" ?"":baseObject[k]} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
+
                 default: 
                     return bs[k] && (typeof bs[k] == "object") ?
                     <CodeMirror
@@ -131,7 +135,7 @@ const ManageHost = () => {
            if(scheme=="tcp"){
             return k!="host" && k!="basePath" && k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
            }else if(scheme=="kafka"){
-              return   k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId";
+            return k!="host" &&  k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
            }else{
             return true;
            }
@@ -140,13 +144,15 @@ const ManageHost = () => {
         function getHint(type,name){
 
             if(name=="basePath" && type=="kafka"){
-                return <span >(comma separated topic names)</span>
+                return <span >( topic name)</span>
             }else{
                 return <></>
             }
 
         }
-        return <>{Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems" ? filterField(baseObject["scheme"],k,baseObject):true)).map((k) => {
+        return <>{
+            
+            Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems"? filterField(baseObject["scheme"],k,baseObject):true)).map((k) => {
             return  <div className="flex flex-col">
                 <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
                     <span className="capitalize">{schmaDef?schmaDef[k].displayName :k} </span> 
@@ -186,7 +192,7 @@ const ManageHost = () => {
             </div>
             <div className="flex items-center justify-end p-6 border-t border-solid border-blueGray-200 rounded-b">
                 <a
-                    href="/" className="text-red-500 background-transparent font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1"
+                    href="/home" className="text-red-500 background-transparent font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1"
                     type="button"
                     onClick={() => { }}
                 >

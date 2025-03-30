@@ -129,7 +129,7 @@ export const getBaseSchema = (type) => {
             cschema = sourceSystemSchema;
             break;
         case "targetsystems":
-            cschema = targetSchema;
+            cschema = {...targetSchema};
             break;
         case "hostgroups":
             cschema = hostgroupSchema;

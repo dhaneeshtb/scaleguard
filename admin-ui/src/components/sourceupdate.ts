@@ -107,7 +107,8 @@ const sourceSystemSchema = {
     "async": false,
     "callbackId": "",
     "jwtKeylookup": null,
-    "autoProcure":true
+    "autoProcure":true,
+    "asyncEngine":null
 }
 const targetSchema = {
     "scheme": "https",

@@ -3,7 +3,8 @@ package com.scaleguard.server.http.reverse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.scaleguard.server.http.async.RequestFlowDriver;
+import com.scaleguard.server.http.async.AsyncFlowDrivers;
+import com.scaleguard.server.http.async.EmbeddedAsyncFlowDriver;
 import com.scaleguard.server.http.auth.AuthInfo;
 import com.scaleguard.server.http.cache.*;
 import com.scaleguard.server.http.router.*;
@@ -159,12 +160,15 @@ public class InboundMessageHandler {
 
   public void handleAsync(ChannelHandlerContext ctx, Object msg,RouteTarget ts, Consumer<CachedResponse> consumer){
     ProxyRequest pr=toProxyRequest(ts.getTargetSystem(),msg);
-    ProxyResponse response=RequestFlowDriver.publish(pr);
-    try {
-      writeResponse(ctx,LocalSystemLoader.mapper.writeValueAsString(response));
-    } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
-
+    if(ts.getSourceSystem().getAsyncEngine()!=null) {
+      ProxyResponse response = Objects.requireNonNull(AsyncFlowDrivers.get(ts.getSourceSystem().getAsyncEngine())).publish(pr);
+      try {
+        writeResponse(ctx, LocalSystemLoader.mapper.writeValueAsString(response));
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException(e);
+      }
+    }else{
+      throw new RuntimeException("no async engine configured");
     }
   }
 
@@ -173,9 +177,11 @@ public class InboundMessageHandler {
     Map<String,String> headerMap=new HashMap<>();
     if (msg instanceof HttpRequest) {
       HttpRequest request =  (HttpRequest) msg;
-      pr.setPort(ts.getPort());
-      pr.setHost(ts.getHost());
-      pr.setUri(request.uri());
+      pr.setPort(ts.getHostGroup().getPort());
+      pr.setHostGrpId(ts.getHostGroup().getGroupId());
+      pr.setScheme(ts.getScheme());
+      pr.setHost(ts.getHostGroup().getHost());
+      pr.setUri((ts.getBasePath().trim().equals("/")?"":ts.getBasePath().trim())+request.uri());
       request.headers().forEach((k)->headerMap.put(k.getKey(),k.getValue()));
       pr.setMethod(request.method().name().toString());
       pr.setId(UUID.randomUUID().toString());

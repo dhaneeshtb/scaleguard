@@ -3,7 +3,7 @@ package com.scaleguard.server.kafka;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.scaleguard.server.http.client.Httplient;
+import com.scaleguard.server.http.client.HttpClient;
 import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.kafka.models.StreamingRawData;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -77,7 +77,7 @@ public class KafkaEventsConsumer {
                             arr.add(node);
                        }
                        srd.setFeatures(arr);
-                       Httplient.getClient(sourceSystem).send(mapper.writeValueAsString(srd));
+                       HttpClient.getClient(sourceSystem).send(mapper.writeValueAsString(srd));
                        LOGGER.debug("Record offset {}", event.offset());
                     } catch (Exception e) {
                         LOGGER.error("Discarded due to unsupported message " + event.offset(), e);

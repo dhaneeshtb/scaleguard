@@ -1,7 +1,7 @@
 import { AnimatePresence } from "framer-motion";
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Button, IconButton, Select } from "@chakra-ui/react";
+import { Button, IconButton, Select, Text } from "@chakra-ui/react";
 import { FaCross, FaSave, FaWindowClose } from "react-icons/fa";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
@@ -20,6 +20,7 @@ const ManageSource = () => {
     const { auth } = useAuth() as any;
 
     const [isLoading,setLoading] =useState(false);
+    const [asyncEngines,setAsyncEngines] =useState<any[]>([]);
 
     useEffect(() => {
         if (id && id != "new")
@@ -61,8 +62,28 @@ const ManageSource = () => {
         setCertificates(formatData(r.data))
     }
 
+
+  const loadAsyncEngines = async () => {
+    const r = await axios.get(auth.data.host + "/asyncengines?scaleguard=true", {
+      headers: {
+        Authorization: auth.data.token
+      }
+    });
+    const res=r.data;
+    
+    setAsyncEngines(Object.keys(res).map(r=>{
+        const o = res[r];
+        return {
+            id:o.id,
+            name:o.name,type:o.type,topic:o.payload?.topic||"event-stream",
+            host:o.payload.host,port:o.payload.port,
+        }
+    }))
+  }
+
     useEffect(() => {
         loadCerts();
+        loadAsyncEngines();
     }, [])
 
     const RenderScreen = ({type, bs, baseObject, setBaseObject }) => {
@@ -74,7 +95,7 @@ const ManageSource = () => {
 
             switch (k) {
                 case "certificateId": 
-                    return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
+                    return <Select key={k} className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
                                 {
                                     certificates.map(c => {
                                         return <option value={c.id}>{c.json.identifiers.map(s => s.value).join(",") + ":" + c.id}</option>
@@ -82,29 +103,38 @@ const ManageSource = () => {
                                 }
                             </Select>;
                 case "type": 
-                return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
+                return <Select  key={k} className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
                         {
                             ( ["active", "standby"]).map(c => {
                                 return <option value={c}>{c}</option>
                             })
                         }</Select>
 
+                case "async": 
+                return <Select key={k} className=" text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
+                                {
+                                    ( ["true", "false"]).map(c => {
+                                        return <option value={c}>{c}</option>
+                                    })
+                                }</Select>
+                               
+
                 case "scheme": 
-                    return <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
+                    return <Select  key={k} className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
                             {
                                 (type=="sourcesystems"? ["http", "https", "tcp","kafka"]: ["http", "https", "tcp"]).map(c => {
                                     return <option value={c}>{c}</option>
                                 })
                             }</Select>
                 case "autoProcure": 
-                        return <Checkbox
+                        return <Checkbox  key={k}
                             isChecked={baseObject[k]}
                             onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.checked })}
                           >
                           </Checkbox>
                 default: 
                     return bs[k] && (typeof bs[k] == "object") ?
-                    <CodeMirror
+                    <CodeMirror  key={k}
                     value={typeof baseObject[k]=="object"? JSON.stringify(baseObject[k]):baseObject[k]}
                     height="100px"
                     extensions={[json(), lintGutter()]}
@@ -121,7 +151,7 @@ const ManageSource = () => {
 
                         // <input onChange={(e) => setBaseObject({ ...baseObject, [k]: JSON.parse(e.target.value) })} value={JSON.stringify(baseObject[k])} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
                         :
-                        <input onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} value={k=="port" && baseObject['scheme']=="https" ?"443":baseObject[k]} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
+                        <input  key={k} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} value={k=="port" && baseObject['scheme']=="https" ?"443":baseObject[k]} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
             }
         }
 
@@ -134,7 +164,7 @@ const ManageSource = () => {
            }else if(scheme=="kafka"){
               return   k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId";
            }else{
-            return true;
+            return k!="asyncEngine" && true;
            }
         }
 
@@ -148,7 +178,11 @@ const ManageSource = () => {
 
         }
         return <>{Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems" ? k=="secappid"?false: filterField(baseObject["scheme"],k,baseObject):true)).map((k) => {
-            return  <div className="flex flex-col">
+            return  <div className="flex gap-2 w-full"> 
+            
+            <div className="flex flex-col w-full">
+
+                
                 <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
                     <span className="capitalize">{schmaDef?schmaDef[k].displayName :k} </span> 
                     
@@ -160,9 +194,22 @@ const ManageSource = () => {
 
                 {schmaDef && schmaDef[k].hint ?<span className="italic text-gray-400 text-xs">{schmaDef[k].hint}</span>:<></>}
 
-
+                </div>
+                {(k=="async" && (baseObject["async"]=="true" || baseObject["async"]==true)) && <div className="flex flex-col w-3/4 ">
+                    <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
+                    <span className="capitalize">Choose Engine </span> 
+                    </label>
+                                <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject['asyncEngine']} onChange={(e) => setBaseObject({ ...baseObject, 'asyncEngine': e.target.value })} >
+                                {
+                                    asyncEngines.map(c => {
+                                        return <option value={c.name}>{c.name}</option>
+                                    })
+                                }</Select>
+                                </div>}
+                                
 
                 </div>
+                
 
 
         })}

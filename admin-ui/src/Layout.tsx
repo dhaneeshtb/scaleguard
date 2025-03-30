@@ -67,10 +67,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </a>
 
                   <a
-                    href="/hostgroups"
+                    href="/asyncengines"
                     className="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
                   >
-                    Hostgroup
+                    Async Engines
                   </a>
 
                   <a

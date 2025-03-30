@@ -1,8 +1,10 @@
 package com.scaleguard.server.kafka.producer;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.scaleguard.server.kafka.constants.IKafkaConstants;
 import com.scaleguard.server.kafka.models.StreamingRawData;
 import com.scaleguard.server.kafka.serializer.CustomIntegrationSerializer;
+import com.scaleguard.server.kafka.serializer.JsonNodeSerializer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -27,6 +29,14 @@ public class ProducerCreator {
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokers);
         props.put(ProducerConfig.CLIENT_ID_CONFIG, IKafkaConstants.INTEGRATION_CLIENT_ID);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, CustomIntegrationSerializer.class.getName());
+        return new KafkaProducer<>(props);
+    }
+
+    public static Producer<String,JsonNode> createAsyncEventProducer(String brokers,String clientId) {
+        Properties props = getCommonProperties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokers);
+        props.put(ProducerConfig.CLIENT_ID_CONFIG, clientId);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonNodeSerializer.class.getName());
         return new KafkaProducer<>(props);
     }
 

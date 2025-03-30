@@ -20,6 +20,7 @@ import Landing from './landing';
 import DNS from './components/DNS';
 import Security from './pages/security/Security';
 import ManageSource from './pages/ManageSource';
+import AsyncEngines from './pages/asyncengines/AsyncEngines';
 
 function App() {
   return (
@@ -38,6 +39,8 @@ function App() {
                     <Route path="/security" element={<Security />} />
                     <Route path="hostgroups" element={<HostGroups />} />
                     <Route path="managehost" element={<ManageHost />} />
+                    <Route path="/asyncengines" element={<AsyncEngines />} />
+
                     
                     <Route path="managehost/sourcesystems/:id" element={<ManageSource />} />
 

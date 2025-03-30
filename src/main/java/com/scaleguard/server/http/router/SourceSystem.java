@@ -34,6 +34,17 @@ public class SourceSystem {
   private String groupId;
   private String target;//instance id or groupid
   private boolean async;
+
+  private String asyncEngine;
+
+  public String getAsyncEngine() {
+    return asyncEngine;
+  }
+
+  public void setAsyncEngine(String asyncEngine) {
+    this.asyncEngine = asyncEngine;
+  }
+
   private String callbackId;
   private String jwtKeylookup;
 

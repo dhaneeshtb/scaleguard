@@ -3,6 +3,7 @@ package com.scaleguard.server.http.reverse;
 import com.scaleguard.server.acmechallengeroute.AcmeChannelgeRoute;
 import com.scaleguard.server.application.AppRoute;
 import com.scaleguard.server.application.ClientRoute;
+import com.scaleguard.server.asyncengines.AsyncEngineRoute;
 import com.scaleguard.server.certificates.CertificatesRoute;
 import com.scaleguard.server.dns.DNSRoute;
 import com.scaleguard.server.dns.TunnelRoute;
@@ -25,6 +26,8 @@ public class RequestRoutingContexts {
         routesMap.put("signin",new LoginRoute());
         routesMap.put("dns",new DNSRoute());
         routesMap.put("tunnel",new TunnelRoute());
+        routesMap.put("asyncengines",new AsyncEngineRoute());
+
         routesMap.put("register",new RegisterRoute());
         routesMap.put("apps",new AppRoute());
         routesMap.put("clients",new ClientRoute());

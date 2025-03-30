@@ -37,16 +37,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class Httplient {
+public final class HttpClient {
 
     private final SourceSystem sourceSystem;
     private Bootstrap b;
-    private static Map<String,Httplient> sourceClientMap = new ConcurrentHashMap<>();
+    private static Map<String, HttpClient> sourceClientMap = new ConcurrentHashMap<>();
 
-    public static Httplient getClient(SourceSystem sourceSystem){
-        return sourceClientMap.computeIfAbsent(sourceSystem.getId(),(k)->new Httplient(sourceSystem));
+    public static HttpClient getClient(SourceSystem sourceSystem){
+        return sourceClientMap.computeIfAbsent(sourceSystem.getId(),(k)->new HttpClient(sourceSystem));
     }
-    private Httplient(SourceSystem sourceSystem){
+    private HttpClient(SourceSystem sourceSystem){
         this.sourceSystem=sourceSystem;
         bootstrap();
     }

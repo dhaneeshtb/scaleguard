@@ -7,6 +7,16 @@ public class ProxyRequest {
     private String id;
     private String method;
 
+    private String scheme;
+
+    public String getScheme() {
+        return scheme;
+    }
+
+    public void setScheme(String scheme) {
+        this.scheme = scheme;
+    }
+
     public String getMethod() {
         return method;
     }
@@ -16,6 +26,17 @@ public class ProxyRequest {
     }
 
     private String groupId;
+
+    private String hostGrpId;
+
+    public String getHostGrpId() {
+        return hostGrpId;
+    }
+
+    public void setHostGrpId(String hostGrpId) {
+        this.hostGrpId = hostGrpId;
+    }
+
     private String host;
     private String port;
 

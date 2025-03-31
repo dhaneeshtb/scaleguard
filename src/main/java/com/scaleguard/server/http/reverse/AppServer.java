@@ -1,4 +1,5 @@
 package com.scaleguard.server.http.reverse;
+import com.scaleguard.server.db.ConnectionUtil;
 import com.scaleguard.server.dns.DnsServer;
 import com.scaleguard.server.http.router.ConfigManager;
 import com.scaleguard.server.http.router.RouteTable;
@@ -39,6 +40,7 @@ public class AppServer implements Server{
 
     public static void main(String[] args) throws Exception {
         System.setProperty("io.netty.leakDetection.level", "PARANOID");
+        ConnectionUtil.checkDBProperties();
 
         Map<String, String> parameters = new HashMap<>();
 
@@ -54,26 +56,29 @@ public class AppServer implements Server{
         // Print parsed key-value pairs
         parameters.forEach((key, value) -> System.out.println(key + " = " + value));
 
-
         AppServer server= new AppServer();
         EventSubscriber subscriber = new EventSubscriber(server);
         ConfigManager.getPublisher().subscribe(subscriber);
         AcmeUtils.getContext();
-
-        if(parameters.containsKey("hostname")){
-            String hostname= parameters.get("hostname");
-            while (true) {
-                try {
-                    SystemAdapter.configure(hostname);
-                    break;
-                }catch (Exception e){
-                    logger.error("Failed to configure system host : "+e.getMessage());
-                    logger.error("The system will not start until the DNS is mapped to the ScaleGuard server hostname-> : "+hostname);
-
-                    Thread.sleep(10000);
+        new Thread(()->{
+            if(parameters.containsKey("hostname")){
+                String hostname= parameters.get("hostname");
+                while (true) {
+                    try {
+                        SystemAdapter.configure(hostname);
+                        break;
+                    }catch (Exception e){
+                        logger.error("Failed to configure system host : "+e.getMessage());
+                        logger.error("The system will not start until the DNS is mapped to the ScaleGuard server hostname-> : "+hostname);
+                        try {
+                            Thread.sleep(10000);
+                        } catch (InterruptedException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    }
                 }
             }
-        }
+        }).start();
         server.start();
         server.listen();
     }

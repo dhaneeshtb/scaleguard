@@ -6,14 +6,14 @@ import com.scaleguard.server.licencing.licensing.LicenceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public abstract class DBManager<T extends DBObject> {
@@ -21,6 +21,7 @@ public abstract class DBManager<T extends DBObject> {
 
     private final String tableName;
     private final Class<T> persistentClass;
+    private static Map<String, Map<String,String>> fieldsMap=new ConcurrentHashMap<>();
 
     public abstract void init() throws Exception;
 
@@ -185,6 +186,19 @@ public abstract class DBManager<T extends DBObject> {
     public List<T> readItems(String name,String value) throws Exception {
        return readItems(name,List.of(value));
     }
+
+    private  Map<String,String> getMappedColumns(){
+       return fieldsMap.computeIfAbsent(persistentClass.getName(),k->{
+            Field[] fs = persistentClass.getDeclaredFields();
+            Map<String,String> fm = new HashMap<>();
+            for(Field f:fs){
+                f.setAccessible(true);
+                fm.put(f.getName().toLowerCase(Locale.ROOT),f.getName());
+            }
+            return fm;
+        });
+    }
+
     public List<T> readItems(String name,List<String> value) throws Exception {
         init();
         List<T> users = new ArrayList<>();
@@ -198,21 +212,23 @@ public abstract class DBManager<T extends DBObject> {
             for (int i = 0; i < count; i++) {
                 colNames[i] = rs.getMetaData().getColumnName(i + 1);
             }
+            Map<String,String> colMap = getMappedColumns();
             while (rs.next()) {
                 ObjectNode on = LicenceManager.om.createObjectNode();
                 for (int i = 0; i < count; i++) {
                     Object obj = rs.getObject(i + 1);
+                    String rightFiledName = colMap.getOrDefault(colNames[i],colNames[i]);
                     if (obj != null) {
                         if (obj instanceof String) {
-                            on.put(colNames[i], String.valueOf(obj));
+                            on.put(rightFiledName, String.valueOf(obj));
                         }
                         if (obj instanceof Long) {
-                            on.put(colNames[i], Long.valueOf(obj.toString()));
+                            on.put(rightFiledName, Long.valueOf(obj.toString()));
                         }
                         if (obj instanceof Double) {
-                            on.put(colNames[i], Double.valueOf(obj.toString()));
+                            on.put(rightFiledName, Double.valueOf(obj.toString()));
                         } else {
-                            on.put(colNames[i], String.valueOf(obj));
+                            on.put(rightFiledName, String.valueOf(obj));
                         }
                     }
                 }

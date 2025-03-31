@@ -25,6 +25,10 @@ public class SystemAdapter {
     }
     public static boolean checkConfiguration(String hostName) throws Exception {
        CertificateStore.CertificateInfo certInfo =  CertificateStore.get(hostName);
+       if(certInfo==null){
+           System.out.println("Certificate not found for :"+hostName);
+           return false;
+       }
        System.out.println("Certificate found for :"+certInfo.getId());
        SystemProperty sp = getHostNameProperty();
        if(certInfo!=null && sp!=null){

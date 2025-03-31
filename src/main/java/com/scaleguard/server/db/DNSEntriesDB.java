@@ -36,6 +36,7 @@ public class DNSEntriesDB extends DBManager<DNSEntry> {
                 + "	groupId text,\n"
                 + "	target text,\n"
                 + "	payload text,\n"
+                + "	value text,\n"
                 + "	uts bigint,\n"
                 + "	mts bigint\n"
                 + ");" :

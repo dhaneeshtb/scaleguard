@@ -83,6 +83,14 @@ Follow these steps to deploy **Scaleguard** in a production environment.
         -DadminPassword=Scaleguard123$ -jar scaleguard.jar \
         --hostname=router.example.com > scaleguard.log & echo $! > scaleguard.pid
 
+### 🌐 Step 4: Connect via Scaleguard Admin UI https://scaleguard.vercel.app/sign-in
+    To manage your Scaleguard instance through the centralized Admin UI:
+    Visit the web console:https://scaleguard.vercel.app/sign-in
+    Username: your username (scaleguard)
+    Password: your password (Scaleguard123$)
+    Enter your Host URL as: whatever host you configured for example:https://router.example.com
+    ✅ Once logged in, you'll have access to the full administration dashboard connected to your deployed server.
+
 ### Running Admin UI
 
 ```sh

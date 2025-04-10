@@ -55,6 +55,34 @@ mvn clean install
 java -DadminUser=scaleguard -DadminPassword=Scaleguard123$ -jar target/scaleguard-1.0-SNAPSHOT.jar
 ```
 
+## 🚀 Production Deployment
+
+Follow these steps to deploy **Scaleguard** in a production environment.
+
+---
+
+### 🔧 Step 1: Build the Application
+
+    Ensure Java and Maven are installed, then run:
+
+    mvn clean install
+    
+    This will generate the JAR file at: target/scaleguard-1.0-SNAPSHOT.jar
+
+### 🌐 Step 2: Map Hostname to Server
+
+    Configure your DNS provider to map a CNAME (or A record) to your server’s IP address:
+    CNAME: router.example.com → <YOUR_SERVER_PUBLIC_IP>
+    
+    This will generate the JAR file at: target/scaleguard-1.0-SNAPSHOT.jar
+
+### ▶️ Step 3: Run the Server
+    Start the Scaleguard server with admin credentials and the configured hostname:
+    
+    nohup java -DadminUser=scaleguard \
+        -DadminPassword=Scaleguard123$ -jar scaleguard.jar \
+        --hostname=router.example.com > scaleguard.log & echo $! > scaleguard.pid
+
 ### Running Admin UI
 
 ```sh

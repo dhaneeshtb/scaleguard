@@ -21,6 +21,7 @@ import com.scaleguard.server.http.router.RouteTarget;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,7 +115,10 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   private void proeedToTarget(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey){
-    if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !isSameSourceAndTarget(ts)) {
+    boolean isWebsocket = ScaleguardWebsocketHandler.isWebSocketRequest((FullHttpRequest) msg);
+    if(isWebsocket){
+      new ScaleguardWebsocketHandler().handleWebSocketProxy(ts,this,ctx, (FullHttpRequest) msg);
+    }else if (outboundChannel == null || !outboundChannel.isActive() || targetSystem==null || !isSameSourceAndTarget(ts)) {
       handleNewOutboundChannel(ts,ctx,msg,messageKey);
     }else{
       targetSystem.setStartTime(System.currentTimeMillis());

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Example</title>
+</head>
+<body>
+<h2>WebSocket Connection</h2>
+<button onclick="sendMessage()">Send Message</button>
+<p id="status">Connecting...</p>
+<script>
+    const ws = new WebSocket('ws://localhost:8080/websocket'); // Change to your WebSocket server address
+
+    ws.onopen = function() {
+        document.getElementById('status').innerText = 'Connected to WebSocket';
+    };
+
+    ws.onmessage = function(event) {
+        alert('Message from server: ' + event.data);
+    };
+
+    ws.onclose = function() {
+        document.getElementById('status').innerText = 'WebSocket Disconnected';
+    };
+
+    function sendMessage() {
+        ws.send('Hello, Server!');
+    }
+</script>
+</body>
+</html>

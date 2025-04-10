@@ -91,7 +91,7 @@ Follow these steps to deploy **Scaleguard** in a production environment.
     Enter your Host URL as: whatever host you configured for example:https://router.example.com
     ✅ Once logged in, you'll have access to the full administration dashboard connected to your deployed server.
 
-### Running Admin UI
+### Running Admin UI Locally
 
 ```sh
 cd admin-ui

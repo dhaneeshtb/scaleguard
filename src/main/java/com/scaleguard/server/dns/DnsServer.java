@@ -45,7 +45,7 @@ public final class DnsServer {
     private static final int PUBLIC_DNS_SERVER_PORT = 53;
     private static final String PUBLIC_DNS_SERVER_HOST = AppProperties.get("dnsProxy");
 
-    private static final List<String>  blacklistedDomains = List.of("collectd.org.","sl.","bradley.edu.","uwgb.edu.");
+    private static final List<String>  blacklistedDomains = List.of("collectd.org.","sl.","bradley.edu.","uwgb.edu.","z6r8.com.");
 
     //private static RateLimitManager rateLimitManager = new RateLimitManager(10,new IPBlockingManager());
     NioEventLoopGroup group = new NioEventLoopGroup(10);

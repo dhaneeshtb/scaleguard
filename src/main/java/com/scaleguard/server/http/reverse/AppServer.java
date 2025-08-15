@@ -153,10 +153,13 @@ public class AppServer implements Server{
 
     }
 
+    private boolean isDnsOn=false;
     public void start() throws Exception {
         try {
-            DnsServer dnsServer = new DnsServer();
-            dnsServer.start();
+            if(isDnsOn) {
+                DnsServer dnsServer = new DnsServer();
+                dnsServer.start();
+            }
             try {
                 SshServerWithTunnelListener.startServer();
                 logger.info("ssh server started");

@@ -1,204 +1,241 @@
-import {
-  Button, IconButton, Link,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
-  useDisclosure,
-  Heading,
-  Text
-} from '@chakra-ui/react';
+import { Button, Badge } from '@chakra-ui/react';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
-import {
-  FaArrowCircleDown, FaArrowCircleUp, FaCheck, FaClipboard, FaEdit, FaFileDownload, FaInfoCircle, FaPlusCircle, FaSave, FaTrash,
-} from "react-icons/fa";
-import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { useToast } from '@chakra-ui/react'
+import { FaGlobe, FaPlusCircle, FaSave, FaNetworkWired } from "react-icons/fa";
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
-import { formatData } from './sourceupdate';
 import NameServers from './NameServers';
 
 
 export default function DNS() {
+    const [systems, setSystems] = useState<any>();
+    const [loading, setLoading] = useState<boolean>(false);
+    const { auth } = useAuth() as any;
 
-  const [systems, setSystems] = useState<any>();
-  const [loading, setLoading] = useState<boolean>(false);
-  const { auth } = useAuth() as any;
+    const [name, setName] = useState<string>();
+    const [type, setType] = useState<string>("base");
+    const [ttl, setTTL] = useState<number>(600);
+    const [ip, setIp] = useState<string>();
+    const [nameServers, setNameServers] = useState<any[]>([]);
 
-  const [name, setName] = useState<string>();
-  const [type, setType] = useState<string>("base");
-  const [ttl, setTTL] = useState<number>(600);
-  const [ip, setIp] = useState<string>();
-  const [nameServers, setNameServers] = useState<any[]>([]);
-  const [nameServer, setNameServer] = useState<string>("");
+    const load = async () => {
+        const r = await axios.get(auth.data.host + "/dns?scaleguard=true", {
+            headers: { Authorization: auth.data.token }
+        });
+        const res = r.data;
+        const ns = Object.keys(res).map(s => res[s]).reduce((acc, r) => r.length > 0 ? acc.push(...r) && acc : acc, []).filter(x => x.type == "base")
+        setSystems(res)
+        setNameServers(ns);
+    }
 
+    useEffect(() => { load(); }, [])
 
+    const deleteItem = async (id) => {
+        setLoading(true)
+        await axios.delete(auth.data.host + "/dns/" + id + "?scaleguard=true", {
+            headers: { Authorization: auth.data.token }
+        })
+        await load()
+        setLoading(false);
+    }
 
-  const load = async () => {
-    const r = await axios.get(auth.data.host + "/dns?scaleguard=true", {
-      headers: {
-        Authorization: auth.data.token
-      }
-    });
-    const res=r.data;
-    const ns = Object.keys(res).map(s=>res[s]).reduce((acc,r)=>r.length>0?acc.push(...r) && acc:acc,[]).filter(x=>x.type=="base")
-    setSystems(res)
-    setNameServers(ns);
-  }
-  useEffect(() => {
-    load();
+    const save = async () => {
+        setLoading(true)
+        await axios.post(auth.data.host + "/dns?scaleguard=true", {
+            name: name, ip: ip, type: "record", ttl: ttl
+        }, { headers: { Authorization: auth.data.token } })
+        setName(""); setIp(""); setTTL(600);
+        await load()
+        setLoading(false);
+    }
 
-  }, [])
+    const saveNameserver = async (name, ip) => {
+        setLoading(true)
+        await axios.post(auth.data.host + "/dns?scaleguard=true", {
+            type: "base", ttl: 600, name: name, ip: ip
+        }, { headers: { Authorization: auth.data.token } })
+        await load()
+        setLoading(false);
+    }
 
-  const deleteItem = async (id) => {
-    setLoading(true)
-    await axios.delete(auth.data.host + "/dns/" + id + "?scaleguard=true", {
-      headers: {
-        Authorization: auth.data.token
-      }
-    })
-    await load()
-    setLoading(false);
+    // Count all DNS records
+    const recordCount = systems ? Object.keys(systems).reduce((acc, key) => acc + systems[key].filter(s => s.type !== "base").length, 0) : 0;
 
-  }
-  
-  const save=async ()=>{
-    setLoading(true)
-    await axios.post(auth.data.host + "/dns?scaleguard=true",{
-      name:name,
-      ip:ip,
-      type:"record",
-      ttl:ttl
-    }, {
-      headers: {
-        Authorization: auth.data.token
-      }
-    })
-    await load()
-    setLoading(false);
-  }
+    const inputClasses = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white text-sm focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all outline-none";
 
-
-  const saveNameserver=async (name,ip)=>{
-    setLoading(true)
-    await axios.post(auth.data.host + "/dns?scaleguard=true",{
-      type:"base",
-      ttl:600,
-      name:name,
-      ip:ip
-    }, {
-      headers: {
-        Authorization: auth.data.token
-      }
-    })
-    await load()
-    setLoading(false);
-  }
-
-
-
-
-
-
-  return (
-    <div className="flex flex-col dark:bg-slate-900 ">
- <div className="flex w-full justify-center dark:text-white ">
-      <NameServers nameServers={nameServers} onSave={saveNameserver} onDelete={deleteItem}></NameServers>
-      </div>
-
-
-      <div className="rounded-lg shadow-lg flex justify-center items-center mt-1 p-2">
-        <div className="container mx-auto bg-indigo-800 dark:bg-slate-800 rounded-lg p-14 dark:text-white">
-          <div>
-            <h1 className="text-center font-bold text-4xl dark:text-white">Configure DNS entries</h1>
-            <p className="text-black dark:text-white mx-auto font-normal text-sm my-6 max-w-lg">
-              
-            </p>
-            <div className="flex flex-col lg:flex-row items-center bg-white rounded-lg overflow-hidden px-2 py-1 justify-between gap-2 items-center dark:text-white">
-              <div className='w-full lg:w-1/3 flex flex-col justify-start'>
-                <Text className='text-black'>Name</Text>
-              <input value={name} onChange={(e)=>setName(e.target.value.trim())} className="w-full  text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="DNS base domain name" />
-
-              </div>
-              <div className='w-full lg:w-1/3  flex flex-col justify-start'>
-              <Text className='text-black'>Host</Text>
-
-              <input   value={ip} onChange={(e)=>setIp(e.target.value.trim())} className="w-full text-base text-gray-400 flex-grow rounded-lg border-2 px-2 py-2" type="text" placeholder="IP Address" />
-              </div>
-                {/* <select  value={type} onChange={(e)=>setType(e.target.value)}  id="type" className="w-1/2 text-base text-gray-800 outline-none border-2 px-4 py-2 rounded-lg">
-                  <option value="base" selected>base</option>
-                  <option value="record">record</option>
-                </select> */}
-
-                {/* <select  value={nameServer} onChange={(e)=>setNameServer(e.target.value)}  id="type" className="w-1/2 text-base text-gray-800 outline-none border-2 px-4 py-2 rounded-lg">
-                  {
-                    nameServers.map(n=>{
-                      return <option value={n.name}>{n.name}</option>
-                    })
-                  }
-                  
-                </select> */}
- <div className='w-full lg:w-1/3 flex flex-col justify-start'>
- <Text className='text-black'>TTL</Text>
-                <input  value={ttl} onChange={(e)=>setTTL(+e.target.value)} className="  text-base text-gray-400  rounded-lg border-2 px-2 py-2" type="text" placeholder="TTL" />
-                  </div>
-                  <div className=' flex flex-col justify-start'>
-                  <div className='h-6'> </div>
-              <Button isDisabled={!name||!ttl||!ip} onClick={()=>save()} leftIcon={<FaSave></FaSave>} colorScheme='green' className="w-full lg:w-[200px] bg-indigo-500 text-white text-base rounded-lg px-4 py-2 font-thin">Save</Button>
-                  </div>
+    return (
+        <div className="p-6 sm:p-8 max-w-5xl mx-auto space-y-6">
+            {/* Page Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 rounded-xl">
+                        <FaGlobe className="text-blue-500 text-lg" />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold dark:text-white">DNS Management</h2>
+                        <p className="text-xs text-slate-400">{recordCount} record{recordCount !== 1 ? 's' : ''} · {nameServers.length} name server{nameServers.length !== 1 ? 's' : ''}</p>
+                    </div>
+                </div>
             </div>
-          </div>
+
+            {/* Top Section: Name Servers + Add Record */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Name Servers Panel */}
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200/60 dark:border-slate-700/50 p-5 shadow-sm">
+                    <NameServers nameServers={nameServers} onSave={saveNameserver} onDelete={deleteItem} />
+                </div>
+
+                {/* Add DNS Record Form */}
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden shadow-sm">
+                    {/* Form Header */}
+                    <div className="relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-700 to-indigo-800"></div>
+                        <div className="absolute inset-0 opacity-[0.05]" style={{
+                            backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
+                            backgroundSize: '20px 20px'
+                        }}></div>
+                        <div className="relative px-6 py-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white/10 rounded-xl">
+                                    <FaPlusCircle className="text-white text-sm" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">Add DNS Record</h3>
+                                    <p className="text-[11px] text-white/50">Configure a new DNS entry</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Form Fields */}
+                    <div className="p-5 space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                Domain Name <span className="text-red-400 text-xs">*</span>
+                            </label>
+                            <input
+                                value={name}
+                                onChange={(e) => setName(e.target.value.trim())}
+                                className={inputClasses}
+                                placeholder="e.g. api.example.com"
+                            />
+                            <p className="text-[10px] text-slate-400 pl-1">The DNS record hostname</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                    IP / Host <span className="text-red-400 text-xs">*</span>
+                                </label>
+                                <input
+                                    value={ip}
+                                    onChange={(e) => setIp(e.target.value.trim())}
+                                    className={inputClasses}
+                                    placeholder="e.g. 10.0.0.1"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                    TTL (seconds)
+                                </label>
+                                <input
+                                    value={ttl}
+                                    onChange={(e) => setTTL(+e.target.value)}
+                                    className={inputClasses}
+                                    placeholder="e.g. 600"
+                                    type="number"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-1">
+                            <Button
+                                isDisabled={!name || !ttl || !ip}
+                                isLoading={loading}
+                                onClick={() => save()}
+                                leftIcon={<FaSave />}
+                                colorScheme='blue'
+                                rounded="xl"
+                                size="sm"
+                                px={6}
+                                _hover={{ transform: "translateY(-1px)", shadow: "lg" }}
+                                transition="all 0.2s"
+                            >
+                                Save Record
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* DNS Records Table */}
+            <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden shadow-sm">
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/40">
+                    <div className="flex items-center gap-2">
+                        <FaNetworkWired className="text-blue-500 text-sm" />
+                        <h3 className="text-sm font-bold text-slate-800 dark:text-white">DNS Records</h3>
+                        <Badge colorScheme="blue" fontSize="10px" px={2} borderRadius="full" ml={1}>
+                            {recordCount}
+                        </Badge>
+                    </div>
+                </div>
+
+                {recordCount > 0 ? (
+                    <table className="min-w-full text-left text-sm">
+                        <thead>
+                            <tr className="bg-slate-50/80 dark:bg-slate-800/80 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                <th className="px-5 py-3 font-medium">#ID</th>
+                                <th className="px-5 py-3 font-medium">Name</th>
+                                <th className="px-5 py-3 font-medium">IP Address</th>
+                                <th className="px-5 py-3 font-medium">Type</th>
+                                <th className="px-5 py-3 font-medium">TTL</th>
+                                <th className="px-5 py-3 font-medium text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                            {systems && Object.keys(systems).map((key: any) => {
+                                return systems[key].filter(s => s.type !== "base").map(system => (
+                                    <tr key={system.id} className="text-slate-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
+                                        <td className="px-5 py-3">
+                                            <span className="text-xs font-mono text-slate-400">{system.id}</span>
+                                        </td>
+                                        <td className="px-5 py-3">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/10 to-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                                                    <FaGlobe className="text-blue-500 text-xs" />
+                                                </div>
+                                                <span className="text-sm font-semibold text-slate-800 dark:text-white">{system.name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-3">
+                                            <code className="text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
+                                                {system.ip}
+                                            </code>
+                                        </td>
+                                        <td className="px-5 py-3">
+                                            <Badge colorScheme="purple" fontSize="10px" px={2} borderRadius="full" textTransform="uppercase">
+                                                {system.type}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-5 py-3">
+                                            <span className="text-xs text-slate-500 font-mono">{system.ttl}s</span>
+                                        </td>
+                                        <td className="px-5 py-3 text-right">
+                                            <DeleteSystem id={system.id} source={"dns"} onAction={() => deleteItem(system.id) as any} buttonType='big' />
+                                        </td>
+                                    </tr>
+                                ))
+                            })}
+                        </tbody>
+                    </table>
+                ) : (
+                    <div className="text-center py-12">
+                        <FaGlobe className="mx-auto text-3xl text-slate-300 dark:text-slate-600 mb-3" />
+                        <p className="text-sm text-slate-400">No DNS records configured</p>
+                        <p className="text-xs text-slate-400/70 mt-1">Add a record using the form above</p>
+                    </div>
+                )}
+            </div>
         </div>
-      </div>
-
-      <div className="overflow-x-auto sm:-mx-6 ">
-        <div className="inline-block min-w-full py-2 sm:px-6 lg:px-8">
-          <div className="overflow-hidden">
-            <table className="min-w-full text-left text-sm font-light dark:text-white">
-              <thead className="border-b font-medium dark:border-neutral-500">
-                <tr>
-                  <th scope="col" className="px-6 py-4 ">#id</th>
-                  <th scope="col" className="px-6 py-4">Name</th>
-                  <th scope="col" className="px-6 py-4">IP</th>
-                  <th scope="col" className="px-6 py-4">Type</th>
-                  <th scope="col" className="px-6 py-4">TTL</th>
-                  <th scope="col" className="px-6 py-4">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-
-                {
-                  systems && Object.keys(systems).map((key: any) => {
-
-                    return systems[key].filter(s=>s.type!="base").map(system=>{
-                      return   <tr
-                      className="border-b transition duration-300 ease-in-out hover:bg-neutral-100 dark:border-neutral-500 dark:hover:bg-neutral-600">
-                      <td className="px-6 py-4 font-medium">{system.id}</td>
-                      <td className="px-6 py-4 font-medium">{system.name}</td>
-                      <td className="px-6 py-4 font-medium">{system.ip}</td>
-                      <td className="px-6 py-4 font-medium">{system.type}</td>
-                      <td className="px-6 py-4 font-medium">{system.ttl}</td>
-
-                      <td><div className=" px-6 py-4 flex gap-2 justify-center items-center">
-                        <DeleteSystem id={system.id} source={"dns"} onAction={() => deleteItem(system.id) as any} buttonType='big'></DeleteSystem>
-                      </div> </td>
-                    </tr>
-                    })
-                   
-                  })
-                }
-
-
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    );
 }

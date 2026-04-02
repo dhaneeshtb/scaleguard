@@ -52,7 +52,7 @@ export default function SignIn() {
       const result = await signIn(hostURL, username, password);
       setLoading(false);
 
-      if (result.status != 200) {
+      if (result.status !== 200) {
         setError("Invalid username or password. Retry with right credentials");
       } else {
         setLoading(false);

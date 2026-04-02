@@ -1,336 +1,326 @@
-import { AnimatePresence } from "framer-motion";
-import React, { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { Button, IconButton, Select, Text } from "@chakra-ui/react";
-import { FaCross, FaSave, FaWindowClose } from "react-icons/fa";
+import React, { useEffect, useState } from "react";
+import { Button, Select, Badge, Box } from "@chakra-ui/react";
+import { FaArrowLeft, FaCog, FaLock, FaSave, FaServer, FaShieldAlt } from "react-icons/fa";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 import { formatData, getBaseSchema, getBaseSchemaDef, updateSource } from "../components/sourceupdate";
 import { useAuth } from "../contexts/AuthContext";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
-import { linter, lintGutter } from "@codemirror/lint";
-import { Checkbox, CheckboxGroup } from '@chakra-ui/react'
-import { Tabs, TabList, TabPanels, Tab, TabPanel, Box } from "@chakra-ui/react";
+import { lintGutter } from "@codemirror/lint";
+import { Checkbox } from '@chakra-ui/react';
+import { Tabs, TabList, TabPanels, Tab, TabPanel } from "@chakra-ui/react";
 
 const ManageSource = () => {
     const navigate = useNavigate();
-    const { id, type="sourcesystems" } = useParams() as any;
-
+    const { id, type = "sourcesystems" } = useParams() as any;
     const { auth } = useAuth() as any;
-
-    const [isLoading,setLoading] =useState(false);
-    const [asyncEngines,setAsyncEngines] =useState<any[]>([]);
+    const [isLoading, setLoading] = useState(false);
+    const [asyncEngines, setAsyncEngines] = useState<any[]>([]);
+    const isNew = !id || id === "new";
 
     useEffect(() => {
-        if (id && id != "new")
+        if (id && id !== "new")
             axios.get(`${auth.data.host}/config/${type}/${id}?scaleguard=true`, {
-                headers: {
-                    Authorization: auth.data.token
-                }
-            }).then(r => setObject((r.data[type])[0]))
+                headers: { Authorization: auth.data.token }
+            }).then(r => setObject((r.data[type])[0]));
         else
             setObject(getBaseSchema(type));
-    }, [id, type])
+    }, [id, type]);
 
-    const [object, setObject] = useState({})
-
+    const [object, setObject] = useState({});
 
     const onSave = async (baseObject) => {
         setLoading(true);
-        if(baseObject["includeHeaders"] && typeof baseObject["includeHeaders"]!="object"){
-            baseObject["includeHeaders"]=JSON.parse(baseObject["includeHeaders"]);
+        try {
+            const saveObj = { ...baseObject };
+            if (saveObj["includeHeaders"] && typeof saveObj["includeHeaders"] !== "object") {
+                saveObj["includeHeaders"] = JSON.parse(saveObj["includeHeaders"]);
+            }
+            if (saveObj["excludeHeaders"] && typeof saveObj["excludeHeaders"] !== "object") {
+                saveObj["excludeHeaders"] = JSON.parse(saveObj["excludeHeaders"]);
+            }
+            if (saveObj["cachedResources"] && typeof saveObj["cachedResources"] !== "object") {
+                saveObj["cachedResources"] = JSON.parse(saveObj["cachedResources"]);
+            }
+            await updateSource(saveObj, type, auth);
+            navigate("/home");
+        } catch (e) {
+            console.error("Failed to save:", e);
+        } finally {
+            setLoading(false);
         }
-        if(baseObject["excludeHeaders"] && typeof baseObject["excludeHeaders"]!="object"){
-            baseObject["excludeHeaders"]=JSON.parse(baseObject["excludeHeaders"]);
-        }
-        if(baseObject["cachedResources"] && typeof baseObject["cachedResources"]!="object"){
-            baseObject["cachedResources"]=JSON.parse(baseObject["cachedResources"]);
-        }
-        await updateSource(baseObject, type, auth);
-        setLoading(false);
-        navigate("/home")
-    }
+    };
 
     const [certificates, setCertificates] = useState<any>([]);
     const loadCerts = async () => {
         const r = await axios.get(auth.data.host + "/certificates?scaleguard=true", {
-            headers: {
-                Authorization: auth.data.token
-            }
+            headers: { Authorization: auth.data.token }
         });
-        setCertificates(formatData(r.data))
-    }
+        setCertificates(formatData(r.data));
+    };
 
-
-  const loadAsyncEngines = async () => {
-    const r = await axios.get(auth.data.host + "/asyncengines?scaleguard=true", {
-      headers: {
-        Authorization: auth.data.token
-      }
-    });
-    const res=r.data;
-    
-    setAsyncEngines(Object.keys(res).map(r=>{
-        const o = res[r];
-        return {
-            id:o.id,
-            name:o.name,type:o.type,topic:o.payload?.topic||"event-stream",
-            host:o.payload.host,port:o.payload.port,
-        }
-    }))
-  }
+    const loadAsyncEngines = async () => {
+        const r = await axios.get(auth.data.host + "/asyncengines?scaleguard=true", {
+            headers: { Authorization: auth.data.token }
+        });
+        const res = r.data;
+        setAsyncEngines(Object.keys(res).map(r => {
+            const o = res[r];
+            return { id: o.id, name: o.name, type: o.type, topic: o.payload?.topic || "event-stream", host: o.payload.host, port: o.payload.port };
+        }));
+    };
 
     useEffect(() => {
         loadCerts();
         loadAsyncEngines();
-    }, [])
+    }, []);
 
-    const RenderScreen = ({type, bs, baseObject, setBaseObject }) => {
+    const RenderScreen = ({ type, bs, baseObject, setBaseObject }) => {
+        const schmaDef = getBaseSchemaDef(type);
 
-        const schmaDef = getBaseSchemaDef(type)
+        const inputClasses = "w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white text-sm focus:ring-2 focus:ring-teal-500/40 focus:border-teal-500 transition-all outline-none";
+        const selectProps = {
+            className: "text-slate-800 dark:text-white !bg-slate-50 dark:!bg-[rgba(30,41,59,0.8)]",
+            size: "md" as const,
+            borderRadius: "xl",
+            borderColor: "gray.200",
+            _focus: { borderColor: "teal.500", boxShadow: "0 0 0 1px var(--chakra-colors-teal-500)" },
+            sx: { option: { background: "var(--chakra-colors-gray-800)", color: "white" } },
+        };
 
         const compScreen = (k) => {
-
-
             switch (k) {
-                case "certificateId": 
-                    return <Select key={k} className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
-                                {
-                                    certificates.map(c => {
-                                        return <option value={c.id}>{c.json.identifiers.map(s => s.value).join(",") + ":" + c.id}</option>
-                                    })
-                                }
-                            </Select>;
-                case "type": 
-                return <Select  key={k} className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
-                        {
-                            ( ["active", "standby"]).map(c => {
-                                return <option value={c}>{c}</option>
-                            })
-                        }</Select>
-
-                case "async": 
-                return <Select key={k} className=" text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
-                                {
-                                    ( ["true", "false"]).map(c => {
-                                        return <option value={c}>{c}</option>
-                                    })
-                                }</Select>
-                               
-
-                case "scheme": 
-                    return <Select  key={k} className="text-black dark:text-white" placeholder='Select option' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} >
-                            {
-                                (type=="sourcesystems"? ["http", "https", "tcp","kafka"]: ["http", "https", "tcp"]).map(c => {
-                                    return <option value={c}>{c}</option>
-                                })
-                            }</Select>
-                case "autoProcure": 
-                        return <Checkbox  key={k}
-                            isChecked={baseObject[k]}
-                            onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.checked })}
-                          >
-                          </Checkbox>
-                default: 
+                case "certificateId":
+                    return <Select key={k} {...selectProps} placeholder='Select certificate' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })}>
+                        {certificates.map(c => (
+                            <option key={c.id} value={c.id}>{c.json.identifiers.map(s => s.value).join(",") + ":" + c.id}</option>
+                        ))}
+                    </Select>;
+                case "type":
+                    return <Select key={k} {...selectProps} placeholder='Select type' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })}>
+                        {["active", "standby"].map(c => (<option key={c} value={c}>{c}</option>))}
+                    </Select>;
+                case "async":
+                    return <Select key={k} {...selectProps} placeholder='Select' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })}>
+                        {["true", "false"].map(c => (<option key={c} value={c}>{c}</option>))}
+                    </Select>;
+                case "scheme":
+                    return <Select key={k} {...selectProps} placeholder='Select scheme' value={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })}>
+                        {(type === "sourcesystems" ? ["http", "https", "tcp", "kafka"] : ["http", "https", "tcp"]).map(c => (
+                            <option key={c} value={c}>{c}</option>
+                        ))}
+                    </Select>;
+                case "autoProcure":
+                    return <div className="flex items-center gap-3 py-1">
+                        <Checkbox key={k} isChecked={baseObject[k]} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.checked })} colorScheme="teal" size="lg" />
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Automatically procure and renew SSL certificates</span>
+                    </div>;
+                default:
                     return bs[k] && (typeof bs[k] == "object") ?
-                    <CodeMirror  key={k}
-                    value={typeof baseObject[k]=="object"? JSON.stringify(baseObject[k]):baseObject[k]}
-                    height="100px"
-                    extensions={[json(), lintGutter()]}
-                    onChange={(value, viewUpdate) => {
-                    //   setJsonFile(value);
-                        setBaseObject({ ...baseObject, [k]: value })
-                    //   updateMarkers();
-                    }}
-                    style={{
-                      border: "1px solid silver",
-                      color:"black"
-                    }}
-                  />
-
-                        // <input onChange={(e) => setBaseObject({ ...baseObject, [k]: JSON.parse(e.target.value) })} value={JSON.stringify(baseObject[k])} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
+                        <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                            <CodeMirror key={k}
+                                value={typeof baseObject[k] === "object" ? JSON.stringify(baseObject[k]) : baseObject[k]}
+                                height="100px"
+                                extensions={[json(), lintGutter()]}
+                                onChange={(value) => { setBaseObject({ ...baseObject, [k]: value }); }}
+                                theme="dark"
+                            />
+                        </div>
                         :
-                        <input  key={k} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} value={k=="port" && baseObject['scheme']=="https" ?"443":baseObject[k]} className="shadow appearance-none border rounded w-full py-2 px-1 text-black" />
+                        <input key={k} onChange={(e) => setBaseObject({ ...baseObject, [k]: e.target.value })} value={k === "port" && baseObject['scheme'] === "https" ? "443" : baseObject[k]} className={inputClasses} placeholder={schmaDef?.[k]?.hint || ""} />;
             }
+        };
+
+        const filterField = (scheme, k) => {
+            if (scheme === "tcp") {
+                return k !== "asyncEngine" && k !== "host" && k !== "basePath" && k !== "async" && k !== "jwtKeylookup" && k !== "callbackId" && k !== "certificateId" && k !== "includeHeaders" && k !== "excludeHeaders" && k !== "cachedResources" && k !== "enableCache";
+            } else if (scheme === "kafka") {
+                return k !== "asyncEngine" && k !== "async" && k !== "jwtKeylookup" && k !== "callbackId" && k !== "certificateId";
+            } else {
+                return k !== "asyncEngine" && true;
+            }
+        };
+
+        function getHint(type, name) {
+            if (name === "basePath" && type === "kafka") {
+                return <span className="text-amber-400 text-[10px] ml-1">(comma separated topic names)</span>;
+            }
+            return null;
         }
 
-        const filterField=(scheme,k,baseObject)=>{
-            if(baseObject[scheme]=="https"){
-                baseObject['port']="443"
-            }
-           if(scheme=="tcp"){
-            return k!="asyncEngine"  && k!="host" && k!="basePath" && k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId" && k!="includeHeaders" && k!="excludeHeaders" && k!="cachedResources" && k!="enableCache";
-           }else if(scheme=="kafka"){
-              return k!="asyncEngine" &&  k!="async" && k!="jwtKeylookup" && k!="callbackId" && k!="certificateId";
-           }else{
-            return k!="asyncEngine" && true;
-           }
-        }
+        const visibleKeys = Object.keys(bs).filter(k =>
+            (type === "sourcesystems" || type === "targetsystems" ? k === "secappid" ? false : filterField(baseObject["scheme"], k) : true)
+        );
 
-        function getHint(type,name){
+        return (
+            <div className="space-y-5">
+                {visibleKeys.map((k) => (
+                    <div key={k}>
+                        <div className="flex gap-3 w-full">
+                            <div className="flex flex-col w-full space-y-1.5">
+                                <label className="flex items-center gap-1.5">
+                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">
+                                        {schmaDef ? schmaDef[k]?.displayName : k}
+                                    </span>
+                                    {schmaDef && schmaDef[k]?.mandatory && <span className="text-red-400 text-xs">*</span>}
+                                    {getHint(baseObject["scheme"], k)}
+                                </label>
+                                {compScreen(k)}
+                                {schmaDef && schmaDef[k]?.hint && (
+                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">{schmaDef[k].hint}</p>
+                                )}
+                            </div>
 
-            if(name=="basePath" && type=="kafka"){
-                return <span >(comma separated topic names)</span>
-            }else{
-                return <></>
-            }
-
-        }
-        return <>{Object.keys(bs).filter(k=>(type=="sourcesystems"||type=="targetsystems" ? k=="secappid"?false: filterField(baseObject["scheme"],k,baseObject):true)).map((k) => {
-            return  <div className="flex gap-2 w-full"> 
-            
-            <div className="flex flex-col w-full">
-
-                
-                <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
-
-                    <span className="capitalize">{schmaDef?schmaDef[k].displayName :k} </span> 
-                    
-                    {schmaDef && schmaDef[k].mandatory ?<span className="text-red-400 text-lg">*</span>:<></>}
-
-                       {getHint(baseObject["scheme"],k)}
-                </label>
-                {compScreen(k)}
-
-                {schmaDef && schmaDef[k].hint ?<span className="italic text-gray-400 text-xs">{schmaDef[k].hint}</span>:<></>}
-
-                </div>
-                {(k=="async" && (baseObject["async"]=="true" || baseObject["async"]==true)) && <div className="flex flex-col w-3/4 ">
-                    <label className="block text-black dark:text-white text-sm font-normal mb-1 ">
-                    <span className="capitalize">Choose Engine </span> 
-                    </label>
-                                <Select className="text-black dark:text-white" placeholder='Select option' value={baseObject['asyncEngine']} onChange={(e) => setBaseObject({ ...baseObject, 'asyncEngine': e.target.value })} >
-                                {
-                                    asyncEngines.map(c => {
-                                        return <option value={c.name}>{c.name}</option>
-                                    })
-                                }</Select>
-                                </div>}
-                                
-
-                </div>
-                
-
-
-        })}
-        </>
-
-    }
+                            {/* Async Engine Selector */}
+                            {(k === "async" && (baseObject["async"] === "true" || baseObject["async"] === true)) && (
+                                <div className="flex flex-col w-3/4 space-y-1.5">
+                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                        Choose Engine
+                                    </label>
+                                    <Select {...selectProps} placeholder='Select engine' value={baseObject['asyncEngine']} onChange={(e) => setBaseObject({ ...baseObject, 'asyncEngine': e.target.value })}>
+                                        {asyncEngines.map(c => (
+                                            <option key={c.name} value={c.name}>{c.name}</option>
+                                        ))}
+                                    </Select>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    };
 
     const RenderSchema = ({ type, object }) => {
         const [baseObject, setBaseObject] = useState(object);
-        const [bs, setBs] = useState(getBaseSchema(type))
-        const [securityType, setSecurityType] = useState(object.secappid||"");
+        const [bs] = useState(getBaseSchema(type));
+        const [securityType, setSecurityType] = useState((object as any).secappid || "");
         const [apps, setApps] = useState<any[]>([]);
 
+        const loadApps = async () => {
+            const r = await axios.get(`${auth.data.host}/apps?scaleguard=true`, {
+                headers: { Authorization: auth.data.token }
+            });
+            setApps(r.data);
+        };
 
-    const loadApps=async ()=>{
-        const r=await axios.get(`${auth.data.host}/apps?scaleguard=true`, {
-             headers: {
-                 Authorization: auth.data.token
-             }
-         })
-         setApps(r.data);
-     }
-     useEffect(()=>{
-        loadApps();
-     },[])
-        return <>
-            <div className="relative p-6 flex-auto dark:bg-slate-900 shadow-3xl">
+        useEffect(() => { loadApps(); }, []);
 
+        const selectProps = {
+            borderRadius: "xl",
+            bg: "var(--chakra-colors-gray-50)",
+            _dark: { bg: "rgba(30,41,59,0.8)" },
+            borderColor: "gray.200",
+            _focus: { borderColor: "teal.500", boxShadow: "0 0 0 1px var(--chakra-colors-teal-500)" },
+        };
 
-                <form className=" shadow-md rounded px-8 pt-6 pb-8 w-full flex flex-col gap-2">
+        return (
+            <>
+                <div className="p-6 sm:p-8">
+                    <Tabs colorScheme='teal' variant="soft-rounded">
+                        <TabList className="gap-2 mb-6">
+                            <Tab className="!text-xs !font-medium !uppercase !tracking-wider" borderRadius="xl" px={5} py={2}>
+                                <FaCog className="mr-2 text-xs" /> General
+                            </Tab>
+                            <Tab className="!text-xs !font-medium !uppercase !tracking-wider" borderRadius="xl" px={5} py={2}>
+                                <FaShieldAlt className="mr-2 text-xs" /> Security
+                            </Tab>
+                        </TabList>
+                        <TabPanels>
+                            <TabPanel px={0}>
+                                <RenderScreen type={type} setBaseObject={setBaseObject} baseObject={baseObject} bs={bs} />
+                            </TabPanel>
+                            <TabPanel px={0}>
+                                <div className="space-y-5">
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                            <FaLock className="text-xs text-teal-500" />
+                                            Security Application
+                                        </label>
+                                        <Select {...selectProps} value={securityType} onChange={(e) => setSecurityType(e.target.value)}>
+                                            <option value={""}>— None —</option>
+                                            {apps.map(a => (
+                                                <option key={a.id} value={a.id}>{a.name} – {a.id}</option>
+                                            ))}
+                                        </Select>
+                                    </div>
+                                    {securityType && (
+                                        <div className="bg-teal-500/5 border border-teal-500/20 rounded-xl p-4">
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">Selected Security App</p>
+                                            <p className="text-sm font-semibold text-slate-800 dark:text-white font-mono mt-1">{securityType}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </TabPanel>
+                        </TabPanels>
+                    </Tabs>
+                </div>
 
-                <Tabs colorScheme='teal' className='text-gray-500 dark:text-gray-400 dark:bg-slate-900  rounded-xl '>
-      <TabList>
-        <Tab>General</Tab>
-        <Tab>Security</Tab>
-      </TabList>
-      <TabPanels>
-      <TabPanel>
-            <RenderScreen type={type} setBaseObject={setBaseObject} baseObject={baseObject} bs={bs}></RenderScreen>
-
-            </TabPanel>
-        <TabPanel>
-           
-          <Box mb={4}>
-            <Select value={securityType} onChange={(e) => setSecurityType(e.target.value)}>
-            <option value={""}>--none--</option>
-                {apps.map(a=>{
-                    return    <option value={a.id}>{a.name+"-"+a.id}</option>
-
-                })}
-            
-            </Select>
-          </Box>
-          <Box>
-            Selected Security App: <strong>{securityType}</strong>
-          </Box>
-        </TabPanel>
-        
-      </TabPanels>
-    </Tabs>
-
-
-
-                </form>
-            </div>
-            <div className="flex items-center justify-end p-6 border-t border-solid border-blueGray-200 rounded-b">
-                <a
-                    href="/home" className="text-red-500 background-transparent font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1"
-                    type="button"
-                    onClick={() => { }}
-                >
-                    Close
-                </a>
-                <Button
-                    colorScheme="teal"
-                    variant={"outline"}
-                    leftIcon={<FaSave></FaSave>}
-                    isLoading={isLoading}
-
-                    className="text-white bg-yellow-500 active:bg-yellow-700 font-bold  text-sm px-6 py-3 rounded shadow hover:shadow-lg outline-none focus:outline-none mr-1 mb-1"
-                    type="button"
-                    onClick={() => onSave({...baseObject,secappid:securityType})}
-                >
-                    Submit
-                </Button>
-            </div>
-        </>
-
-    }
+                {/* Footer */}
+                <div className="flex items-center justify-between p-6 sm:px-8 border-t border-slate-200/40 dark:border-slate-700/40 bg-slate-50/50 dark:bg-slate-800/30 rounded-b-2xl">
+                    <button
+                        onClick={() => navigate("/home")}
+                        className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                    >
+                        <FaArrowLeft className="text-xs" />
+                        Back to Dashboard
+                    </button>
+                    <Button
+                        colorScheme="teal"
+                        leftIcon={<FaSave />}
+                        isLoading={isLoading}
+                        onClick={() => onSave({ ...baseObject, secappid: securityType })}
+                        rounded="xl"
+                        size="md"
+                        px={6}
+                        _hover={{ transform: "translateY(-1px)", shadow: "lg" }}
+                        transition="all 0.2s"
+                    >
+                        {isNew ? "Create" : "Save Changes"}
+                    </Button>
+                </div>
+            </>
+        );
+    };
 
     return (
-        <>
-
-
-            <div className="dark:bg-slate-800 flex justify-center items-center overflow-x-hidden overflow-y-auto  inset-0 z-50 outline-none focus:outline-none">
-
-
-
-                <div className={`relative w-full my-6 mx-auto max-w-xl h-full `}>
-                    <div className="border-0 rounded-lg shadow-lg relative flex flex-col w-full dark:bg-slate-900 text-white  outline-none focus:outline-none  overflow-auto">
-                        <div className="flex items-start justify-between p-5 border-b border-solid border-gray-300 rounded-t  ">
-                            <h3 className="text-black dark:text-white text-3xl font-semibold capitalize">{type} Info</h3>
-
+        <div className="min-h-screen py-8 px-4">
+            <div className="max-w-2xl mx-auto">
+                {/* Header Card */}
+                <div className="relative overflow-hidden rounded-t-2xl">
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-teal-500/20 to-cyan-500/20 opacity-30"></div>
+                    <div className="absolute inset-0 opacity-[0.03]" style={{
+                        backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
+                        backgroundSize: '24px 24px'
+                    }}></div>
+                    <div className="relative px-6 sm:px-8 py-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-white/10 rounded-xl border border-white/10">
+                                <FaServer className="text-white text-lg" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h1 className="text-xl font-bold text-white">Source System</h1>
+                                    <Badge colorScheme={isNew ? "green" : "blue"} fontSize="10px" px={2} borderRadius="full">
+                                        {isNew ? "NEW" : "EDIT"}
+                                    </Badge>
+                                </div>
+                                {!isNew && (
+                                    <p className="text-xs text-slate-400 font-mono mt-0.5 truncate max-w-md">{id}</p>
+                                )}
+                            </div>
                         </div>
-
-
-                        <RenderSchema type={type} object={object}></RenderSchema>
-
-
-
-
-
                     </div>
                 </div>
 
+                {/* Form Card */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-700/50 border-t-0 rounded-b-2xl shadow-xl shadow-slate-200/20 dark:shadow-slate-900/40">
+                    <RenderSchema type={type} object={object} />
+                </div>
             </div>
-
-
-        </>
-
+        </div>
     );
 };
 

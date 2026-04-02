@@ -5,7 +5,6 @@ import useDarkSide from '../components/usedarkmode';
 import { useAuth } from './AuthContext';
 import axios from 'axios';
 import { ConfigureSystem } from '../components/ConfigureSystem';
-import { setPriority } from 'os';
 import { ConfigureServer } from '../components/ConfigureServer';
 import LoadingScreen from './Loading';
 

@@ -37,16 +37,16 @@ function App() {
                   <Routes>
                     <Route path="/home" element={<Home />} />
                     <Route path="/security" element={<Security />} />
-                    <Route path="hostgroups" element={<HostGroups />} />
-                    <Route path="managehost" element={<ManageHost />} />
+                    <Route path="/hostgroups" element={<HostGroups />} />
+                    <Route path="/managehost" element={<ManageHost />} />
                     <Route path="/asyncengines" element={<AsyncEngines />} />
 
                     
-                    <Route path="managehost/sourcesystems/:id" element={<ManageSource />} />
+                    <Route path="/managehost/sourcesystems/:id" element={<ManageSource />} />
 
-                    <Route path="managehost/:type/:id" element={<ManageHost />} />
-                    <Route path="certificates" element={<Certificates />} />
-                    <Route path="dns" element={<DNS />} />
+                    <Route path="/managehost/:type/:id" element={<ManageHost />} />
+                    <Route path="/certificates" element={<Certificates />} />
+                    <Route path="/dns" element={<DNS />} />
                   </Routes>
                 </Layout>
               }

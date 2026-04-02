@@ -3,42 +3,52 @@ import Systems from './Systems'
 import HostGroups from './HostGroups'
 import Targets from './Targets'
 import { useState } from 'react'
-
+import { FaPlug, FaServer, FaNetworkWired } from 'react-icons/fa'
 
 export default function RootComponents() {
 
-    const [tabIndex, setTabIndex] = useState(+(localStorage.getItem("tabIndex")||0))
+    const [tabIndex, setTabIndex] = useState(+(localStorage.getItem("tabIndex") || 0))
 
-    const onChangeTabIndex=(index)=>{
-        localStorage.setItem("tabIndex",index+"");
+    const onChangeTabIndex = (index) => {
+        localStorage.setItem("tabIndex", index + "");
         setTabIndex(index);
-
     }
-    return <Tabs index={tabIndex} onChange={(index) => onChangeTabIndex(index)} colorScheme='teal' className='dark:text-gray-400 dark:bg-slate-900 mt-4 rounded-xl px-[20px]'>
-        <TabList>
-            <Tab>Source Systems</Tab>
-            <Tab>Target Systems</Tab>
-            <Tab>Host Groups</Tab>
 
-           
-        </TabList>
+    const tabs = [
+        { label: "Source Systems", icon: <FaServer className="text-xs" /> },
+        { label: "Target Systems", icon: <FaPlug className="text-xs" /> },
+        { label: "Host Groups", icon: <FaNetworkWired className="text-xs" /> },
+    ];
 
-        <TabPanels>
-            
-            <TabPanel >
-                <Systems></Systems>
+    return (
+        <div className="bg-white/5 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden">
+            <Tabs
+                index={tabIndex}
+                onChange={(index) => onChangeTabIndex(index)}
+                colorScheme='teal'
+                className='dark:text-gray-400'
+            >
+                <TabList className="px-4 pt-3 border-b border-slate-200/40 dark:border-slate-700/40">
+                    {tabs.map((tab, i) => (
+                        <Tab key={i} className="flex items-center gap-2 !text-xs !font-medium !uppercase !tracking-wider">
+                            {tab.icon}
+                            {tab.label}
+                        </Tab>
+                    ))}
+                </TabList>
 
-            </TabPanel>
-            <TabPanel>
-                <Targets></Targets>
-            </TabPanel>
-            <TabPanel>
-                <HostGroups></HostGroups>
-            </TabPanel>
-            
-
-
-
-        </TabPanels>
-    </Tabs>
+                <TabPanels>
+                    <TabPanel>
+                        <Systems />
+                    </TabPanel>
+                    <TabPanel>
+                        <Targets />
+                    </TabPanel>
+                    <TabPanel>
+                        <HostGroups />
+                    </TabPanel>
+                </TabPanels>
+            </Tabs>
+        </div>
+    );
 }

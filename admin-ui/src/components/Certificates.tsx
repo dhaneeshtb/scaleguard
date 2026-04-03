@@ -248,7 +248,7 @@ export default function Certificates() {
 
         return (
             <>
-                <Button size={"xs"} variant={"outline"} colorScheme='gray' isLoading={loading} onClick={openView} leftIcon={<FaFileDownload />} rounded="full">Download</Button>
+                <Button size={"xs"} variant={"outline"} colorScheme='teal' isLoading={loading} onClick={openView} leftIcon={<FaFileDownload />} rounded="full">Download</Button>
 
                 <Modal isOpen={isOpen} onClose={onClose} size={"xl"} isCentered motionPreset="slideInBottom">
                     <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(8px)" />
@@ -351,22 +351,49 @@ export default function Certificates() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
-                                {systems && systems.map((system: any) => (
+                                {systems && systems.map((system: any) => {
+                                    const now = Date.now();
+                                    const expiryMs = system.expiryTime;
+                                    const isValid = system.json.status === "valid";
+                                    const isExpired = isValid && expiryMs && expiryMs < now;
+                                    const isExpiringSoon = isValid && expiryMs && !isExpired && (expiryMs - now) < 30 * 24 * 60 * 60 * 1000;
+                                    const daysLeft = expiryMs ? Math.ceil((expiryMs - now) / (24 * 60 * 60 * 1000)) : null;
+
+                                    return (
                                     <tr key={system.id} className="text-slate-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
                                         <td className="px-5 py-3 font-mono text-xs">{system.id}</td>
                                         <td className="px-5 py-3">
                                             <div className='flex items-center gap-1.5'>
-                                                {system.json.status === "valid" ?
+                                                {isExpired ? (
+                                                    <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span><Badge colorScheme="red" fontSize="10px" px={2} borderRadius="full">expired</Badge></>
+                                                ) : isExpiringSoon ? (
+                                                    <><span className="w-2 h-2 rounded-full bg-amber-400"></span><Badge colorScheme="orange" fontSize="10px" px={2} borderRadius="full">expiring soon</Badge></>
+                                                ) : isValid ? (
                                                     <><span className="w-2 h-2 rounded-full bg-emerald-400"></span><Badge colorScheme="green" fontSize="10px" px={2} borderRadius="full">{system.json.status}</Badge></>
-                                                    :
+                                                ) : (
                                                     <><span className="w-2 h-2 rounded-full bg-amber-400"></span><Badge colorScheme="yellow" fontSize="10px" px={2} borderRadius="full">{system.json.status}</Badge></>
-                                                }
+                                                )}
                                             </div>
                                         </td>
-                                        <td className="px-5 py-3 text-xs">{system.json.status === "valid" ? new Date(system.expiryTime).toLocaleString() : (system.json.expires ? new Date(system.json.expires).toLocaleString() : "N/A")}</td>
+                                        <td className="px-5 py-3 text-xs">
+                                            {isValid ? (
+                                                <div className="flex flex-col">
+                                                    <span className={isExpired ? "text-red-500 font-medium" : isExpiringSoon ? "text-amber-500 font-medium" : "text-slate-600 dark:text-slate-400"}>
+                                                        {new Date(expiryMs).toLocaleDateString()}
+                                                    </span>
+                                                    {daysLeft !== null && (
+                                                        <span className={`text-[10px] ${isExpired ? "text-red-400" : isExpiringSoon ? "text-amber-400" : "text-slate-400"}`}>
+                                                            {isExpired ? `Expired ${Math.abs(daysLeft)} days ago` : `${daysLeft} days left`}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-400">{system.json.expires ? new Date(system.json.expires).toLocaleString() : "N/A"}</span>
+                                            )}
+                                        </td>
                                         <td className="px-5 py-3 text-xs font-mono">{system.json.identifiers.map(s => s.value).join(", ")}</td>
                                         <td className="px-5 py-3">
-                                            {system.json.status === "valid" ?
+                                            {isValid ?
                                                 <Button isDisabled colorScheme='green' leftIcon={<FaCheckCircle />} size="xs" variant="outline" rounded="full">Valid</Button>
                                                 : <DnsChallenge info={system} />}
                                         </td>
@@ -378,7 +405,8 @@ export default function Certificates() {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                         {(!systems || systems.length === 0) && (

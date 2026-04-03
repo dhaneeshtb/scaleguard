@@ -8,14 +8,12 @@ import org.shredzone.acme4j.AcmeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.StringBufferInputStream;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class CertificateStore {
 
@@ -55,8 +53,11 @@ public class CertificateStore {
             this.key = key;
         }
     }
-    private static Map<String, CertificateInfo> certificateMap = new HashMap<>();
-    private static Map<String, CertificateInfo> wildcardCertsMap = new HashMap<>();
+    private static Map<String, CertificateInfo> certificateMap = new ConcurrentHashMap<>();
+    private static Map<String, CertificateInfo> wildcardCertsMap = new ConcurrentHashMap<>();
+    private static final ExecutorService certLoadPool = Executors.newFixedThreadPool(
+            Math.max(4, Runtime.getRuntime().availableProcessors())
+    );
 
     static{
         java.security.Security.addProvider(
@@ -82,51 +83,73 @@ public class CertificateStore {
     }
 
     public static void loadAllCerts(){
+        long startTime = System.currentTimeMillis();
         try {
             // Clear stale entries before reloading
             certificateMap.clear();
             wildcardCertsMap.clear();
-            Set<String> ceritifcateIds= AcmeUtils.listCertificateIds();
-            ArrayNode an =mapper.createArrayNode();
-            ceritifcateIds.forEach(s-> {
-                try {
-                    an.add(AcmeUtils.readCachedCertificate(s));
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            an.forEach(s->{
-                String id = s.get("id").asText();
-                LOGGER.info("Loading certificate data for  => {} ",s);
-//AcmeUtils.isIsFileSupport()?loadFromFile("certs/" + id)
-                CertificateInfo cinfo= loadFromDB(id);
-                if(cinfo!=null) {
-                    cinfo.setId(id);
+            Set<String> certificateIds = AcmeUtils.listCertificateIds();
+            LOGGER.info("Loading {} certificates in parallel...", certificateIds.size());
+
+            // Read all certificate metadata in parallel
+            List<CompletableFuture<JsonNode>> metadataFutures = new ArrayList<>();
+            for (String id : certificateIds) {
+                metadataFutures.add(CompletableFuture.supplyAsync(() -> {
                     try {
-                        JsonNode node = mapper.readTree(s.get("json").asText());
-                        CertificateInfo finalCinfo = cinfo;
-                        node.get("identifiers").forEach(ident -> {
-                            String domainName = ident.get("value").asText();
-                            certificateMap.put(domainName, finalCinfo);
-                            if (domainName.startsWith("*.")) {
-                                String wDomain = domainName.split("[*]")[1];
-                                LOGGER.info("Widlcard certificate => {} ", wDomain);
-                                wildcardCertsMap.put(wDomain, finalCinfo);
-                            }
-                            LOGGER.info("Loaded certificate => {} ", domainName);
-                        });
+                        return AcmeUtils.readCachedCertificate(id);
                     } catch (IOException e) {
-                        throw new GenericServerProcessingException(e);
+                        LOGGER.warn("Failed to read certificate metadata for id={}", id, e);
+                        return null;
                     }
-                }else{
-                    LOGGER.info("Loading certificate not loaded yet for  => {} ",id);
-                }
-            });
+                }, certLoadPool));
+            }
+
+            // Wait for all metadata reads and collect results
+            CompletableFuture.allOf(metadataFutures.toArray(new CompletableFuture[0])).join();
+            List<JsonNode> certNodes = new ArrayList<>();
+            for (CompletableFuture<JsonNode> f : metadataFutures) {
+                JsonNode node = f.get();
+                if (node != null) certNodes.add(node);
+            }
+
+            // Load cert files (private.key + server.crt) in parallel
+            List<CompletableFuture<Void>> loadFutures = new ArrayList<>();
+            for (JsonNode s : certNodes) {
+                loadFutures.add(CompletableFuture.runAsync(() -> {
+                    String id = s.get("id").asText();
+                    CertificateInfo cinfo = loadFromDB(id);
+                    if (cinfo != null) {
+                        cinfo.setId(id);
+                        try {
+                            JsonNode node = mapper.readTree(s.get("json").asText());
+                            node.get("identifiers").forEach(ident -> {
+                                String domainName = ident.get("value").asText();
+                                certificateMap.put(domainName, cinfo);
+                                if (domainName.startsWith("*.")) {
+                                    String wDomain = domainName.split("[*]")[1];
+                                    LOGGER.info("Wildcard certificate => {} ", wDomain);
+                                    wildcardCertsMap.put(wDomain, cinfo);
+                                }
+                                LOGGER.info("Loaded certificate => {} ", domainName);
+                            });
+                        } catch (IOException e) {
+                            LOGGER.warn("Failed to parse cert json for id={}", id, e);
+                        }
+                    } else {
+                        LOGGER.info("Certificate not loaded yet for => {} ", id);
+                    }
+                }, certLoadPool));
+            }
+
+            // Wait for all cert loads to complete
+            CompletableFuture.allOf(loadFutures.toArray(new CompletableFuture[0])).join();
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            LOGGER.info("Loaded {} certificates in {}ms", certificateMap.size(), elapsed);
 
         } catch (Exception e) {
             throw new GenericServerProcessingException(e);
         }
-
     }
 
     public static void main(String[] args) {

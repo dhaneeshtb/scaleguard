@@ -52,7 +52,9 @@ public class CertificateManager {
 
         // Single query: read ALL records at once instead of N+1
         ArrayNode an = mapper.createArrayNode();
-        CertificateOrdersDB.getInstance().readAll().forEach(dms -> {
+        CertificateOrdersDB.getInstance().readAll().stream()
+            .sorted((a, b) -> Long.compare(b.getUts(), a.getUts())) // most recently changed first
+            .forEach(dms -> {
             try {
                 if (dms.getPayload() != null && !dms.getPayload().isEmpty()) {
                     an.add(mapper.readTree(dms.getPayload()));

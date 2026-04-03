@@ -68,6 +68,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
     String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
+    boolean forwarded = false;
     try {
       RouteTarget ts = inboundHandler.matchTarget(ctx, msg, port);
       if (!rateLimitManager.checkRate(ts, inAddress)) {
@@ -85,15 +86,18 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         }
         if("http".equalsIgnoreCase(ts.getTargetSystem().getScheme()) || "https".equalsIgnoreCase(ts.getTargetSystem().getScheme())) {
           if (ts.getTargetSystem().isEnableCache()) {
+            forwarded = true;
             inboundHandler.handle(ctx, msg, ts, key -> proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey()));
           } else {
             if (ts.getSourceSystem().isAsync()) {
               inboundHandler.handleAsync(ctx, msg, ts, null);
             } else {
+              forwarded = true;
               proeedToTarget(ts, ctx, msg, null);
             }
           }
         }else if("tcp".equalsIgnoreCase(ts.getTargetSystem().getScheme())){
+          forwarded = true;
           proeedToTarget(ts, ctx, msg, null);
         }else{
           inboundHandler.handleSubSystem(ctx, msg, ts, null);
@@ -101,6 +105,12 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       }
     }catch (Exception e){
       e.printStackTrace();
+    }finally {
+      // Release the request ByteBuf for non-proxy paths (internal responses).
+      // Proxy paths forward msg to outbound channel which takes ownership.
+      if (!forwarded && msg instanceof io.netty.util.ReferenceCounted) {
+        io.netty.util.ReferenceCountUtil.release(msg);
+      }
     }
   }
 

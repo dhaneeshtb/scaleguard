@@ -83,6 +83,9 @@ public class CertificateStore {
 
     public static void loadAllCerts(){
         try {
+            // Clear stale entries before reloading
+            certificateMap.clear();
+            wildcardCertsMap.clear();
             Set<String> ceritifcateIds= AcmeUtils.listCertificateIds();
             ArrayNode an =mapper.createArrayNode();
             ceritifcateIds.forEach(s-> {

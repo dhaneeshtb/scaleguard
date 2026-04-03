@@ -86,8 +86,12 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         }
         if("http".equalsIgnoreCase(ts.getTargetSystem().getScheme()) || "https".equalsIgnoreCase(ts.getTargetSystem().getScheme())) {
           if (ts.getTargetSystem().isEnableCache()) {
-            forwarded = true;
-            inboundHandler.handle(ctx, msg, ts, key -> proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey()));
+            final boolean[] fwd = {false};
+            inboundHandler.handle(ctx, msg, ts, key -> {
+              fwd[0] = true;
+              proeedToTarget(ts, ctx, msg, key == null ? null : key.getKey());
+            });
+            forwarded = fwd[0];
           } else {
             if (ts.getSourceSystem().isAsync()) {
               inboundHandler.handleAsync(ctx, msg, ts, null);

@@ -431,16 +431,20 @@ export default function Certificates() {
                                     const now = Date.now();
                                     const expiryMs = system.expiryTime;
                                     const isValid = system.json.status === "valid";
+                                    const isFailed = system.json.status === "invalid";
                                     const isExpired = isValid && expiryMs && expiryMs < now;
                                     const isExpiringSoon = isValid && expiryMs && !isExpired && (expiryMs - now) < 30 * 24 * 60 * 60 * 1000;
                                     const daysLeft = expiryMs ? Math.ceil((expiryMs - now) / (24 * 60 * 60 * 1000)) : null;
+                                    const canRenew = isExpired || isExpiringSoon || isFailed;
 
                                     return (
                                     <tr key={system.id} className="text-slate-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
                                         <td className="px-5 py-3 font-mono text-xs">{system.id}</td>
                                         <td className="px-5 py-3">
                                             <div className='flex items-center gap-1.5'>
-                                                {isExpired ? (
+                                                {isFailed ? (
+                                                    <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span><Badge colorScheme="red" fontSize="10px" px={2} borderRadius="full">failed</Badge></>
+                                                ) : isExpired ? (
                                                     <><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span><Badge colorScheme="red" fontSize="10px" px={2} borderRadius="full">expired</Badge></>
                                                 ) : isExpiringSoon ? (
                                                     <><span className="w-2 h-2 rounded-full bg-amber-400"></span><Badge colorScheme="orange" fontSize="10px" px={2} borderRadius="full">expiring soon</Badge></>
@@ -476,19 +480,19 @@ export default function Certificates() {
                                         <td className="px-5 py-3"><HttpChallenge id={system.id} /></td>
                                         <td className="px-5 py-3">
                                             <div className="flex gap-1.5 items-center">
-                                                {(isExpired || isExpiringSoon) && (() => {
+                                                {canRenew && (() => {
                                                     const domains = system.json.identifiers.map(s => s.value).join(", ");
                                                     return (
                                                         <RenewConfirm
                                                             id={system.id}
                                                             domains={domains}
-                                                            isExpired={isExpired}
+                                                            isExpired={isExpired || isFailed}
                                                             onRenew={renewCert}
                                                             loading={loading}
                                                         />
                                                     );
                                                 })()}
-                                                {system.json.status !== "valid" && <VerificationMethodModal id={system.id} onContinue={verify} />}
+                                                {system.json.status !== "valid" && !isFailed && <VerificationMethodModal id={system.id} onContinue={verify} />}
                                                 <DeleteSystem id={system.id} source={"Certificate"} onAction={() => deleteItem(system.id) as any} buttonType='big' />
                                             </div>
                                         </td>

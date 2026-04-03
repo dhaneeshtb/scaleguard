@@ -99,31 +99,36 @@ public class CertificateStore {
                 }
             }
 
-            // Load cert files (private.key + server.crt) in parallel using parallelStream
-            certNodes.parallelStream().forEach(s -> {
-                String id = s.get("id").asText();
-                CertificateInfo cinfo = loadFromDB(id);
-                if (cinfo != null) {
-                    cinfo.setId(id);
-                    try {
-                        JsonNode node = mapper.readTree(s.get("json").asText());
-                        node.get("identifiers").forEach(ident -> {
-                            String domainName = ident.get("value").asText();
-                            certificateMap.put(domainName, cinfo);
-                            if (domainName.startsWith("*.")) {
-                                String wDomain = domainName.split("[*]")[1];
-                                LOGGER.info("Wildcard certificate => {} ", wDomain);
-                                wildcardCertsMap.put(wDomain, cinfo);
-                            }
-                            LOGGER.info("Loaded certificate => {} ", domainName);
-                        });
-                    } catch (IOException e) {
-                        LOGGER.warn("Failed to parse cert json for id={}", id, e);
+            // Load cert files (private.key + server.crt) in parallel (max 3 threads)
+            ForkJoinPool customPool = new ForkJoinPool(3);
+            try {
+                customPool.submit(() -> certNodes.parallelStream().forEach(s -> {
+                    String id = s.get("id").asText();
+                    CertificateInfo cinfo = loadFromDB(id);
+                    if (cinfo != null) {
+                        cinfo.setId(id);
+                        try {
+                            JsonNode node = mapper.readTree(s.get("json").asText());
+                            node.get("identifiers").forEach(ident -> {
+                                String domainName = ident.get("value").asText();
+                                certificateMap.put(domainName, cinfo);
+                                if (domainName.startsWith("*.")) {
+                                    String wDomain = domainName.split("[*]")[1];
+                                    LOGGER.info("Wildcard certificate => {} ", wDomain);
+                                    wildcardCertsMap.put(wDomain, cinfo);
+                                }
+                                LOGGER.info("Loaded certificate => {} ", domainName);
+                            });
+                        } catch (IOException e) {
+                            LOGGER.warn("Failed to parse cert json for id={}", id, e);
+                        }
+                    } else {
+                        LOGGER.info("Certificate not loaded yet for => {} ", id);
                     }
-                } else {
-                    LOGGER.info("Certificate not loaded yet for => {} ", id);
-                }
-            });
+                })).get();
+            } finally {
+                customPool.shutdown();
+            }
 
             long elapsed = System.currentTimeMillis() - startTime;
             LOGGER.info("Loaded {} certificates in {}ms", certificateMap.size(), elapsed);

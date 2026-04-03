@@ -41,6 +41,9 @@ public class CertificatesRoute implements RequestRoute {
             if("verify".equalsIgnoreCase(action)){
                 String id = tuples[tuples.length-2];
                 return RequestRoutingResponse.succes("{\"status\":\""+cm.verifyOrder(id,challengeType)+"\"}");
+            }else if("renew".equalsIgnoreCase(action)){
+                String id = tuples[tuples.length-2];
+                return RequestRoutingResponse.succes(cm.renewCertificate(id).toString());
             }else {
                 ArrayNode an = (ArrayNode) node.get("domainNames");
                 List<String> domainNames = new ArrayList<>();

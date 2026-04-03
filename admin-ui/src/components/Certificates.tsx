@@ -7,7 +7,7 @@ import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import {
     FaArrowCircleDown, FaArrowCircleUp, FaCheckCircle, FaClipboard, FaCertificate,
-    FaFileDownload, FaInfoCircle, FaKey, FaPlusCircle, FaShieldAlt
+    FaFileDownload, FaInfoCircle, FaKey, FaPlusCircle, FaShieldAlt, FaSyncAlt
 } from "react-icons/fa";
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { useToast } from '@chakra-ui/react';
@@ -53,6 +53,19 @@ export default function Certificates() {
         } catch (e: any) {
             return e.response;
         }
+    }
+
+    const renewCert = async (id) => {
+        setLoading(true);
+        try {
+            await axios.post(auth.data.host + "/certificates/" + id + "/renew?scaleguard=true", {}, {
+                headers: { Authorization: auth.data.token }
+            });
+            await load();
+        } catch (e) {
+            console.error("Failed to renew certificate:", e);
+        }
+        setLoading(false);
     }
 
     function NewCertificate({ onUpdate }) {
@@ -400,6 +413,13 @@ export default function Certificates() {
                                         <td className="px-5 py-3"><HttpChallenge id={system.id} /></td>
                                         <td className="px-5 py-3">
                                             <div className="flex gap-1.5 items-center">
+                                                {(isExpired || isExpiringSoon) && (
+                                                    <Tooltip label="Re-order certificate with same domains" hasArrow>
+                                                        <Button size="xs" colorScheme={isExpired ? 'red' : 'orange'} leftIcon={<FaSyncAlt />} rounded="full" onClick={() => renewCert(system.id)} isLoading={loading}>
+                                                            Renew
+                                                        </Button>
+                                                    </Tooltip>
+                                                )}
                                                 {system.json.status !== "valid" && <VerificationMethodModal id={system.id} onContinue={verify} />}
                                                 <DeleteSystem id={system.id} source={"Certificate"} onAction={() => deleteItem(system.id) as any} buttonType='big' />
                                             </div>

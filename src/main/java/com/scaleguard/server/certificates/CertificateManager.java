@@ -86,6 +86,39 @@ public class CertificateManager {
         invalidateCache();
     }
 
+    public JsonNode renewCertificate(String orderId) throws AcmeException, IOException {
+        // Read existing certificate to extract domain names
+        JsonNode existing = AcmeUtils.readCachedCertificate(orderId);
+        if (existing == null) {
+            throw new IOException("Certificate not found: " + orderId);
+        }
+
+        // Extract domains from identifiers array: [{"type":"dns","value":"example.com"},...]
+        JsonNode identifiers = existing.get("json") != null ?
+                existing.get("json").get("identifiers") : existing.get("identifiers");
+        if (identifiers == null || !identifiers.isArray() || identifiers.size() == 0) {
+            throw new IOException("No domain identifiers found for certificate: " + orderId);
+        }
+
+        List<String> domains = new ArrayList<>();
+        identifiers.forEach(id -> {
+            if (id.has("value")) {
+                domains.add(id.get("value").asText());
+            }
+        });
+
+        if (domains.isEmpty()) {
+            throw new IOException("No domains extracted from certificate: " + orderId);
+        }
+
+        LOG.info("Renewing certificate {} for domains: {}", orderId, domains);
+
+        // Delete old order and create fresh one with same ID
+        AcmeUtils.deleteCertificate(orderId);
+        invalidateCache();
+        return orderCertificate(domains, orderId);
+    }
+
     public Order getOrder(String orderId) throws AcmeException, IOException {
         LoadOrder loader = new LoadOrder(context);
         return loader.loadOrder(orderId);

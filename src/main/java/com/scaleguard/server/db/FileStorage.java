@@ -38,13 +38,21 @@ public class FileStorage {
     }
 
     public static void storeFileAsString(String certificateId, String filename, String content) {
-        String sql = "INSERT INTO cert_files (certificate_id, filename, data) VALUES (?, ?, ?)";
-        try (Connection conn = ConnectionUtil.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, certificateId);
-            pstmt.setString(2, filename);
-            pstmt.setString(3, content);
-            pstmt.executeUpdate();
+        // Delete existing entry first to prevent duplicate rows for same cert+file
+        String deleteSql = "DELETE FROM cert_files WHERE certificate_id = ? AND filename = ?";
+        String insertSql = "INSERT INTO cert_files (certificate_id, filename, data) VALUES (?, ?, ?)";
+        try (Connection conn = ConnectionUtil.getConnection()) {
+            try (PreparedStatement delStmt = conn.prepareStatement(deleteSql)) {
+                delStmt.setString(1, certificateId);
+                delStmt.setString(2, filename);
+                delStmt.executeUpdate();
+            }
+            try (PreparedStatement insStmt = conn.prepareStatement(insertSql)) {
+                insStmt.setString(1, certificateId);
+                insStmt.setString(2, filename);
+                insStmt.setString(3, content);
+                insStmt.executeUpdate();
+            }
             System.out.println("File stored successfully as String in db");
         } catch (Exception e) {
             e.printStackTrace();
@@ -52,7 +60,7 @@ public class FileStorage {
     }
 
     public static String retrieveFileAsString(String certificateId,String filename) {
-        String sql = "SELECT data FROM cert_files WHERE certificate_id = ? and filename=?";
+        String sql = "SELECT data FROM cert_files WHERE certificate_id = ? and filename=? ORDER BY id DESC LIMIT 1";
         try (Connection conn = ConnectionUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, certificateId);
@@ -65,6 +73,18 @@ public class FileStorage {
             e.printStackTrace();
         }
         return null;
+    }
+
+    public static void deleteFiles(String certificateId) {
+        String sql = "DELETE FROM cert_files WHERE certificate_id = ?";
+        try (Connection conn = ConnectionUtil.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, certificateId);
+            int deleted = pstmt.executeUpdate();
+            System.out.println("Deleted " + deleted + " cert file(s) for " + certificateId);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public static void main(String[] args) {

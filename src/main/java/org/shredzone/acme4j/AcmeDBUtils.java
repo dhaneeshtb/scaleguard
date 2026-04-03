@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.CertificateOrdersDB;
 import com.scaleguard.server.db.DBModelSystem;
+import com.scaleguard.server.db.FileStorage;
 import org.shredzone.acme4j.challenge.Dns01Challenge;
 import org.shredzone.acme4j.challenge.Http01Challenge;
 import org.shredzone.acme4j.exception.AcmeException;
@@ -133,6 +134,7 @@ public class AcmeDBUtils {
     public  static void deleteCertificate(String hashKey) throws IOException {
         try {
             CertificateOrdersDB.getInstance().delete(hashKey);
+            FileStorage.deleteFiles(hashKey);
         } catch (Exception e) {
             throw new GenericServerProcessingException(e);
         }

@@ -94,6 +94,9 @@ public class CertificateStoreUtils {
         dms.setName(String.join(",", domains));
         dms.setPayload(on.toString());
         dms.setStatus(order.getStatus().name());
+        long now = System.currentTimeMillis();
+        dms.setMts(now);
+        dms.setUts(now);
         CertificateOrdersDB.getInstance().save(dms);
         return on;
     }

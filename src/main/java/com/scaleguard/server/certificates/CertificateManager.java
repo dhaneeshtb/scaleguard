@@ -52,17 +52,22 @@ public class CertificateManager {
 
         // Single query: read ALL records at once instead of N+1
         ArrayNode an = mapper.createArrayNode();
-        CertificateOrdersDB.getInstance().readAll().stream()
-            .sorted((a, b) -> Long.compare(b.getUts(), a.getUts())) // most recently changed first
-            .forEach(dms -> {
+        List<JsonNode> parsed = new ArrayList<>();
+        CertificateOrdersDB.getInstance().readAll().forEach(dms -> {
             try {
                 if (dms.getPayload() != null && !dms.getPayload().isEmpty()) {
-                    an.add(mapper.readTree(dms.getPayload()));
+                    parsed.add(mapper.readTree(dms.getPayload()));
                 }
             } catch (IOException e) {
                 LOG.warn("Failed to parse certificate payload for id={}", dms.getId(), e);
             }
         });
+        // Sort by creationTime descending (most recent first)
+        parsed.sort((a, b) -> Long.compare(
+                b.has("creationTime") ? b.get("creationTime").asLong() : 0,
+                a.has("creationTime") ? a.get("creationTime").asLong() : 0
+        ));
+        parsed.forEach(an::add);
 
         cachedAll = an;
         cacheTimestamp = now;

@@ -413,13 +413,18 @@ export default function Certificates() {
                                         <td className="px-5 py-3"><HttpChallenge id={system.id} /></td>
                                         <td className="px-5 py-3">
                                             <div className="flex gap-1.5 items-center">
-                                                {(isExpired || isExpiringSoon) && (
-                                                    <Tooltip label="Re-order certificate with same domains" hasArrow>
-                                                        <Button size="xs" colorScheme={isExpired ? 'red' : 'orange'} leftIcon={<FaSyncAlt />} rounded="full" onClick={() => renewCert(system.id)} isLoading={loading}>
-                                                            Renew
-                                                        </Button>
-                                                    </Tooltip>
-                                                )}
+                                                {(isExpired || isExpiringSoon) && (() => {
+                                                    const domains = system.json.identifiers.map(s => s.value).join(", ");
+                                                    return (
+                                                        <RenewConfirm
+                                                            id={system.id}
+                                                            domains={domains}
+                                                            isExpired={isExpired}
+                                                            onRenew={renewCert}
+                                                            loading={loading}
+                                                        />
+                                                    );
+                                                })()}
                                                 {system.json.status !== "valid" && <VerificationMethodModal id={system.id} onContinue={verify} />}
                                                 <DeleteSystem id={system.id} source={"Certificate"} onAction={() => deleteItem(system.id) as any} buttonType='big' />
                                             </div>

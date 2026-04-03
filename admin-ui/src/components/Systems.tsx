@@ -6,8 +6,8 @@ import { renewCertificate, updateSource } from './sourceupdate';
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
 
-export default function Systems() {
-    const [systems, setSystems] = useState<any>([]);
+export default function Systems({ initialData }: { initialData?: any[] }) {
+    const [systems, setSystems] = useState<any>(initialData || []);
     const { auth } = useAuth() as any;
 
     const onLoad = () => {
@@ -18,7 +18,7 @@ export default function Systems() {
     };
 
     useEffect(() => {
-        if (auth.data) onLoad();
+        if (auth.data && !initialData) onLoad();
     }, [auth.data]);
 
     function AttachCertificate({ source, id, onUpdate = () => { } }) {
@@ -69,7 +69,7 @@ export default function Systems() {
             setSaving(false);
         };
 
-        useEffect(() => { onLoad(); }, [id]);
+        useEffect(() => { if (isOpen) onLoad(); }, [isOpen]);
 
         return (
             <>

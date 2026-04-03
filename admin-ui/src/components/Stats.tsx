@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { FaArrowDown, FaArrowUp, FaBolt, FaClock, FaExchangeAlt, FaServer, FaTachometerAlt } from "react-icons/fa";
 
@@ -14,8 +14,11 @@ interface StatEntry {
 export default function Stats() {
   const [stats, setStats] = useState<StatEntry[]>([]);
   const { auth } = useAuth() as any;
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     axios
       .get(auth.data.host + "/stats?scaleguard=true", {
         headers: {
@@ -106,9 +109,8 @@ export default function Stats() {
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`w-2 h-2 rounded-full ${
-                              isHealthy ? "bg-emerald-400" : "bg-amber-400"
-                            }`}
+                            className={`w-2 h-2 rounded-full ${isHealthy ? "bg-emerald-400" : "bg-amber-400"
+                              }`}
                           ></span>
                           <span className="font-medium text-xs">{routeName || "/"}</span>
                         </div>
@@ -129,11 +131,10 @@ export default function Stats() {
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                             <div
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                isHealthy
+                              className={`h-full rounded-full transition-all duration-500 ${isHealthy
                                   ? "bg-gradient-to-r from-emerald-400 to-teal-400"
                                   : "bg-gradient-to-r from-amber-400 to-orange-400"
-                              }`}
+                                }`}
                               style={{ width: `${Math.max(barWidth, 5)}%` }}
                             ></div>
                           </div>

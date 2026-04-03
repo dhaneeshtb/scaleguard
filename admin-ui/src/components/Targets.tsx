@@ -5,8 +5,8 @@ import { FaEdit, FaPlug, FaPlusCircle } from "react-icons/fa";
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
 
-export default function Targets() {
-    const [systems, setSystems] = useState<any>([]);
+export default function Targets({ initialData }: { initialData?: any[] }) {
+    const [systems, setSystems] = useState<any>(initialData || []);
     const { auth } = useAuth() as any;
 
     const onLoad = () => {
@@ -16,7 +16,7 @@ export default function Targets() {
             .catch(err => console.error("Failed to load target systems:", err));
     };
 
-    useEffect(() => { onLoad(); }, []);
+    useEffect(() => { if (!initialData) onLoad(); }, []);
 
     return (
         <div className="space-y-4">

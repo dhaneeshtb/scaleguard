@@ -5,7 +5,7 @@ import Targets from './Targets'
 import { useState } from 'react'
 import { FaPlug, FaServer, FaNetworkWired } from 'react-icons/fa'
 
-export default function RootComponents() {
+export default function RootComponents({ initialData }: { initialData?: { sourcesystems?: any[]; targetsystems?: any[]; hostgroups?: any[] } }) {
 
     const [tabIndex, setTabIndex] = useState(+(localStorage.getItem("tabIndex") || 0))
 
@@ -39,13 +39,13 @@ export default function RootComponents() {
 
                 <TabPanels>
                     <TabPanel>
-                        <Systems />
+                        <Systems initialData={initialData?.sourcesystems} />
                     </TabPanel>
                     <TabPanel>
-                        <Targets />
+                        <Targets initialData={initialData?.targetsystems} />
                     </TabPanel>
                     <TabPanel>
-                        <HostGroups />
+                        <HostGroups initialData={initialData?.hostgroups} />
                     </TabPanel>
                 </TabPanels>
             </Tabs>

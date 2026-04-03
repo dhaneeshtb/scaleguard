@@ -5,8 +5,8 @@ import { FaArrowCircleDown, FaArrowCircleUp, FaEdit, FaNetworkWired, FaPlusCircl
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
 
-export default function HostGroups() {
-    const [systems, setSystems] = useState<any>([]);
+export default function HostGroups({ initialData }: { initialData?: any[] }) {
+    const [systems, setSystems] = useState<any>(initialData || []);
     const { auth } = useAuth() as any;
 
     const onLoad = () => {
@@ -16,7 +16,7 @@ export default function HostGroups() {
             .catch(err => console.error("Failed to load host groups:", err));
     };
 
-    useEffect(() => { onLoad(); }, []);
+    useEffect(() => { if (!initialData) onLoad(); }, []);
 
     const reachableCount = systems.filter((s: any) => s.reachable).length;
 

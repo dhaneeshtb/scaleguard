@@ -3,6 +3,7 @@ package com.scaleguard.server.certificates;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.scaleguard.server.db.CertificateOrdersDB;
 import com.scaleguard.server.http.reverse.ChallengeVerifiers;
 import org.shredzone.acme4j.*;
 import org.shredzone.acme4j.challenge.Challenge;
@@ -16,7 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+
 import java.util.UUID;
 
 public class CertificateManager {
@@ -32,20 +33,41 @@ public class CertificateManager {
         }
     }
 
+    // In-memory cache for loadAll — certificates rarely change but the UI polls frequently
+    private volatile JsonNode cachedAll = null;
+    private volatile long cacheTimestamp = 0;
+    private static final long CACHE_TTL_MS = 30_000; // 30 seconds
+
+    public void invalidateCache() {
+        cachedAll = null;
+        cacheTimestamp = 0;
+    }
+
     public JsonNode loadAll() throws AcmeException, IOException {
-        Set<String> ceritifcateIds = AcmeUtils.listCertificateIds();
+        long now = System.currentTimeMillis();
+        if (cachedAll != null && (now - cacheTimestamp) < CACHE_TTL_MS) {
+            return cachedAll;
+        }
+
+        // Single query: read ALL records at once instead of N+1
         ArrayNode an = mapper.createArrayNode();
-        ceritifcateIds.forEach(s -> {
+        CertificateOrdersDB.getInstance().readAll().forEach(dms -> {
             try {
-                an.add(AcmeUtils.readCachedCertificate(s));
+                if (dms.getPayload() != null && !dms.getPayload().isEmpty()) {
+                    an.add(mapper.readTree(dms.getPayload()));
+                }
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                LOG.warn("Failed to parse certificate payload for id={}", dms.getId(), e);
             }
         });
+
+        cachedAll = an;
+        cacheTimestamp = now;
         return an;
     }
 
     public JsonNode orderCertificate(List<String> domains, String id) throws AcmeException, IOException {
+        invalidateCache();
         LoadOrder loader = new LoadOrder(context);
         return loader.createOrder(domains, id == null ? UUID.randomUUID().toString() : id);
     }
@@ -61,6 +83,7 @@ public class CertificateManager {
 
     public void delete(String orderId) throws AcmeException, IOException {
         AcmeUtils.deleteCertificate(orderId);
+        invalidateCache();
     }
 
     public Order getOrder(String orderId) throws AcmeException, IOException {
@@ -150,6 +173,7 @@ public class CertificateManager {
         } else {
             AcmeUtils.saveOrder(order, id);
         }
+        invalidateCache();
         return order.getStatus().toString();
 
     }

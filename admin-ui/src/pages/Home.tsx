@@ -12,10 +12,15 @@ function Home() {
     const { properties } = useSystemContext() as any;
     const { auth } = useAuth() as any;
     const [counts, setCounts] = useState({ sources: 0, targets: 0, certs: 0, hostGroups: 0 });
+    const [initialData, setInitialData] = useState<any>({ sourcesystems: null, targetsystems: null, hostgroups: null });
     const [loading, setLoading] = useState(true);
-    const [loadPhase, setLoadPhase] = useState(0); // 0: infra, 1: stats, 2: systems, 3: done
+    const [loadPhase, setLoadPhase] = useState(0);
+    const fetchedRef = React.useRef(false);
 
     useEffect(() => {
+        if (!auth.data || fetchedRef.current) return;
+        fetchedRef.current = true;
+
         const loadCounts = async () => {
             setLoading(true);
             setLoadPhase(0);
@@ -23,22 +28,26 @@ function Home() {
                 const headers = { Authorization: auth.data.token };
                 const host = auth.data.host;
 
-                // Phase 0: Load infrastructure counts
                 const [srcRes, tgtRes, certRes, hgRes] = await Promise.allSettled([
                     axios.get(`${host}/config/sourcesystems?scaleguard=true`, { headers }),
                     axios.get(`${host}/config/targetsystems?scaleguard=true`, { headers }),
                     axios.get(`${host}/certificates?scaleguard=true`, { headers }),
                     axios.get(`${host}/config/hostgroups?scaleguard=true`, { headers }),
                 ]);
+
+                const srcData = srcRes.status === 'fulfilled' ? srcRes.value.data.sourcesystems || [] : [];
+                const tgtData = tgtRes.status === 'fulfilled' ? tgtRes.value.data.targetsystems || [] : [];
+                const hgData = hgRes.status === 'fulfilled' ? hgRes.value.data.hostgroups || [] : [];
+
                 setCounts({
-                    sources: srcRes.status === 'fulfilled' ? (srcRes.value.data.sourcesystems?.length || 0) : 0,
-                    targets: tgtRes.status === 'fulfilled' ? (tgtRes.value.data.targetsystems?.length || 0) : 0,
+                    sources: srcData.length,
+                    targets: tgtData.length,
                     certs: certRes.status === 'fulfilled' ? (certRes.value.data?.length || 0) : 0,
-                    hostGroups: hgRes.status === 'fulfilled' ? (hgRes.value.data.hostgroups?.length || 0) : 0,
+                    hostGroups: hgData.length,
                 });
+                setInitialData({ sourcesystems: srcData, targetsystems: tgtData, hostgroups: hgData });
                 setLoadPhase(1);
 
-                // Small delay for visual stagger
                 await new Promise(r => setTimeout(r, 300));
                 setLoadPhase(2);
 
@@ -50,7 +59,7 @@ function Home() {
             }
             setLoading(false);
         };
-        if (auth.data) loadCounts();
+        loadCounts();
     }, [auth.data]);
 
     const hostname = properties?.hostName?.value || 'Scaleguard';
@@ -168,7 +177,7 @@ function Home() {
                     <div className="h-1 w-6 bg-gradient-to-r from-violet-400 to-purple-400 rounded-full"></div>
                     <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">System Management</h2>
                 </div>
-                <RootComponents />
+                {loadPhase >= 1 && <RootComponents initialData={initialData} />}
             </motion.div>
         </div>
     );

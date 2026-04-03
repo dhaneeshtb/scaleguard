@@ -68,6 +68,69 @@ export default function Certificates() {
         setLoading(false);
     }
 
+    function RenewConfirm({ id, domains, isExpired, onRenew, loading }) {
+        const { isOpen, onOpen, onClose } = useDisclosure();
+        const [renewing, setRenewing] = useState(false);
+
+        const handleRenew = async () => {
+            setRenewing(true);
+            await onRenew(id);
+            setRenewing(false);
+            onClose();
+        };
+
+        return (
+            <>
+                <Button size="xs" colorScheme={isExpired ? 'red' : 'orange'} leftIcon={<FaSyncAlt />} rounded="full" onClick={onOpen} isLoading={loading}>
+                    Renew
+                </Button>
+
+                <Modal isOpen={isOpen} onClose={onClose} isCentered motionPreset="slideInBottom">
+                    <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(8px)" />
+                    <ModalContent
+                        borderRadius="2xl" shadow="2xl" mx={4}
+                        className="!bg-white dark:!bg-slate-900 !border !border-slate-200 dark:!border-slate-700"
+                    >
+                        <ModalCloseButton rounded="full" top={4} right={4} />
+                        <ModalBody pt={8} pb={4} px={8}>
+                            <div className="flex flex-col items-center text-center">
+                                <div className={`w-14 h-14 rounded-full ${isExpired ? 'bg-red-500/10' : 'bg-amber-500/10'} flex items-center justify-center mb-4`}>
+                                    <FaSyncAlt className={`${isExpired ? 'text-red-500' : 'text-amber-500'} text-xl`} />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">
+                                    Renew Certificate
+                                </h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                    This will delete the existing certificate and create a new order for:
+                                </p>
+                                <p className="text-xs font-mono text-slate-700 dark:text-slate-300 mt-2 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 break-all max-w-xs">
+                                    {domains}
+                                </p>
+                                <p className="text-[11px] text-slate-400 mt-2">
+                                    You will need to verify the new certificate after renewal.
+                                </p>
+                            </div>
+                        </ModalBody>
+                        <ModalFooter px={8} pb={6} gap={3} className="!border-t !border-slate-100 dark:!border-slate-700">
+                            <Button onClick={onClose} variant="ghost" rounded="xl" size="sm" px={5}>Cancel</Button>
+                            <Button
+                                isLoading={renewing}
+                                colorScheme={isExpired ? 'red' : 'orange'}
+                                onClick={handleRenew}
+                                rounded="xl" size="sm" px={5}
+                                leftIcon={<FaSyncAlt />}
+                                _hover={{ transform: "translateY(-1px)", shadow: "lg" }}
+                                transition="all 0.2s"
+                            >
+                                Renew Certificate
+                            </Button>
+                        </ModalFooter>
+                    </ModalContent>
+                </Modal>
+            </>
+        );
+    }
+
     function NewCertificate({ onUpdate }) {
         const { isOpen, onOpen, onClose } = useDisclosure();
         const [domainNames, setDomainNames] = useState<string>("");

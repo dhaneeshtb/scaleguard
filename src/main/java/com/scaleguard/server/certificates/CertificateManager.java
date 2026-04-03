@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.server.db.CertificateOrdersDB;
+import com.scaleguard.server.db.DBModelSystem;
 import com.scaleguard.server.http.reverse.ChallengeVerifiers;
 import org.shredzone.acme4j.*;
 import org.shredzone.acme4j.challenge.Challenge;
@@ -87,28 +88,49 @@ public class CertificateManager {
     }
 
     public JsonNode renewCertificate(String orderId) throws AcmeException, IOException {
-        // Read existing certificate to extract domain names
-        JsonNode existing = AcmeUtils.readCachedCertificate(orderId);
-        if (existing == null) {
+        // Read existing DB record — domains are stored in the 'name' field as comma-separated values
+        List<DBModelSystem> records;
+        try {
+            records = CertificateOrdersDB.getInstance().readItems("id", orderId);
+        } catch (Exception e) {
+            throw new IOException("Failed to read certificate: " + orderId, e);
+        }
+        if (records == null || records.isEmpty()) {
             throw new IOException("Certificate not found: " + orderId);
         }
 
-        // Extract domains from identifiers array: [{"type":"dns","value":"example.com"},...]
-        JsonNode identifiers = existing.get("json") != null ?
-                existing.get("json").get("identifiers") : existing.get("identifiers");
-        if (identifiers == null || !identifiers.isArray() || identifiers.size() == 0) {
-            throw new IOException("No domain identifiers found for certificate: " + orderId);
+        DBModelSystem record = records.get(0);
+        String domainStr = record.getName();
+
+        // Fallback: if name is empty, parse from the payload's json field
+        if (domainStr == null || domainStr.trim().isEmpty()) {
+            String payload = record.getPayload();
+            if (payload != null) {
+                JsonNode payloadNode = mapper.readTree(payload);
+                JsonNode jsonField = payloadNode.get("json");
+                if (jsonField != null) {
+                    // json field is a stringified JSON — parse it
+                    JsonNode inner = jsonField.isTextual() ? mapper.readTree(jsonField.asText()) : jsonField;
+                    JsonNode identifiers = inner.get("identifiers");
+                    if (identifiers != null && identifiers.isArray()) {
+                        List<String> extracted = new ArrayList<>();
+                        identifiers.forEach(id -> {
+                            if (id.has("value")) extracted.add(id.get("value").asText());
+                        });
+                        domainStr = String.join(",", extracted);
+                    }
+                }
+            }
+        }
+
+        if (domainStr == null || domainStr.trim().isEmpty()) {
+            throw new IOException("No domains found for certificate: " + orderId);
         }
 
         List<String> domains = new ArrayList<>();
-        identifiers.forEach(id -> {
-            if (id.has("value")) {
-                domains.add(id.get("value").asText());
-            }
-        });
-
-        if (domains.isEmpty()) {
-            throw new IOException("No domains extracted from certificate: " + orderId);
+        for (String d : domainStr.split(",")) {
+            String trimmed = d.trim();
+            if (!trimmed.isEmpty()) domains.add(trimmed);
         }
 
         LOG.info("Renewing certificate {} for domains: {}", orderId, domains);

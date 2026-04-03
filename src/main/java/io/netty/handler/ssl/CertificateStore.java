@@ -1,7 +1,6 @@
 package io.netty.handler.ssl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.FileStorage;
 import org.shredzone.acme4j.AcmeUtils;
@@ -13,7 +12,6 @@ import java.io.StringBufferInputStream;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.*;
-import java.util.concurrent.*;
 
 public class CertificateStore {
 
@@ -53,8 +51,8 @@ public class CertificateStore {
             this.key = key;
         }
     }
-    private static Map<String, CertificateInfo> certificateMap = new ConcurrentHashMap<>();
-    private static Map<String, CertificateInfo> wildcardCertsMap = new ConcurrentHashMap<>();
+    private static Map<String, CertificateInfo> certificateMap = new HashMap<>();
+    private static Map<String, CertificateInfo> wildcardCertsMap = new HashMap<>();
 
     static{
         java.security.Security.addProvider(
@@ -86,7 +84,6 @@ public class CertificateStore {
             certificateMap.clear();
             wildcardCertsMap.clear();
 
-            // Read all certificate metadata sequentially (single bulk DB call, fast)
             Set<String> certificateIds = AcmeUtils.listCertificateIds();
             LOGGER.info("Loading {} certificates...", certificateIds.size());
 
@@ -99,35 +96,28 @@ public class CertificateStore {
                 }
             }
 
-            // Load cert files (private.key + server.crt) in parallel (max 3 threads)
-            ForkJoinPool customPool = new ForkJoinPool(3);
-            try {
-                customPool.submit(() -> certNodes.parallelStream().forEach(s -> {
-                    String id = s.get("id").asText();
-                    CertificateInfo cinfo = loadFromDB(id);
-                    if (cinfo != null) {
-                        cinfo.setId(id);
-                        try {
-                            JsonNode node = mapper.readTree(s.get("json").asText());
-                            node.get("identifiers").forEach(ident -> {
-                                String domainName = ident.get("value").asText();
-                                certificateMap.put(domainName, cinfo);
-                                if (domainName.startsWith("*.")) {
-                                    String wDomain = domainName.split("[*]")[1];
-                                    LOGGER.info("Wildcard certificate => {} ", wDomain);
-                                    wildcardCertsMap.put(wDomain, cinfo);
-                                }
-                                LOGGER.info("Loaded certificate => {} ", domainName);
-                            });
-                        } catch (IOException e) {
-                            LOGGER.warn("Failed to parse cert json for id={}", id, e);
-                        }
-                    } else {
-                        LOGGER.info("Certificate not loaded yet for => {} ", id);
+            for (JsonNode s : certNodes) {
+                String id = s.get("id").asText();
+                CertificateInfo cinfo = loadFromDB(id);
+                if (cinfo != null) {
+                    cinfo.setId(id);
+                    try {
+                        JsonNode node = mapper.readTree(s.get("json").asText());
+                        node.get("identifiers").forEach(ident -> {
+                            String domainName = ident.get("value").asText();
+                            certificateMap.put(domainName, cinfo);
+                            if (domainName.startsWith("*.")) {
+                                String wDomain = domainName.split("[*]")[1];
+                                wildcardCertsMap.put(wDomain, cinfo);
+                            }
+                            LOGGER.info("Loaded certificate => {} ", domainName);
+                        });
+                    } catch (IOException e) {
+                        LOGGER.warn("Failed to parse cert json for id={}", id, e);
                     }
-                })).get();
-            } finally {
-                customPool.shutdown();
+                } else {
+                    LOGGER.info("Certificate not loaded yet for => {} ", id);
+                }
             }
 
             long elapsed = System.currentTimeMillis() - startTime;

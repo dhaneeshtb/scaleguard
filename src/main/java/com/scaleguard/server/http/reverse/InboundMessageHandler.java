@@ -83,6 +83,9 @@ public class InboundMessageHandler {
       if(request.uri().equalsIgnoreCase("/health")){
         return null;
       }
+      if(request.uri().equalsIgnoreCase("/healthz")){
+        return null;
+      }
       if(request.uri().equalsIgnoreCase("/info")){
         return null;
       }
@@ -90,6 +93,9 @@ public class InboundMessageHandler {
         return null;
       }
       if(request.uri().equalsIgnoreCase("/config")){
+        return null;
+      }
+      if(request.uri().equalsIgnoreCase("/metrics")){
         return null;
       }
 

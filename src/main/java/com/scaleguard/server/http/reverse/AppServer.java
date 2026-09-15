@@ -42,6 +42,19 @@ public class AppServer implements Server{
         System.setProperty("io.netty.leakDetection.level", "PARANOID");
         ConnectionUtil.checkDBProperties();
 
+        // Support environment variables as fallback for admin credentials
+        String adminUser = System.getProperty("adminUser", System.getenv("SCALEGUARD_ADMIN_USER"));
+        String adminPassword = System.getProperty("adminPassword", System.getenv("SCALEGUARD_ADMIN_PASSWORD"));
+
+        if (adminUser == null || adminUser.isEmpty() || adminPassword == null || adminPassword.isEmpty()) {
+            logger.warn("⚠️  Admin credentials not configured! Set -DadminUser/-DadminPassword or SCALEGUARD_ADMIN_USER/SCALEGUARD_ADMIN_PASSWORD environment variables.");
+            logger.warn("⚠️  The server will start but admin API will not be accessible.");
+        } else {
+            // Re-set as system properties so downstream code picks them up
+            System.setProperty("adminUser", adminUser);
+            System.setProperty("adminPassword", adminPassword);
+        }
+
         Map<String, String> parameters = new HashMap<>();
 
         for (String arg : args) {
@@ -54,7 +67,11 @@ public class AppServer implements Server{
         }
 
         // Print parsed key-value pairs
-        parameters.forEach((key, value) -> System.out.println(key + " = " + value));
+        parameters.forEach((key, value) -> {
+            if (!"password".equalsIgnoreCase(key) && !"adminPassword".equalsIgnoreCase(key)) {
+                System.out.println(key + " = " + value);
+            }
+        });
 
         AppServer server= new AppServer();
         EventSubscriber subscriber = new EventSubscriber(server);

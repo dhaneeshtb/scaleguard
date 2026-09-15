@@ -39,7 +39,7 @@ public class TargetSystem {
 
   @JsonIgnore
   public HostGroup  getHostGroup() {
-    return BestHostSelector.getBestHost(hostGroups);
+    return BestHostSelector.getBestHost(hostGroups, BestHostSelector.parseStrategy(lbStrategy));
   }
 
 
@@ -64,6 +64,16 @@ public class TargetSystem {
   }
 
   private boolean enableCache;
+
+  private String lbStrategy;
+
+  public String getLbStrategy() {
+    return lbStrategy;
+  }
+
+  public void setLbStrategy(String lbStrategy) {
+    this.lbStrategy = lbStrategy;
+  }
 
   public String getHost() {
     return host;

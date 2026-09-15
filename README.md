@@ -52,8 +52,21 @@ cd scaleguard
 #### Build and Start the Server Locally
 ```sh
 mvn clean install
-java -DadminUser=scaleguard -DadminPassword=Scaleguard123$ -jar target/scaleguard-1.0-SNAPSHOT.jar
+
+# Set your admin credentials (do NOT use defaults in production)
+export SCALEGUARD_ADMIN_USER=<your_admin_username>
+export SCALEGUARD_ADMIN_PASSWORD=<your_secure_password>
+
+java -DadminUser=$SCALEGUARD_ADMIN_USER -DadminPassword=$SCALEGUARD_ADMIN_PASSWORD -jar target/scaleguard-1.0-SNAPSHOT.jar
 ```
+
+## 🔒 Security Best Practices
+
+- **Never use default credentials** in production environments
+- Use environment variables (`SCALEGUARD_ADMIN_USER`, `SCALEGUARD_ADMIN_PASSWORD`) instead of passing credentials on the command line
+- Rotate admin passwords regularly
+- Use strong passwords (minimum 12 characters with mixed case, numbers, and symbols)
+- In containerized deployments, use Docker secrets or Kubernetes secrets
 
 ## 🚀 Production Deployment
 
@@ -71,25 +84,36 @@ Follow these steps to deploy **Scaleguard** in a production environment.
 
 ### 🌐 Step 2: Map Hostname to Server
 
-    Configure your DNS provider to map a CNAME (or A record) to your server’s IP address:
+    Configure your DNS provider to map a CNAME (or A record) to your server's IP address:
     CNAME: router.example.com → <YOUR_SERVER_PUBLIC_IP>
-    
-    This will generate the JAR file at: target/scaleguard-1.0-SNAPSHOT.jar
 
 ### ▶️ Step 3: Run the Server
     Start the Scaleguard server with admin credentials and the configured hostname:
     
-    nohup java -DadminUser=scaleguard \
-        -DadminPassword=Scaleguard123$ -jar scaleguard.jar \
+    export SCALEGUARD_ADMIN_USER=<your_admin_username>
+    export SCALEGUARD_ADMIN_PASSWORD=<your_secure_password>
+    
+    nohup java -DadminUser=$SCALEGUARD_ADMIN_USER \
+        -DadminPassword=$SCALEGUARD_ADMIN_PASSWORD -jar scaleguard.jar \
         --hostname=router.example.com > scaleguard.log & echo $! > scaleguard.pid
 
 ### 🌐 Step 4: Connect via Scaleguard Admin UI https://scaleguard.vercel.app/sign-in
     To manage your Scaleguard instance through the centralized Admin UI:
-    Visit the web console:https://scaleguard.vercel.app/sign-in
-    Username: your username (scaleguard)
-    Password: your password (Scaleguard123$)
-    Enter your Host URL as: whatever host you configured for example:https://router.example.com
+    Visit the web console: https://scaleguard.vercel.app/sign-in
+    Username: the admin username you configured
+    Password: the admin password you configured
+    Enter your Host URL as: whatever host you configured, for example: https://router.example.com
     ✅ Once logged in, you'll have access to the full administration dashboard connected to your deployed server.
+
+### Built-in Endpoints
+| Endpoint | Description |
+|---|---|
+| `/health` | Simple health check (returns `{"status":"healthy"}`) |
+| `/healthz` | Detailed health check with component status, routes, memory |
+| `/metrics` | Prometheus-compatible metrics for monitoring |
+| `/stats` | Route statistics (request counts, response times) |
+| `/info` | Server version information |
+| `/config` | Configuration API (requires authentication) |
 
 ### Running Admin UI Locally
 

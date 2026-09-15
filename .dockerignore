@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.gitignore
+*.md
+admin-ui/node_modules
+target
+*.iml
+*.key
+*.png
+*.svg

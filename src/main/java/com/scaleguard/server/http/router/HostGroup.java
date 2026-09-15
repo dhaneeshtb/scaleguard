@@ -1,5 +1,9 @@
 package com.scaleguard.server.http.router;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class HostGroup {
 
     private String id;
@@ -104,6 +108,30 @@ public class HostGroup {
         isReachable = reachable;
     }
 
+    public int getWeight() {
+        return weight;
+    }
+
+    public void setWeight(int weight) {
+        this.weight = weight;
+    }
+
+    @JsonIgnore
+    public AtomicInteger getActiveConnections() {
+        return activeConnections;
+    }
+
+    public void incrementConnections() {
+        activeConnections.incrementAndGet();
+    }
+
+    public void decrementConnections() {
+        activeConnections.decrementAndGet();
+    }
+
     private float loadFactor;
     private boolean isReachable=true;
+    private int weight = 1;
+    @JsonIgnore
+    private final AtomicInteger activeConnections = new AtomicInteger(0);
 }

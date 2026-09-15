@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.server.http.auth.AuthUtils;
+import com.scaleguard.server.http.metrics.MetricsHandler;
 import com.scaleguard.server.http.router.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -67,9 +68,14 @@ public class DefaultResponseHandler {
                 }
                 return;
 
-            }else if (uri.startsWith("/health")) {
-
+            }else if (uri.equals("/healthz")) {
+                handleHealthz(ctx);
+                return;
+            } else if (uri.startsWith("/health")) {
                 handleHealth(ctx, sourceSystem);
+                return;
+            } else if (uri.equals("/metrics")) {
+                handleMetrics(ctx);
                 return;
             } else if (uri.startsWith("/info")) {
                 handleInfo(ctx, sourceSystem);
@@ -160,12 +166,86 @@ public class DefaultResponseHandler {
         ctx.writeAndFlush(response).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
-                //It is successful here, and does not represent the success of the customer, and brush out the data success default representative has completed
                 if (future.isSuccess()) {
                     ctx.channel().read();
                 } else {
                     future.channel().close();
                 }
+            }
+        });
+    }
+
+    public void handleHealthz(final ChannelHandlerContext ctx) {
+        ObjectNode health = LocalSystemLoader.mapper.createObjectNode();
+
+        // Server info
+        Runtime runtime = Runtime.getRuntime();
+        long uptimeMs = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
+        health.put("uptime_seconds", uptimeMs / 1000);
+
+        // Route counts
+        ObjectNode routes = LocalSystemLoader.mapper.createObjectNode();
+        routes.put("sources", RouteTable.getInstance().getSourceSystsems().size());
+        routes.put("targets", RouteTable.getInstance().getTargetSystems().size());
+        routes.put("hostGroups", RouteTable.getInstance().getHostGroups().size());
+        health.set("routes", routes);
+
+        // Host health
+        long totalHosts = RouteTable.getInstance().getHostGroups().size();
+        long reachableHosts = RouteTable.getInstance().getHostGroups().stream()
+                .filter(HostGroup::isReachable).count();
+        ObjectNode hosts = LocalSystemLoader.mapper.createObjectNode();
+        hosts.put("total", totalHosts);
+        hosts.put("reachable", reachableHosts);
+        hosts.put("unreachable", totalHosts - reachableHosts);
+        health.set("hosts", hosts);
+
+        // Memory
+        ObjectNode memory = LocalSystemLoader.mapper.createObjectNode();
+        memory.put("used_bytes", runtime.totalMemory() - runtime.freeMemory());
+        memory.put("max_bytes", runtime.maxMemory());
+        memory.put("total_bytes", runtime.totalMemory());
+        health.set("memory", memory);
+
+        // Overall status: unhealthy if we have host groups configured but none reachable
+        boolean isHealthy = totalHosts == 0 || reachableHosts > 0;
+        health.put("status", isHealthy ? "healthy" : "unhealthy");
+
+        HttpResponseStatus status = isHealthy ? HttpResponseStatus.OK : HttpResponseStatus.SERVICE_UNAVAILABLE;
+        ByteBuf content;
+        try {
+            content = Unpooled.copiedBuffer(LocalSystemLoader.mapper.writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(health), CharsetUtil.UTF_8);
+        } catch (JsonProcessingException e) {
+            content = Unpooled.copiedBuffer("{\"status\":\"error\"}", CharsetUtil.UTF_8);
+            status = HttpResponseStatus.INTERNAL_SERVER_ERROR;
+        }
+        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, content);
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+        response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+        response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+        ctx.writeAndFlush(response).addListener(future -> {
+            if (future.isSuccess()) {
+                ctx.channel().read();
+            } else {
+                ((ChannelFuture) future).channel().close();
+            }
+        });
+    }
+
+    public void handleMetrics(final ChannelHandlerContext ctx) {
+        String metricsText = MetricsHandler.generateMetrics();
+        ByteBuf content = Unpooled.copiedBuffer(metricsText, CharsetUtil.UTF_8);
+        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, content);
+        // Prometheus expects text/plain with version parameter
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8");
+        response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+        response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+        ctx.writeAndFlush(response).addListener(future -> {
+            if (future.isSuccess()) {
+                ctx.channel().read();
+            } else {
+                ((ChannelFuture) future).channel().close();
             }
         });
     }

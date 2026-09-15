@@ -1,15 +1,28 @@
-*.iml
-target
-target/*
-.idea
-.idea/*
-build
-*.yml
+# Build outputs
+target/
+build/
 dependency-reduced-pom.xml
-adminui/*
-admin-ui/node_modules/*
-admin-ui/build/*
-domains/*
-certs/*
-domain.key
-user.key
+
+# IDE
+*.iml
+.idea/
+
+# Admin UI
+adminui/
+admin-ui/node_modules/
+admin-ui/build/
+
+# Certificates and keys (sensitive)
+certs/
+domains/
+*.key
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+
+# Runtime data
+*.log
+*.pid
+scaleguard.db

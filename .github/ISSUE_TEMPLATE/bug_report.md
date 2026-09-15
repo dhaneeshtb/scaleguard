@@ -1,38 +1,41 @@
 ---
-name: Bug report
-about: Create a report to help us improve
-title: ''
-labels: ''
+name: 🐛 Bug Report
+about: Report a bug to help us improve ScaleGuard
+title: '[Bug] '
+labels: 'bug'
 assignees: ''
-
 ---
 
-**Describe the bug**
+## Describe the bug
 A clear and concise description of what the bug is.
 
-**To Reproduce**
+## To reproduce
 Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+1. Configure ScaleGuard with: `...`
+2. Send request: `curl ...`
+3. Observe: `...`
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Expected behavior
+What you expected to happen.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+## Actual behavior
+What actually happened. Include error messages, log output, etc.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+## Environment
+- **ScaleGuard version**: (e.g., 1.0-SNAPSHOT, commit hash)
+- **Java version**: (output of `java -version`)
+- **OS**: (e.g., Ubuntu 22.04, macOS 14)
+- **Deployment**: (JAR / Docker / custom)
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+## Relevant logs
+```
+Paste relevant log output here
+```
 
-**Additional context**
-Add any other context about the problem here.
+## Configuration
+```json
+// Relevant source/target system configuration (remove sensitive data)
+```
+
+## Additional context
+Any other context, screenshots, or details.

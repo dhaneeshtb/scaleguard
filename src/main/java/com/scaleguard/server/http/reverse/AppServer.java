@@ -1,4 +1,5 @@
 package com.scaleguard.server.http.reverse;
+import com.scaleguard.server.certificates.CertificateRenewalWatcher;
 import com.scaleguard.server.db.ConnectionUtil;
 import com.scaleguard.server.dns.DnsServer;
 import com.scaleguard.server.http.router.ConfigManager;
@@ -183,6 +184,13 @@ public class AppServer implements Server{
 
             }catch (Exception e){
                 e.printStackTrace();
+            }
+
+            // Start certificate auto-renewal watcher
+            try {
+                CertificateRenewalWatcher.getInstance().start();
+            } catch (Exception e) {
+                logger.error("Failed to start certificate renewal watcher", e);
             }
             String httpPort=String.valueOf(HTTP_PORT);
             String httpsPort=String.valueOf(HTTPS_PORT);

@@ -1,7 +1,7 @@
-import { Button, IconButton, Link, Badge, Tooltip } from '@chakra-ui/react';
+import { IconButton, Link, Badge, Tooltip } from '@chakra-ui/react';
 import axios from 'axios';
 import React, { useEffect, useState, useMemo } from 'react';
-import { FaArrowCircleDown, FaArrowCircleUp, FaChevronDown, FaChevronRight, FaEdit, FaNetworkWired, FaPlusCircle, FaServer } from "react-icons/fa";
+import { FaArrowCircleDown, FaArrowCircleUp, FaChevronDown, FaChevronRight, FaEdit, FaNetworkWired, FaPlusCircle } from "react-icons/fa";
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
 
@@ -33,7 +33,6 @@ export default function HostGroups({ initialData }: { initialData?: any[] }) {
 
     useEffect(() => { if (!initialData) onLoad(); }, []);
 
-    // Group instances by groupId
     const grouped = useMemo(() => {
         const map = new Map<string, HostGroup[]>();
         (systems || []).forEach((hg: HostGroup) => {
@@ -41,7 +40,6 @@ export default function HostGroups({ initialData }: { initialData?: any[] }) {
             if (!map.has(key)) map.set(key, []);
             map.get(key)!.push(hg);
         });
-        // Sort groups alphabetically
         return new Map(Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0])));
     }, [systems]);
 
@@ -56,218 +54,106 @@ export default function HostGroups({ initialData }: { initialData?: any[] }) {
 
     const totalHosts = systems.length;
     const reachableCount = systems.filter((s: HostGroup) => s.reachable).length;
-    const groupCount = grouped.size;
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-1.5">
             {/* Header */}
-            <div className='flex items-center justify-between'>
-                <div className="flex items-center gap-3">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {groupCount} {groupCount === 1 ? 'group' : 'groups'} · {totalHosts} {totalHosts === 1 ? 'instance' : 'instances'}
-                    </p>
+            <div className='flex items-center justify-between mb-2'>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400">{grouped.size} groups · {totalHosts} instances</span>
                     {totalHosts > 0 && (
-                        <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span className="text-[10px] font-medium text-emerald-500">
-                                {reachableCount}/{totalHosts} reachable
-                            </span>
-                        </div>
+                        <span className="text-[10px] text-emerald-500">● {reachableCount}/{totalHosts}</span>
                     )}
                 </div>
                 <Link href='/managehost/hostgroups/new'>
-                    <Button leftIcon={<FaPlusCircle />} colorScheme='teal' size={"xs"} rounded="full" variant="solid">
-                        Add Host Group
-                    </Button>
+                    <IconButton aria-label='Add' icon={<FaPlusCircle />} colorScheme='teal' size={"xs"} variant="ghost" />
                 </Link>
             </div>
 
-            {/* Grouped Host Groups */}
-            <div className="space-y-3">
-                {Array.from(grouped.entries()).map(([groupId, instances]) => {
-                    const isCollapsed = collapsedGroups.has(groupId);
-                    const groupReachable = instances.filter(h => h.reachable).length;
-                    const allReachable = groupReachable === instances.length;
-                    const noneReachable = groupReachable === 0;
+            {/* Groups */}
+            {Array.from(grouped.entries()).map(([groupId, instances]) => {
+                const isCollapsed = collapsedGroups.has(groupId);
+                const groupReachable = instances.filter(h => h.reachable).length;
+                const allOk = groupReachable === instances.length;
+                const noneOk = groupReachable === 0;
 
-                    return (
-                        <div key={groupId}
-                            className="rounded-xl border border-slate-200/40 dark:border-slate-700/40 overflow-hidden transition-all">
+                return (
+                    <div key={groupId} className="rounded-lg border border-slate-200/30 dark:border-slate-700/30 overflow-hidden">
+                        {/* Group Header */}
+                        <button
+                            onClick={() => toggleGroup(groupId)}
+                            className="w-full flex items-center justify-between px-3 py-1.5 bg-slate-50/60 dark:bg-slate-800/60 hover:bg-slate-100/60 dark:hover:bg-slate-700/30 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                {isCollapsed
+                                    ? <FaChevronRight className="text-slate-400 text-[8px]" />
+                                    : <FaChevronDown className="text-slate-400 text-[8px]" />
+                                }
+                                <span className={`w-1.5 h-1.5 rounded-full ${allOk ? 'bg-emerald-400' : noneOk ? 'bg-red-400' : 'bg-amber-400'}`}></span>
+                                <span className="font-semibold text-xs text-slate-700 dark:text-slate-200">{groupId}</span>
+                                <span className="text-[10px] text-slate-400">{instances.length}</span>
+                            </div>
+                            <span className={`text-[10px] font-medium ${allOk ? 'text-emerald-500' : noneOk ? 'text-red-400' : 'text-amber-500'}`}>
+                                {groupReachable}/{instances.length}
+                            </span>
+                        </button>
 
-                            {/* Group Header — clickable to expand/collapse */}
-                            <button
-                                onClick={() => toggleGroup(groupId)}
-                                className="w-full flex items-center justify-between px-5 py-3 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100/80 dark:hover:bg-slate-700/40 transition-colors cursor-pointer"
-                            >
-                                <div className="flex items-center gap-3">
-                                    {isCollapsed
-                                        ? <FaChevronRight className="text-slate-400 text-[10px]" />
-                                        : <FaChevronDown className="text-slate-400 text-[10px]" />
-                                    }
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${allReachable
-                                        ? 'bg-gradient-to-br from-emerald-500/20 to-teal-500/20'
-                                        : noneReachable
-                                            ? 'bg-gradient-to-br from-red-500/20 to-orange-500/20'
-                                            : 'bg-gradient-to-br from-amber-500/20 to-yellow-500/20'
-                                        }`}>
-                                        <FaServer className={`text-xs ${allReachable ? 'text-emerald-500' : noneReachable ? 'text-red-400' : 'text-amber-500'
-                                            }`} />
+                        {/* Instances */}
+                        {!isCollapsed && (
+                            <div className="divide-y divide-slate-100/40 dark:divide-slate-700/20">
+                                {instances.map((s: HostGroup) => (
+                                    <div key={s.id} className="flex items-center px-3 py-1 hover:bg-slate-50/40 dark:hover:bg-slate-700/10 transition-colors group text-[11px]">
+                                        {/* Status dot + host */}
+                                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                            {s.reachable
+                                                ? <FaArrowCircleUp className="text-emerald-500 text-[9px] flex-shrink-0" />
+                                                : <FaArrowCircleDown className="text-red-400 text-[9px] flex-shrink-0" />
+                                            }
+                                            <span className="font-mono text-slate-700 dark:text-slate-300 truncate">
+                                                {s.host}:{s.port}
+                                            </span>
+                                        </div>
+
+                                        {/* Badges row */}
+                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                            {s.type && (
+                                                <Badge colorScheme={s.type?.toLowerCase() === 'active' ? 'blue' : 'gray'}
+                                                    fontSize="8px" px={1.5} py={0} borderRadius="full" textTransform="uppercase">
+                                                    {s.type}
+                                                </Badge>
+                                            )}
+                                            <Badge colorScheme={s.reachable ? 'green' : 'red'}
+                                                fontSize="8px" px={1.5} py={0} borderRadius="full">
+                                                {s.reachable ? 'ON' : 'OFF'}
+                                            </Badge>
+                                            <span className="text-[9px] text-slate-400 font-mono w-6 text-right">w{s.weight ?? 1}</span>
+                                            <span className="text-[9px] text-slate-400 font-mono w-8 text-right">{s.loadFactor}</span>
+
+                                            {/* Actions — visible on hover */}
+                                            <div className='flex gap-0 opacity-0 group-hover:opacity-100 transition-opacity ml-1'>
+                                                <Link href={`/managehost/hostgroups/${s.id}`}>
+                                                    <Tooltip label="Edit" hasArrow>
+                                                        <IconButton aria-label='Edit' icon={<FaEdit />} variant="ghost" size="xs" colorScheme='blue' minW="5" h="5" />
+                                                    </Tooltip>
+                                                </Link>
+                                                <DeleteSystem source={"hostgroups"} id={s.id} onUpdate={onLoad} />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="text-left">
-                                        <p className="font-semibold text-sm text-slate-800 dark:text-white">
-                                            {groupId}
-                                        </p>
-                                        <p className="text-[10px] text-slate-400">
-                                            {instances.length} {instances.length === 1 ? 'instance' : 'instances'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className={`w-2 h-2 rounded-full ${allReachable ? 'bg-emerald-400 animate-pulse'
-                                            : noneReachable ? 'bg-red-400' : 'bg-amber-400 animate-pulse'
-                                            }`}></span>
-                                        <span className={`text-[10px] font-semibold ${allReachable ? 'text-emerald-500'
-                                            : noneReachable ? 'text-red-400' : 'text-amber-500'
-                                            }`}>
-                                            {groupReachable}/{instances.length}
-                                        </span>
-                                    </div>
-                                </div>
-                            </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
 
-                            {/* Instance Rows */}
-                            {!isCollapsed && (
-                                <table className="min-w-full text-left text-sm">
-                                    <thead>
-                                        <tr className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-700/40">
-                                            <th className="px-5 py-2 font-medium">Host</th>
-                                            <th className="px-5 py-2 font-medium text-center">Type</th>
-                                            <th className="px-5 py-2 font-medium text-center">Status</th>
-                                            <th className="px-5 py-2 font-medium text-center">Network</th>
-                                            <th className="px-5 py-2 font-medium text-center">Weight</th>
-                                            <th className="px-5 py-2 font-medium text-center">Load</th>
-                                            <th className="px-5 py-2 font-medium text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100/60 dark:divide-slate-700/30">
-                                        {instances.map((system: HostGroup) => (
-                                            <tr key={system.id}
-                                                className="text-slate-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors group">
-                                                {/* Host */}
-                                                <td className="px-5 py-2.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${system.reachable
-                                                            ? 'bg-emerald-500/10'
-                                                            : 'bg-red-500/10'
-                                                            }`}>
-                                                            {system.reachable
-                                                                ? <FaArrowCircleUp className="text-emerald-500 text-[10px]" />
-                                                                : <FaArrowCircleDown className="text-red-400 text-[10px]" />
-                                                            }
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-semibold text-xs text-slate-800 dark:text-white font-mono">
-                                                                {system.scheme ? `${system.scheme}://` : ''}{system.host}:{system.port}
-                                                            </p>
-                                                            {system.health && (
-                                                                <p className="text-[9px] text-slate-400 font-mono truncate max-w-[200px]">
-                                                                    health: {system.health}
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                {/* Type */}
-                                                <td className="px-5 py-2.5 text-center">
-                                                    <Badge
-                                                        colorScheme={system.type === 'active' || system.type === 'Active' ? 'blue' : 'gray'}
-                                                        fontSize="9px" px={2} py={0.5} borderRadius="full" textTransform="uppercase" fontWeight="bold"
-                                                    >
-                                                        {system.type || 'N/A'}
-                                                    </Badge>
-                                                </td>
-
-                                                {/* Active Status */}
-                                                <td className="px-5 py-2.5 text-center">
-                                                    <Badge
-                                                        colorScheme={system.active ? 'green' : 'red'}
-                                                        fontSize="9px" px={2} py={0.5} borderRadius="full"
-                                                    >
-                                                        {system.active ? "ACTIVE" : "INACTIVE"}
-                                                    </Badge>
-                                                </td>
-
-                                                {/* Network Status */}
-                                                <td className="px-5 py-2.5 text-center">
-                                                    <div className="flex items-center gap-1.5 justify-center">
-                                                        {system.reachable ? (
-                                                            <>
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                                                <span className="text-[10px] font-semibold text-emerald-500">ONLINE</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
-                                                                <span className="text-[10px] font-semibold text-red-400">OFFLINE</span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </td>
-
-                                                {/* Weight */}
-                                                <td className="px-5 py-2.5 text-center">
-                                                    <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                                                        {system.weight ?? 1}
-                                                    </span>
-                                                </td>
-
-                                                {/* Load Factor */}
-                                                <td className="px-5 py-2.5 text-center">
-                                                    <div className="flex flex-col items-center gap-0.5">
-                                                        <span className="font-mono text-[10px] font-bold text-slate-700 dark:text-slate-200">
-                                                            {system.loadFactor}
-                                                        </span>
-                                                        <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                                                            <div
-                                                                className="h-full bg-gradient-to-r from-teal-400 to-cyan-400 rounded-full transition-all"
-                                                                style={{ width: `${Math.min(system.loadFactor * 10, 100)}%` }}
-                                                            ></div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                {/* Actions */}
-                                                <td className="px-5 py-2.5">
-                                                    <div className='flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity'>
-                                                        <Link href={`/managehost/hostgroups/${system.id}`}>
-                                                            <Tooltip label="Edit" hasArrow>
-                                                                <IconButton aria-label='Edit' icon={<FaEdit />} variant={"ghost"} size={"xs"} colorScheme='blue' />
-                                                            </Tooltip>
-                                                        </Link>
-                                                        <DeleteSystem source={"hostgroups"} id={system.id} onUpdate={onLoad} />
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Empty State */}
+            {/* Empty */}
             {(!systems || systems.length === 0) && (
-                <div className="rounded-xl border border-slate-200/40 dark:border-slate-700/40 text-center py-12">
-                    <FaNetworkWired className="mx-auto text-3xl text-slate-300 dark:text-slate-600 mb-3" />
-                    <p className="text-sm text-slate-400">No host groups configured</p>
+                <div className="text-center py-8">
+                    <FaNetworkWired className="mx-auto text-2xl text-slate-300 dark:text-slate-600 mb-2" />
+                    <p className="text-xs text-slate-400">No host groups configured</p>
                     <Link href='/managehost/hostgroups/new'>
-                        <Button mt={3} size="sm" colorScheme="teal" rounded="full" leftIcon={<FaPlusCircle />}>
-                            Add Host Group
-                        </Button>
+                        <span className="text-xs text-teal-500 hover:underline cursor-pointer">+ Add one</span>
                     </Link>
                 </div>
             )}

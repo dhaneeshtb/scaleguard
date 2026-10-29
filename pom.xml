@@ -10,6 +10,7 @@
   <properties>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
+    <netty.version>4.2.18.Final</netty.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <io.jsonwebtoken.jjwt.version>0.2</io.jsonwebtoken.jjwt.version>
     <graalvm.version>0.10.2</graalvm.version>
@@ -22,7 +23,7 @@
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-all</artifactId>
-      <version>4.1.105.Final</version>
+      <version>${netty.version}</version>
     </dependency>
 
 
@@ -128,17 +129,43 @@
       Netty extracts it to a tmp dir and loads it at startup.
       classifier "linux-x86_64" / "osx-x86_64" are fat JARs that include the native lib.
     -->
+    <!-- Native transports (Netty 4.2): io_uring + epoll on Linux (x86_64 and ARM64), kqueue on macOS (Intel and Apple Silicon).
+         ScaleGuard picks the fastest available at startup; see NettyTransport. Keep every Netty artifact on ${netty.version}. -->
     <dependency>
       <groupId>io.netty</groupId>
-      <artifactId>netty-transport-native-epoll</artifactId>
-      <version>4.1.105.Final</version>
+      <artifactId>netty-transport-native-io_uring</artifactId>
+      <version>${netty.version}</version>
       <classifier>linux-x86_64</classifier>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-io_uring</artifactId>
+      <version>${netty.version}</version>
+      <classifier>linux-aarch_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-epoll</artifactId>
+      <version>${netty.version}</version>
+      <classifier>linux-x86_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-epoll</artifactId>
+      <version>${netty.version}</version>
+      <classifier>linux-aarch_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
       <artifactId>netty-transport-native-kqueue</artifactId>
-      <version>4.1.105.Final</version>
+      <version>${netty.version}</version>
       <classifier>osx-x86_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-kqueue</artifactId>
+      <version>${netty.version}</version>
+      <classifier>osx-aarch_64</classifier>
     </dependency>
 
     <dependency>

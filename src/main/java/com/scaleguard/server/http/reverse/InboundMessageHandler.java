@@ -1,5 +1,7 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.router.ClientIpResolver;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -130,7 +132,13 @@ public class InboundMessageHandler {
         }
       }
 
-      inAddress=headers.get("X-Forwarded-For",inAddress);
+      // Real client IP (X-Forwarded-For only trusted from known proxies), and the header we pass upstream:
+      // the trusted incoming chain plus our own peer — a client can't inject a fake origin.
+      String incomingXff = headers.get("X-Forwarded-For");
+      String peerIp = inAddress;
+      inAddress = ClientIpResolver.resolve(peerIp, incomingXff);
+      headers.set("X-Forwarded-For", ClientIpResolver.forwardedFor(peerIp, incomingXff));
+      headers.set("X-Real-IP", inAddress);
 
       if(request.headers().contains(HttpHeaderNames.HOST)) {
         headers.set("X-Forwarded-Host", request.headers().get(HttpHeaderNames.HOST));

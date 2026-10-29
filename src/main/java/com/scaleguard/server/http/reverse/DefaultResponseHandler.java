@@ -51,13 +51,13 @@ public class DefaultResponseHandler {
         if (msg instanceof HttpRequest) {
             HttpRequest request = (HttpRequest) msg;
 
-            if (request.getMethod().name().equalsIgnoreCase("options")) {
+            if (request.method().name().equalsIgnoreCase("options")) {
                 handleSuccess(ctx,"{}");
                 return;
 
             }
             String body =null;
-            if (request.getMethod().name().equalsIgnoreCase("post")) {
+            if (request.method().name().equalsIgnoreCase("post")) {
                 body = parseJosnRequest((FullHttpRequest) request);
             }
             String uris[]=request.uri().split("\\?");
@@ -115,9 +115,9 @@ public class DefaultResponseHandler {
                     type = "quickmapping";
                 }
 
-                if (request.getMethod().name().equalsIgnoreCase("post")||request.getMethod().name().equalsIgnoreCase("delete")) {
+                if (request.method().name().equalsIgnoreCase("post")||request.method().name().equalsIgnoreCase("delete")) {
                     try {
-                        ConfigManager.update(type,request.getMethod().name(),params, body);
+                        ConfigManager.update(type,request.method().name(),params, body);
                     } catch (Exception e) {
                         handleFailure(ctx, e.getMessage());
                         return;
@@ -141,7 +141,7 @@ public class DefaultResponseHandler {
                     }
 
                     try {
-                      RequestRoutingResponse resp =   rr.handle(request.getMethod().name(), uri, body);
+                      RequestRoutingResponse resp =   rr.handle(request.method().name(), uri, body);
                       handleResponse(ctx,resp);
                       return;
                     }catch (Exception e){
@@ -406,8 +406,15 @@ public class DefaultResponseHandler {
         handleFailure(ctx,message,HttpResponseStatus.INTERNAL_SERVER_ERROR);
     }
     public void handleFailure(final ChannelHandlerContext ctx, String message, HttpResponseStatus code) {
-        ByteBuf content = Unpooled.copiedBuffer("{\"message\":\"" + message + "\"}", CharsetUtil.UTF_8);
+        handleFailure(ctx, message, code, java.util.Map.of());
+    }
+
+    public void handleFailure(final ChannelHandlerContext ctx, String message, HttpResponseStatus code, java.util.Map<String, String> extraHeaders) {
+        // Escape the message so quotes or newlines in exception text can't produce invalid JSON.
+        String safe = new String(com.fasterxml.jackson.core.io.JsonStringEncoder.getInstance().quoteAsString(message == null ? "" : message));
+        ByteBuf content = Unpooled.copiedBuffer("{\"message\":\"" + safe + "\"}", CharsetUtil.UTF_8);
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, code, content);
+        extraHeaders.forEach((k, v) -> response.headers().set(k, v));
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
         response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, "*");

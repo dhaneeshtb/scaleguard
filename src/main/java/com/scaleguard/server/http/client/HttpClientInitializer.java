@@ -42,7 +42,7 @@ public class HttpClientInitializer extends ChannelInitializer<SocketChannel> {
         p.addLast(new HttpClientCodec());
 
         // Remove the following line if you don't want automatic content decompression.
-        p.addLast(new HttpContentDecompressor());
+        p.addLast(new HttpContentDecompressor(0)); // 0 = no allocation cap (Netty 4.2 requires choosing explicitly)
 
         // Uncomment the following line if you don't want to handle HttpContents.
         //p.addLast(new HttpObjectAggregator(1048576));

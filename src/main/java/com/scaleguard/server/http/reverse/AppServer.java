@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.reverse;
-import com.scaleguard.server.certificates.CertificateRenewalWatcher;
+
+import com.scaleguard.server.http.utils.NettyTransport;import com.scaleguard.server.certificates.CertificateRenewalWatcher;
 import com.scaleguard.server.concurrent.VirtualThreads;
 import com.scaleguard.server.db.ConnectionUtil;
 import com.scaleguard.server.dns.DnsServer;
@@ -15,14 +16,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.WriteBufferWaterMark;
-import io.netty.channel.epoll.Epoll;
-import io.netty.channel.epoll.EpollEventLoopGroup;
-import io.netty.channel.epoll.EpollServerSocketChannel;
-import io.netty.channel.kqueue.KQueue;
-import io.netty.channel.kqueue.KQueueEventLoopGroup;
-import io.netty.channel.kqueue.KQueueServerSocketChannel;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import org.shredzone.acme4j.AcmeUtils;
@@ -41,13 +34,13 @@ public class AppServer implements Server{
             = LoggerFactory.getLogger(AppServer.class);
     HashSet<String> ports = new HashSet<>();
 
-    // ── Native transport detection ────────────────────────────────────────────
-    // Epoll (Linux) > KQueue (macOS) > NIO (fallback).
-    // Native transports eliminate JNI-free NIO overhead and allow SO_REUSEPORT
-    // which lets each worker thread own its own accept socket, removing the
-    // single-threaded accept-mutex that caps multi-core throughput.
-    private static final boolean USE_EPOLL  = Epoll.isAvailable();
-    private static final boolean USE_KQUEUE = !USE_EPOLL && KQueue.isAvailable();
+    // ── Transport ─────────────────────────────────────────────────────────────
+    // Chosen once in NettyTransport (Netty 4.2): io_uring (opt-in) / epoll / kqueue / NIO.
+    // On epoll and io_uring each listening port is bound once per acceptor thread with
+    // SO_REUSEPORT, so the kernel spreads new connections across several accept sockets.
+    private static final int ACCEPTORS = NettyTransport.supportsReusePort()
+            ? Math.max(1, Integer.getInteger("scaleguard.acceptors", Math.min(4, Runtime.getRuntime().availableProcessors())))
+            : 1;
 
     private static final int CPU = Runtime.getRuntime().availableProcessors();
 
@@ -66,23 +59,13 @@ public class AppServer implements Server{
     ArrayList<ChannelFuture> futureChannels = new ArrayList<>();
 
     private static EventLoopGroup createBossGroup() {
-        // 1 boss thread is optimal — it only accepts connections.
-        if (USE_EPOLL)  return new EpollEventLoopGroup(1);
-        if (USE_KQUEUE) return new KQueueEventLoopGroup(1);
-        return new NioEventLoopGroup(1);
+        // Accept threads only: one per SO_REUSEPORT acceptor socket.
+        return NettyTransport.newGroup(ACCEPTORS, "sg-accept");
     }
 
     private static EventLoopGroup createWorkerGroup() {
         // Workers: 2 × CPU cores handles hundreds of thousands of concurrent channels.
-        if (USE_EPOLL)  return new EpollEventLoopGroup(CPU * 2);
-        if (USE_KQUEUE) return new KQueueEventLoopGroup(CPU * 2);
-        return new NioEventLoopGroup(CPU * 2);
-    }
-
-    private static Class<?> serverChannelClass() {
-        if (USE_EPOLL)  return EpollServerSocketChannel.class;
-        if (USE_KQUEUE) return KQueueServerSocketChannel.class;
-        return NioServerSocketChannel.class;
+        return NettyTransport.newGroup(CPU * 2, "sg-io");
     }
 
     public static void main(String[] args) throws Exception {
@@ -133,15 +116,17 @@ public class AppServer implements Server{
         VirtualThreads.submit("sg-hostname-probe", () -> {
             if(parameters.containsKey("hostname")){
                 String hostname= parameters.get("hostname");
+                long backoffMs = 10_000;
                 while (true) {
                     try {
                         SystemAdapter.configure(hostname);
                         break;
                     }catch (Exception e){
                         logger.error("Failed to configure system host : "+e.getMessage());
-                        logger.error("The system will not start until the DNS is mapped to the ScaleGuard server hostname-> : "+hostname);
+                        logger.error("The system will not start until the DNS is mapped to the ScaleGuard server hostname-> : "+hostname+" (retrying in "+(backoffMs/1000)+"s)");
                         try {
-                            Thread.sleep(10000);
+                            Thread.sleep(backoffMs);
+                            backoffMs = Math.min(backoffMs * 2, 300_000); // back off up to 5 minutes
                         } catch (InterruptedException ex) {
                             Thread.currentThread().interrupt();
                             throw new RuntimeException(ex);
@@ -160,8 +145,7 @@ public class AppServer implements Server{
 
         SSLServerInitializer server = new SSLServerInitializer(port);
         try {
-            return newBootstrap(bossGroup, workerGroup, server)
-                    .bind(port).sync();
+            return bindAll(newBootstrap(bossGroup, workerGroup, server), port);
         } catch (Exception e) {
             return null;
         }
@@ -171,8 +155,7 @@ public class AppServer implements Server{
         int port = Integer.parseInt(s.getPort());
         ServerInitializer server = new ServerInitializer(port);
         try {
-            return newBootstrap(bossGroup, workerGroup, server)
-                    .bind(port).sync();
+            return bindAll(newBootstrap(bossGroup, workerGroup, server), port);
         } catch (Exception e) {
             return null;
         }
@@ -182,8 +165,7 @@ public class AppServer implements Server{
         int port = Integer.parseInt(s.getPort());
         TCPServerInitializer server = new TCPServerInitializer(s.getId(), port);
         try {
-            return newBootstrap(bossGroup, workerGroup, server)
-                    .bind(port).sync();
+            return bindAll(newBootstrap(bossGroup, workerGroup, server), port);
         } catch (Exception e) {
             return null;
         }
@@ -212,33 +194,42 @@ public class AppServer implements Server{
                                          io.netty.channel.ChannelHandler childHandler) {
         ServerBootstrap b = new ServerBootstrap();
         b.group(boss, worker)
-         .channel((Class) serverChannelClass())
+         .channel(NettyTransport.serverChannel())
          .option(ChannelOption.SO_BACKLOG, 65535)
+         .option(ChannelOption.SO_REUSEADDR, true)
          .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
          .childOption(ChannelOption.SO_KEEPALIVE, true)
          .childOption(ChannelOption.TCP_NODELAY, true)
          .childOption(ChannelOption.AUTO_READ, false)
          .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
          .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, WRITE_WATERMARK)
-         .handler(new LoggingHandler(LogLevel.INFO))
+         // DEBUG, not INFO: at INFO this logged every accepted connection.
+         .handler(new LoggingHandler(LogLevel.DEBUG))
          .childHandler(childHandler);
 
-        // SO_REUSEPORT: Linux-only — lets each I/O thread have its own accept socket.
-        // The kernel distributes incoming connections across sockets → full CPU scaling.
-        if (USE_EPOLL) {
-            try {
-                // Raw cast needed: EpollChannelOption<Boolean> → ChannelOption<Boolean>
-                b.option((ChannelOption<Boolean>) (ChannelOption)
-                         io.netty.channel.epoll.EpollChannelOption.SO_REUSEPORT, Boolean.TRUE);
-                logger.info("[Netty] SO_REUSEPORT enabled (Epoll/Linux)");
-            } catch (Exception ignored) {
-                // EpollChannelOption not available in this build — skip silently
-            }
+        if (NettyTransport.supportsReusePort()) {
+            b.option(NettyTransport.reusePortOption(), Boolean.TRUE);
         }
-
-        String transport = USE_EPOLL ? "Epoll" : USE_KQUEUE ? "KQueue" : "NIO";
-        logger.info("[Netty] Transport: {} | PooledAllocator | WriteWatermark 32K/64K", transport);
+        if (!transportLogged) {
+            transportLogged = true;
+            logger.info("[Netty 4.2] Transport: {} | {} acceptor socket(s) per port{} | {} I/O threads | PooledAllocator | WriteWatermark 32K/64K",
+                    NettyTransport.describe(), ACCEPTORS, ACCEPTORS > 1 ? " (SO_REUSEPORT)" : "", CPU * 2);
+        }
         return b;
+    }
+
+    private static volatile boolean transportLogged;
+
+    /**
+     * Binds the port once per acceptor. With SO_REUSEPORT the kernel load-balances incoming
+     * connections across the sockets; the extra listeners are tracked so stop() closes them too.
+     */
+    private ChannelFuture bindAll(ServerBootstrap b, int port) throws InterruptedException {
+        ChannelFuture first = b.bind(port).sync();
+        for (int i = 1; i < ACCEPTORS; i++) {
+            futureChannels.add(b.bind(port).sync());
+        }
+        return first;
     }
 
     @Override
@@ -254,10 +245,10 @@ public class AppServer implements Server{
 
     }
 
-    private boolean isDnsOn=false;
     public void start() throws Exception {
         try {
-            if(isDnsOn) {
+            // Enable with dnsServer=true (application.properties, env var or -DdnsServer=true).
+            if(DnsServer.isEnabled()) {
                 DnsServer dnsServer = new DnsServer();
                 dnsServer.start();
             }

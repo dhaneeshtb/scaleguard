@@ -15,6 +15,7 @@
  */
 package com.scaleguard.server.http.client;
 
+import com.scaleguard.server.http.utils.NettyTransport;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.http.router.TargetSystem;
@@ -24,7 +25,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -69,7 +69,7 @@ public final class HttpClient {
             EventLoopGroup group = OutboundConnectionPool.SHARED_WORKER;
             b = new Bootstrap();
             b.group(group)
-                    .channel(NioSocketChannel.class)
+                    .channel(NettyTransport.socketChannel())
                     .handler(new HttpClientInitializer(sslCtx));
         }catch (Exception e) {
             logger.error("Failed to initialise HTTP client bootstrap", e);
@@ -93,7 +93,7 @@ public final class HttpClient {
         request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         request.headers().set(HttpHeaderNames.ACCEPT_ENCODING, HttpHeaderValues.GZIP);
         request.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON);
-        request.headers().set(HttpHeaders.Names.CONTENT_LENGTH, bbuf.readableBytes());
+        request.headers().set(io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH, bbuf.readableBytes());
 // Send the HTTP request.
         // Set some example cookies.
 //        request.headers().set(

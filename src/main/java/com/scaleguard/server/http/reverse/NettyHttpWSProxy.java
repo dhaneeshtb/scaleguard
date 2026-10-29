@@ -1,12 +1,10 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.utils.NettyTransport;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.handler.codec.http.websocketx.*;
 import io.netty.handler.stream.ChunkedWriteHandler;
@@ -27,12 +25,12 @@ public class NettyHttpWSProxy {
     }
 
     public void start() throws InterruptedException {
-        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
-        EventLoopGroup workerGroup = new NioEventLoopGroup();
+        EventLoopGroup bossGroup = NettyTransport.newGroup(1, "sg-ws-accept");
+        EventLoopGroup workerGroup = NettyTransport.newGroup(0, "sg-ws-io");
         try {
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
-                    .channel(NioServerSocketChannel.class)
+                    .channel(NettyTransport.serverChannel())
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) {
@@ -87,7 +85,7 @@ class HttpProxyServerHandler extends SimpleChannelInboundHandler<FullHttpRequest
         WebSocketServerHandshaker handshaker = wsFactory.newHandshaker(request);
 
         if (handshaker == null) {
-            WebSocketServerHandshakerFactory.sendUnsupportedWebSocketVersionResponse(ctx.channel());
+            WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(ctx.channel());
             return;
         }
 
@@ -98,7 +96,7 @@ class HttpProxyServerHandler extends SimpleChannelInboundHandler<FullHttpRequest
 
                 Bootstrap bootstrap = new Bootstrap()
                         .group(ctx.channel().eventLoop())
-                        .channel(NioSocketChannel.class)
+                        .channel(NettyTransport.socketChannel())
                         .handler(new ChannelInitializer<SocketChannel>() {
                             @Override
                             protected void initChannel(SocketChannel ch) {

@@ -24,6 +24,8 @@ import DNS from './components/DNS';
 import Security from './pages/security/Security';
 import ManageSource from './pages/ManageSource';
 import AsyncEngines from './pages/asyncengines/AsyncEngines';
+import RateLimiting from './pages/protection/RateLimiting';
+import Firewall from './pages/protection/Firewall';
 
 function App() {
   return (
@@ -50,6 +52,8 @@ function App() {
                     <Route path="/managehost/:type/:id" element={<ManageHost />} />
                     <Route path="/certificates" element={<Certificates />} />
                     <Route path="/dns" element={<DNS />} />
+                    <Route path="/ratelimit" element={<RateLimiting />} />
+                    <Route path="/firewall" element={<Firewall />} />
                   </Routes>
                 </Layout>
               }

@@ -98,7 +98,7 @@ public abstract class DBManager<T extends DBObject> {
                         boolean allowed=!(f.getName().equalsIgnoreCase("status") && !isStatusSupported());
                         if (o != null && allowed) {
                             keys.add(f.getName());
-                            values.add("'" + f.get(u).toString() + "'");
+                            values.add(sqlValue(f.get(u)));
                         }
                     } catch (IllegalAccessException e) {
                         throw new RuntimeException(e);
@@ -108,7 +108,7 @@ public abstract class DBManager<T extends DBObject> {
                 String valuesC = String.join(",", values);
                 String insertString = "insert into " + tableName + "(" + fields + ") values(" + valuesC + ")";
 
-                LOG.info("create certificate object {}",insertString);
+                LOG.debug("insert into {}", tableName);
 
                 try {
                     c.createStatement().executeUpdate(insertString);
@@ -135,7 +135,7 @@ public abstract class DBManager<T extends DBObject> {
                         if (!f.getName().equalsIgnoreCase("id") && allowed) {
                             Object o = f.get(folder);
                             if (o != null) {
-                                keys.add(f.getName() + " = " + "'" + f.get(folder).toString() + "'");
+                                keys.add(f.getName() + " = " + sqlValue(f.get(folder)));
                             }
                         }
                     } catch (IllegalAccessException e) {
@@ -143,7 +143,7 @@ public abstract class DBManager<T extends DBObject> {
                     }
                 });
                 String fields = String.join(",", keys);
-                String insertString = "update " + tableName + " set " + fields + " where id='" + folder.getId()+"'";
+                String insertString = "update " + tableName + " set " + fields + " where id=" + sqlValue(folder.getId());
 
                 try {
                     c.createStatement().executeUpdate(insertString);
@@ -158,7 +158,7 @@ public abstract class DBManager<T extends DBObject> {
 
     public void delete(List<T> users) throws Exception {
         init();
-        String cond = users.stream().map(u->"'"+u.getId()+"'").collect(Collectors.joining(","));
+        String cond = users.stream().map(u->sqlValue(u.getId())).collect(Collectors.joining(","));
         String insertString = "delete from "+tableName+" where id in ("+cond+")";
         try (Connection c = ConnectionUtil.getConnection(); Statement st = c.createStatement()) {
             st.executeUpdate(insertString);
@@ -167,7 +167,7 @@ public abstract class DBManager<T extends DBObject> {
 
     public void delete(String id) throws Exception {
         init();
-        String insertString = "delete from "+tableName+" where id ='"+id+"'";
+        String insertString = "delete from "+tableName+" where id ="+sqlValue(id);
         try (Connection c = ConnectionUtil.getConnection(); Statement st = c.createStatement()) {
             st.executeUpdate(insertString);
         }
@@ -202,7 +202,7 @@ public abstract class DBManager<T extends DBObject> {
     public List<T> readItems(String name,List<String> value) throws Exception {
         init();
         List<T> users = new ArrayList<>();
-        String instr=value!=null && !value.isEmpty()?value.stream().map(r->"'"+r+"'").collect(Collectors.joining(",")):null;
+        String instr=value!=null && !value.isEmpty()?value.stream().map(DBManager::sqlValue).collect(Collectors.joining(",")):null;
         String insertString = "select * from "+tableName+" " + (name!=null ? " where "+name+" in (" + instr +")" : "");
 
         try (Connection c = ConnectionUtil.getConnection();Statement st=c.createStatement()) {
@@ -237,6 +237,11 @@ public abstract class DBManager<T extends DBObject> {
 
         }
         return users;
+    }
+
+    /** Quotes a value as an SQL string literal, escaping embedded quotes so data can't break out of it. */
+    static String sqlValue(Object o) {
+        return "'" + String.valueOf(o).replace("'", "''") + "'";
     }
 
     public boolean isStatusSupported(){

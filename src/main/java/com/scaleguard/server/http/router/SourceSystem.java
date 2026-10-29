@@ -125,6 +125,20 @@ public class SourceSystem {
     }
   }
 
+  /**
+   * Per-route rate limit in requests per minute per client.
+   * null or negative = use the global setting; 0 = unlimited for this route.
+   */
+  private Integer rateLimit;
+
+  public Integer getRateLimit() {
+    return rateLimit;
+  }
+
+  public void setRateLimit(Integer rateLimit) {
+    this.rateLimit = rateLimit;
+  }
+
   public String getHost() {
     return host;
   }

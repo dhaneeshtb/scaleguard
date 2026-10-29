@@ -15,13 +15,16 @@
  */
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.router.ClientIpResolver;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.router.RouteTarget;
+import com.scaleguard.server.security.waf.WafEngine;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +37,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   private static final Logger logger
           = LoggerFactory.getLogger(ScaleGuardFrontendHandler.class);
 
-  private static final RateLimitManager rateLimitManager = new RateLimitManager();
+  private static final RateLimitManager rateLimitManager = RateLimitManager.getInstance();
 
   private Channel outboundChannel;
 
@@ -70,15 +73,32 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     String inAddress = "unknown";
     boolean forwarded = false;
     try {
-      inAddress = ((InetSocketAddress) ctx.channel().remoteAddress()).getAddress().getHostAddress();
+      String peerIp = ((InetSocketAddress) ctx.channel().remoteAddress()).getAddress().getHostAddress();
+      // Real client IP: X-Forwarded-For is only honoured when the peer is a trusted proxy.
+      String xff = msg instanceof HttpRequest ? ((HttpRequest) msg).headers().get("X-Forwarded-For") : null;
+      inAddress = ClientIpResolver.resolve(peerIp, xff);
 
       RouteTarget ts = inboundHandler.matchTarget(ctx, msg, port);
 
-      // rateLimitManager.checkRate handles ts=null gracefully; log & drop if limited
-      if (!rateLimitManager.checkRate(ts, inAddress)) {
-        logger.info("Request from {} discarded — rate limit exceeded", inAddress);
-        DefaultResponseHandler.getInstance().handleFailure(ctx, "rate limit exceeded", HttpResponseStatus.TOO_MANY_REQUESTS);
+      RateLimitManager.Decision decision = rateLimitManager.check(ts, inAddress);
+      if (!decision.allowed()) {
+        // Logged (throttled) inside RateLimitManager — no per-request log line here.
+        DefaultResponseHandler.getInstance().handleFailure(ctx, "rate limit exceeded", HttpResponseStatus.TOO_MANY_REQUESTS,
+                java.util.Map.of("Retry-After", String.valueOf(decision.retryAfterSeconds())));
         return;
+      }
+
+      // Web application firewall (per-route policy; a no-op when the route has it switched off)
+      if (ts != null && msg instanceof FullHttpRequest && ts.getSourceSystem() != null) {
+        WafEngine.Verdict verdict = WafEngine.getInstance().inspect(ts.getSourceSystem().getId(),
+                ts.getSourceSystem().getName() != null ? ts.getSourceSystem().getName() : ts.getSourceSystem().getHost(),
+                inAddress, (FullHttpRequest) msg);
+        if (verdict.blocked()) {
+          DefaultResponseHandler.getInstance().handleFailure(ctx,
+                  "Request blocked by the web application firewall. Incident " + verdict.incidentId(),
+                  HttpResponseStatus.FORBIDDEN, java.util.Map.of("X-ScaleGuard-Incident", verdict.incidentId()));
+          return;
+        }
       }
 
       if (ts == null) {

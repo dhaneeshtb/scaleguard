@@ -1,11 +1,18 @@
 package com.scaleguard.server.dns;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.scaleguard.server.http.reverse.RequestRoute;
 import com.scaleguard.server.http.reverse.RequestRoutingResponse;
-import com.scaleguard.server.system.SystemManager;
 import com.scaleguard.utils.JSON;
 
+import java.util.Map;
+import java.util.Set;
+
 public class DNSRoute implements RequestRoute {
+
+    private static final Set<String> TYPES = Set.of("record", "base", "a", "aaaa", "txt", "cname", "mx", "ns");
+    private static final long MAX_TTL = 604_800; // 1 week
+
     @Override
     public boolean isAuthNeeded() {
         return true;
@@ -13,36 +20,67 @@ public class DNSRoute implements RequestRoute {
 
     @Override
     public RequestRoutingResponse handle(String method, String uri, String body) throws Exception {
-        if(method.equalsIgnoreCase("get")){
-           return RequestRoutingResponse.succes(JSON.toString(DNSAddressBook.get()));
+        String[] tuples = uri.split("\\?")[0].split("/");
+        String last = tuples.length > 0 ? tuples[tuples.length - 1] : "";
+
+        if (method.equalsIgnoreCase("get")) {
+            if ("stats".equalsIgnoreCase(last)) {
+                DnsServer s = DnsServer.current();
+                Map<String, Object> stats = s == null ? Map.of("running", false) : s.statsSnapshot();
+                return RequestRoutingResponse.succes(JSON.toString(stats));
+            }
+            return RequestRoutingResponse.succes(JSON.toString(DNSAddressBook.get()));
         }
 
-        if(method.equalsIgnoreCase("delete")){
-
-            String[] tuples = uri.split("/");
-            String id =!tuples[tuples.length-1].equalsIgnoreCase("dns")?tuples[tuples.length-1]:null;
-            if(id!=null){
+        if (method.equalsIgnoreCase("delete")) {
+            if ("cache".equalsIgnoreCase(last)) {
+                DnsServer s = DnsServer.current();
+                if (s != null) s.clearCache();
+                return RequestRoutingResponse.succes("{}");
+            }
+            String id = !last.equalsIgnoreCase("dns") ? last : null;
+            if (id != null && !id.isBlank()) {
                 DNSAddressBook.remove(id);
             }
             return RequestRoutingResponse.succes("{}");
-        }else if(method.equalsIgnoreCase("post")){
-
-            JsonNode node = JSON.parse(body);
-            String name =node.has("name")?node.get("name").asText():null;
-            String ip =node.has("ip")? node.get("ip").asText():null;
-            String type = node.has("type")? node.get("type").asText():"record";
-            if("base".equalsIgnoreCase(type) || (ip==null||ip.isEmpty())){
-                ip ="base";
-            }
-            long ttl = node.has("ttl")? node.get("ttl").asLong():DNSAddressBook.DEFAULT_TTL;
-            if(!name.endsWith(".")){
-                name=name+".";
-            }
-
-            DNSAddressBook.add(name,ip,type,ttl);
-            return RequestRoutingResponse.succes(node.toString());
-        }else{
-            return RequestRoutingResponse.response(405,"{}");
         }
+
+        if (method.equalsIgnoreCase("post")) {
+            JsonNode node = JSON.parse(body);
+            String name = text(node, "name");
+            if (name == null || name.isBlank()) return error("name is required");
+            name = name.trim().toLowerCase();
+            if (!name.endsWith(".")) name = name + ".";
+            if (name.length() > 254 || !name.matches("^([a-z0-9_*]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)+$")) {
+                return error("name is not a valid domain name");
+            }
+
+            String type = text(node, "type");
+            type = type == null || type.isBlank() ? "record" : type.trim().toLowerCase();
+            if (!TYPES.contains(type)) return error("type must be one of " + TYPES);
+
+            String ip = text(node, "ip");
+            if ("base".equals(type) || ip == null || ip.isBlank()) {
+                ip = "base";
+            } else {
+                ip = ip.trim();
+                if (ip.length() > 1024) return error("value is too long");
+            }
+
+            long ttl = node.has("ttl") ? node.get("ttl").asLong(DNSAddressBook.DEFAULT_TTL) : DNSAddressBook.DEFAULT_TTL;
+            if (ttl < 1 || ttl > MAX_TTL) return error("ttl must be between 1 and " + MAX_TTL + " seconds");
+
+            DNSAddressBook.add(name, ip, type, ttl);
+            return RequestRoutingResponse.succes(node.toString());
+        }
+        return RequestRoutingResponse.response(405, "{}");
+    }
+
+    private static String text(JsonNode node, String field) {
+        return node != null && node.hasNonNull(field) ? node.get(field).asText() : null;
+    }
+
+    private static RequestRoutingResponse error(String message) {
+        return RequestRoutingResponse.response(400, JSON.toString(Map.of("error", message)));
     }
 }

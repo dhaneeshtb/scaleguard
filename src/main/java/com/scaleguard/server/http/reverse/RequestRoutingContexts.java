@@ -10,6 +10,8 @@ import com.scaleguard.server.dns.DNSRoute;
 import com.scaleguard.server.dns.TunnelRoute;
 import com.scaleguard.server.login.LoginRoute;
 import com.scaleguard.server.registration.RegisterRoute;
+import com.scaleguard.server.security.RateLimitRoute;
+import com.scaleguard.server.security.waf.WafRoute;
 import com.scaleguard.server.system.SystemsRoute;
 
 import java.util.HashMap;
@@ -34,6 +36,8 @@ public class RequestRoutingContexts {
         routesMap.put("apps",new AppRoute());
         routesMap.put("clients",new ClientRoute());
         routesMap.put(".well-known",new AcmeChannelgeRoute());
+        routesMap.put("ratelimit",new RateLimitRoute());
+        routesMap.put("waf",new WafRoute());
 
 
 

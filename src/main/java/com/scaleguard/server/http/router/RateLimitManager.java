@@ -1,206 +1,352 @@
 package com.scaleguard.server.http.router;
 
-import java.util.Map;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
+import com.scaleguard.server.db.SystemProperty;
+import com.scaleguard.server.db.SystemPropertyDB;
+import com.scaleguard.server.http.utils.AppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
+
+/**
+ * Per-client, per-route HTTP rate limiter (token bucket).
+ *
+ * <p>Each (client IP, source route, target route) pair gets a bucket holding up to
+ * {@code limit/60 × burstSeconds} tokens, refilled continuously at {@code limit/60} per second.
+ * A request spends one token; with none left it gets 429 plus a Retry-After saying when the next
+ * token arrives. There's no cliff at the minute boundary, unlike a fixed per-minute window.
+ *
+ * <p>Settings are edited from the admin UI ({@code /ratelimit}), stored in the system_properties
+ * table and applied immediately. First-run defaults come from {@code scaleguard.rateLimit} and
+ * {@code scaleguard.rateLimitBurstSeconds} (system property, env var or application.properties).
+ * A source system can override the limit with its own {@code rateLimit} (0 = unlimited).
+ * The client IP comes from {@link ClientIpResolver}, so X-Forwarded-For is only trusted from known proxies.
+ */
 public class RateLimitManager {
     private static final Logger logger = LoggerFactory.getLogger(RateLimitManager.class);
 
-    private  IPBlockingManager ibm;
-    private  Map<String, Queue<RateLimit>> rateLimitMap = new ConcurrentHashMap<>();
+    static final String GROUP = "ratelimit";
+    static final String P_ENABLED = "ratelimit.enabled";
+    static final String P_PER_MINUTE = "ratelimit.perMinute";
+    static final String P_BURST_SECONDS = "ratelimit.burstSeconds";
+    static final String P_TRUSTED = "ratelimit.trustedProxies";
 
-    /**
-     * Maximum requests per minute per client IP (per route).
-     * Configure via -Dscaleguard.rateLimit=<n>  (default 10 000).
-     * The original hardcoded value of 1 000 was too low for load-test / high-throughput scenarios.
-     */
-    private int allowedRate = Integer.getInteger("scaleguard.rateLimit", 10_000);
+    public static final String DEFAULT_TRUSTED = "127.0.0.0/8,::1/128";
+    private static final long IDLE_EVICT_NANOS = TimeUnit.MINUTES.toNanos(5);
+    private static final long LOG_INTERVAL_NANOS = TimeUnit.MINUTES.toNanos(1);
+    private static final int MIN_BURST = 10;
 
-    public RateLimitManager(){
+    private static final ScheduledExecutorService SWEEPER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "sg-ratelimit-sweeper");
+        t.setDaemon(true);
+        return t;
+    });
 
+    private static volatile RateLimitManager instance;
+
+    /** Immutable settings snapshot; swapped atomically on update. */
+    public record Settings(boolean enabled, int perMinute, int burstSeconds, String trustedProxies) {
+        public Settings {
+            perMinute = Math.max(1, perMinute);
+            burstSeconds = Math.max(1, Math.min(3600, burstSeconds));
+            trustedProxies = trustedProxies == null || trustedProxies.isBlank() ? DEFAULT_TRUSTED : trustedProxies.trim();
+        }
     }
-    public RateLimitManager(int allowedRate){
-        this.allowedRate=allowedRate;
+
+    /** Outcome of a rate check. */
+    public record Decision(boolean allowed, long retryAfterSeconds) {
+        static final Decision ALLOW = new Decision(true, 0);
     }
-    public RateLimitManager(int allowedRate,IPBlockingManager ibm){
-        this.allowedRate=allowedRate;
-        this.ibm=ibm;
+
+    private static final class Bucket {
+        final String client;
+        final String route;
+        double tokens;
+        long lastRefill;
+        long lastLogged;
+        long rejectedSinceLog;
+        long rejectedTotal;
+        long lastRejected;
+        int limitPerMinute;
+
+        Bucket(String client, String route) { this.client = client; this.route = route; }
     }
+
+    private final IPBlockingManager ibm;
+    private volatile Settings settings;
+    private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final LongAdder allowed = new LongAdder();
+    private final LongAdder rejected = new LongAdder();
+    private final long startedAt = System.currentTimeMillis();
+
+    /** The shared limiter used by the HTTP frontend; settings are loaded from the database. */
+    public static RateLimitManager getInstance() {
+        RateLimitManager m = instance;
+        if (m == null) {
+            synchronized (RateLimitManager.class) {
+                if (instance == null) instance = new RateLimitManager(loadSettings(), null);
+                m = instance;
+            }
+        }
+        return m;
+    }
+
+    /** Standalone limiter with its own settings (not persisted). */
+    public RateLimitManager(int perMinute) {
+        this(new Settings(perMinute > 0, Math.max(1, perMinute), 10, DEFAULT_TRUSTED), null);
+    }
+
+    public RateLimitManager(int perMinute, IPBlockingManager ibm) {
+        this(new Settings(perMinute > 0, Math.max(1, perMinute), 10, DEFAULT_TRUSTED), ibm);
+    }
+
+    private RateLimitManager(Settings s, IPBlockingManager ibm) {
+        this.ibm = ibm;
+        apply(s);
+        SWEEPER.scheduleAtFixedRate(this::sweep, 1, 1, TimeUnit.MINUTES);
+    }
+
+    // ------------------------------------------------------------------ settings
+
+    public Settings getSettings() {
+        return settings;
+    }
+
+    /** Validates, persists and applies new settings. Existing buckets adopt the new limit on their next request. */
+    public synchronized void update(Settings s) throws Exception {
+        persist(s);
+        apply(s);
+    }
+
+    private void apply(Settings s) {
+        this.settings = s;
+        ClientIpResolver.setTrustedProxies(s.trustedProxies());
+        logger.info("HTTP rate limit {}: {}/min per client per route, burst {}s, trusted proxies {}",
+                s.enabled() ? "on" : "off", s.perMinute(), s.burstSeconds(), s.trustedProxies());
+    }
+
+    private static Settings loadSettings() {
+        boolean enabled = configuredInt("scaleguard.rateLimit", 10_000) > 0;
+        int perMinute = Math.max(1, configuredInt("scaleguard.rateLimit", 10_000));
+        int burstSeconds = configuredInt("scaleguard.rateLimitBurstSeconds", 10);
+        String trusted = configured("scaleguard.trustedProxies", DEFAULT_TRUSTED);
+        try {
+            for (SystemProperty p : SystemPropertyDB.getInstance().readAll()) {
+                String v = p.getValue();
+                if (v == null) continue;
+                switch (p.getName()) {
+                    case P_ENABLED -> enabled = Boolean.parseBoolean(v);
+                    case P_PER_MINUTE -> perMinute = Integer.parseInt(v);
+                    case P_BURST_SECONDS -> burstSeconds = Integer.parseInt(v);
+                    case P_TRUSTED -> trusted = v;
+                    default -> { }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not read rate-limit settings from the database, using defaults: {}", e.toString());
+        }
+        return new Settings(enabled, perMinute, burstSeconds, trusted);
+    }
+
+    private static void persist(Settings s) throws Exception {
+        long now = System.currentTimeMillis();
+        List<SystemProperty> props = new ArrayList<>();
+        props.add(prop(P_ENABLED, String.valueOf(s.enabled()), now));
+        props.add(prop(P_PER_MINUTE, String.valueOf(s.perMinute()), now));
+        props.add(prop(P_BURST_SECONDS, String.valueOf(s.burstSeconds()), now));
+        props.add(prop(P_TRUSTED, s.trustedProxies(), now));
+        SystemPropertyDB.getInstance().save(props);
+    }
+
+    private static SystemProperty prop(String name, String value, long now) {
+        SystemProperty p = new SystemProperty();
+        p.setId(name);
+        p.setName(name);
+        p.setGroupname(GROUP);
+        p.setValue(value);
+        p.setMts(now);
+        p.setUts(now);
+        return p;
+    }
+
+    // ------------------------------------------------------------------ checks
 
     public IPBlockingManager getIbm() {
         return ibm;
     }
 
-    public boolean isBlocked(String address){
+    public boolean isBlocked(String address) {
         return ibm != null && ibm.isBlocked(address);
     }
 
-    public  void log(RouteTarget rt) {
-        String key = "system";
-        if (rt != null) {
-            key = rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
-        }
-        Queue<RateLimit> rs = rateLimitMap.computeIfAbsent(key, k -> new SizeLimitedQueue<>(10));
-        RateLimit rl = rs.peek();
-        String minKey = minuteKey();
-        if (rl != null && rl.getMinuteKey().equalsIgnoreCase(minKey)) {
-            rl.getCount().incrementAndGet();
-        } else {
-            RateLimit rli = new RateLimit();
-            rli.setMinuteKey(minKey);
-            rli.getCount().incrementAndGet();
-            rs.add(rli);
-        }
-
+    public boolean checkRate(RouteTarget rt, String clientIp) {
+        return check(rt, clientIp).allowed();
     }
 
-    public  boolean checkRate(RouteTarget rt,String inAddress) {
-        return isInRate(rt,inAddress,true);
-    }
-    public  boolean isInRate(RouteTarget rt,String inAddress,boolean add) {
-        String key = inAddress+":system";
-        if (rt != null) {
-            key = rt.getClientIp()+":"+rt.getSourceSystem().getId() + ":" + rt.getTargetSystem().getId();
+    /** Kept for compatibility; {@code add=false} only peeks without spending a token. */
+    public boolean isInRate(RouteTarget rt, String clientIp, boolean add) {
+        if (add) return check(rt, clientIp).allowed();
+        Bucket b = buckets.get(key(rt, ip(rt, clientIp)));
+        if (b == null) return true;
+        synchronized (b) {
+            refill(b, System.nanoTime(), limitFor(rt));
+            return b.tokens >= 1;
         }
-        Queue<RateLimit> rs = rateLimitMap.computeIfAbsent(key, k -> new SizeLimitedQueue<>(10));
-        RateLimit rl = rs.peek();
-        String minKey = minuteKey();
-        if (rl!=null && rl.getMinuteKey().equalsIgnoreCase(minKey)) {
-            if ( (add?rl.getCount().getAndIncrement(): rl.getCount().get()) < allowedRate) {
-                return true;
-            } else {
-                logger.warn("Rate exceeded for key {} at minute {} count {}", key, rl.getMinuteKey(), rl.getCount().get());
-                if(ibm!=null){
-                    ibm.block(rt != null?rt.getClientIp():inAddress);
-                }
-                return false;
+    }
+
+    public Decision check(RouteTarget rt, String clientIp) {
+        int limit = limitFor(rt);
+        if (limit <= 0) {
+            allowed.increment();
+            return Decision.ALLOW;
+        }
+        String ip = ip(rt, clientIp);
+        if (isBlocked(ip)) {
+            rejected.increment();
+            return new Decision(false, 60);
+        }
+        String key = key(rt, ip);
+        long now = System.nanoTime();
+        Bucket b = buckets.computeIfAbsent(key, k -> {
+            Bucket n = new Bucket(ip, routeLabel(rt));
+            n.limitPerMinute = limit;
+            n.tokens = burst(limit);
+            n.lastRefill = now;
+            return n;
+        });
+        synchronized (b) {
+            refill(b, now, limit);
+            if (b.tokens >= 1) {
+                b.tokens -= 1;
+                allowed.increment();
+                return Decision.ALLOW;
             }
-        }else if(add){
-            RateLimit rli = new RateLimit();
-            rli.setMinuteKey(minKey);
-            rli.getCount().incrementAndGet();
-            rs.add(rli);
+            rejected.increment();
+            b.rejectedTotal++;
+            b.rejectedSinceLog++;
+            b.lastRejected = System.currentTimeMillis();
+            if (now - b.lastLogged >= LOG_INTERVAL_NANOS) {
+                logger.warn("Rate limit exceeded for {} on {} — {} request(s) rejected since last report", ip, b.route, b.rejectedSinceLog);
+                b.lastLogged = now;
+                b.rejectedSinceLog = 0;
+            }
+            if (ibm != null) ibm.block(ip);
+            double perSecond = limit / 60.0;
+            return new Decision(false, Math.max(1, (long) Math.ceil((1 - b.tokens) / perSecond)));
         }
-
-        return true;
     }
 
     /**
-     * Returns a "HHmm" string for the current wall-clock hour+minute.
-     *
-     * <p>Replaces {@code Calendar.getInstance()} which allocates a full Calendar
-     * object on every call (expensive: timezone lookup, field array, etc.).
-     * This implementation computes the same key in ~5 ns via epoch arithmetic.</p>
+     * Admin UI, API and other internal endpoints have their own fixed limit, independent of the
+     * route settings — so a strict limit set in the UI can never lock the admin out, while login
+     * brute-forcing is still capped. Override with scaleguard.adminRateLimit (requests/minute).
      */
-    private static String minuteKey() {
-        long totalMinutes = System.currentTimeMillis() / 60_000L;
-        long minuteOfDay  = totalMinutes % 1440L;   // minutes since midnight (UTC)
-        long hour         = minuteOfDay / 60L;
-        long minute       = minuteOfDay % 60L;
-        return hour + "" + minute;
+    private static final int ADMIN_LIMIT = Math.max(0, configuredInt("scaleguard.adminRateLimit", 3_000));
+
+    /** Effective limit for this route in requests/minute; 0 means unlimited. */
+    private int limitFor(RouteTarget rt) {
+        Settings s = settings;
+        if (rt == null) return ADMIN_LIMIT;
+        if (rt.getSourceSystem() != null) {
+            Integer override = rt.getSourceSystem().getRateLimit();
+            if (override != null && override >= 0) return override;
+        }
+        return s.enabled() ? s.perMinute() : 0;
     }
 
-    public static void main(String[] args) {
-        SourceSystem ss = new SourceSystem();
-        ss.setId("10");
-        TargetSystem ts = new TargetSystem();
-        ts.setId("20");
-        RouteTarget rt = new RouteTarget(ss, ts);
-        RateLimitManager rtm=new RateLimitManager();
-        for (int i = 0; i < 10000; i++) {
-            rtm.log(rt);
-            if (!rtm.isInRate(rt,"",false)) {
-                try {
-                    logger.warn("Rate exceeded..");
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
-
+    private double burst(int limitPerMinute) {
+        return Math.max(MIN_BURST, Math.ceil(limitPerMinute / 60.0 * settings.burstSeconds()));
     }
 
-    /**
-     * A size-bounded FIFO queue safe for concurrent access from multiple Netty I/O threads.
-     *
-     * <p>The previous implementation extended {@link java.util.LinkedList}, which is
-     * <em>not thread-safe</em>. Because {@code rateLimitMap} is a {@link ConcurrentHashMap},
-     * two threads can hold the same Queue reference and call {@link #add}/{@link #peek}
-     * concurrently — causing lost updates and {@code ConcurrentModificationException}.
-     *
-     * <p>This replacement uses a {@link ConcurrentLinkedQueue} as the backing store and
-     * a volatile {@code size} counter (updated atomically via CAS) to enforce the capacity
-     * limit without synchronisation.</p>
-     */
-    public static class SizeLimitedQueue<E> extends ConcurrentLinkedQueue<E> {
-
-        private final int maxSize;
-        private final java.util.concurrent.atomic.AtomicInteger sz =
-                new java.util.concurrent.atomic.AtomicInteger(0);
-
-        public SizeLimitedQueue(int maxSize) {
-            this.maxSize = maxSize;
+    private void refill(Bucket b, long now, int limitPerMinute) {
+        if (limitPerMinute <= 0) return;
+        double cap = burst(limitPerMinute);
+        if (b.limitPerMinute != limitPerMinute) { // limit changed from the UI
+            b.limitPerMinute = limitPerMinute;
+            b.tokens = Math.min(b.tokens, cap);
         }
-
-        @Override
-        public boolean add(E o) {
-            // Evict head until we have room, then add atomically.
-            while (sz.get() >= maxSize) {
-                if (super.poll() != null) {
-                    sz.decrementAndGet();
-                } else {
-                    break; // queue became empty concurrently — proceed with add
-                }
-            }
-            boolean added = super.add(o);
-            if (added) sz.incrementAndGet();
-            return added;
-        }
-
-        @Override
-        public E poll() {
-            E e = super.poll();
-            if (e != null) sz.decrementAndGet();
-            return e;
+        double elapsed = (now - b.lastRefill) / 1e9;
+        if (elapsed > 0) {
+            b.tokens = Math.min(cap, b.tokens + elapsed * limitPerMinute / 60.0);
+            b.lastRefill = now;
         }
     }
 
-    public static class RateLimit {
-
-        private String minuteKey;
-        private AtomicInteger count = new AtomicInteger(0);
-        private String api;
-
-        public String getMinuteKey() {
-            return minuteKey;
-        }
-
-        public void setMinuteKey(String minuteKey) {
-            this.minuteKey = minuteKey;
-        }
-
-        public AtomicInteger getCount() {
-            return count;
-        }
-
-        public void setCount(AtomicInteger count) {
-            this.count = count;
-        }
-
-        public String getApi() {
-            return api;
-        }
-
-        public void setApi(String api) {
-            this.api = api;
-        }
+    private static String ip(RouteTarget rt, String clientIp) {
+        return rt != null && rt.getClientIp() != null ? rt.getClientIp() : clientIp;
     }
 
+    private static String key(RouteTarget rt, String ip) {
+        if (rt == null || rt.getSourceSystem() == null || rt.getTargetSystem() == null) return ip + "|system";
+        return ip + '|' + rt.getSourceSystem().getId() + '|' + rt.getTargetSystem().getId();
+    }
 
+    private static String routeLabel(RouteTarget rt) {
+        if (rt == null || rt.getSourceSystem() == null) return "admin & internal";
+        SourceSystem s = rt.getSourceSystem();
+        String name = s.getName() != null && !s.getName().isBlank() ? s.getName() : s.getHost();
+        return name + (s.getId() != null ? " (" + s.getId() + ")" : "");
+    }
+
+    void sweep() {
+        long now = System.nanoTime();
+        buckets.entrySet().removeIf(e -> now - e.getValue().lastRefill > IDLE_EVICT_NANOS);
+    }
+
+    // ------------------------------------------------------------------ stats for the UI
+
+    public Map<String, Object> stats() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("allowed", allowed.sum());
+        m.put("rejected", rejected.sum());
+        m.put("trackedClients", buckets.size());
+        m.put("sinceMs", startedAt);
+        long now = System.currentTimeMillis();
+        List<Map<String, Object>> top = new ArrayList<>();
+        buckets.values().stream()
+                .filter(b -> b.rejectedTotal > 0 && now - b.lastRejected < TimeUnit.MINUTES.toMillis(10))
+                .sorted(Comparator.comparingLong((Bucket b) -> b.rejectedTotal).reversed())
+                .limit(20)
+                .forEach(b -> {
+                    Map<String, Object> e = new LinkedHashMap<>();
+                    e.put("client", b.client);
+                    e.put("route", b.route);
+                    e.put("rejected", b.rejectedTotal);
+                    e.put("limitPerMinute", b.limitPerMinute);
+                    e.put("lastRejectedSecondsAgo", (now - b.lastRejected) / 1000);
+                    top.add(e);
+                });
+        m.put("limitedClients", top);
+        return m;
+    }
+
+    public int trackedKeys() {
+        return buckets.size();
+    }
+
+    // ------------------------------------------------------------------ config helpers
+
+    private static String configured(String key, String def) {
+        String v = System.getProperty(key);
+        if (v == null || v.isBlank()) v = AppProperties.get(key);
+        return v == null || v.isBlank() ? def : v.trim();
+    }
+
+    private static int configuredInt(String key, int def) {
+        try {
+            return Integer.parseInt(configured(key, String.valueOf(def)));
+        } catch (NumberFormatException e) {
+            logger.warn("Ignoring invalid {}", key);
+            return def;
+        }
+    }
 }

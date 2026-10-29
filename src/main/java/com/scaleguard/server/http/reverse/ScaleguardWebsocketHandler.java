@@ -1,11 +1,11 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.utils.NettyTransport;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.RouteTarget;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.handler.codec.http.websocketx.*;
 import io.netty.handler.ssl.SslContext;
@@ -51,7 +51,7 @@ public class ScaleguardWebsocketHandler {
         WebSocketServerHandshaker handshaker = wsFactory.newHandshaker(request);
 
         if (handshaker == null) {
-            WebSocketServerHandshakerFactory.sendUnsupportedWebSocketVersionResponse(ctx.channel());
+            WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(ctx.channel());
             return;
         }
 
@@ -65,7 +65,9 @@ public class ScaleguardWebsocketHandler {
 
                 Bootstrap bootstrap = new Bootstrap()
                         .group(ctx.channel().eventLoop())
-                        .channel(NioSocketChannel.class)
+                        // Must match the inbound loop's transport: NioSocketChannel on an epoll loop fails with
+                        // "incompatible event loop type", which broke WebSocket proxying on Linux.
+                        .channel(NettyTransport.socketChannel())
                         .handler(new ChannelInitializer<SocketChannel>() {
                             @Override
                             protected void initChannel(SocketChannel ch) {

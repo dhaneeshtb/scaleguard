@@ -383,6 +383,8 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
     }
 
     const scheme = asText(draft.scheme) || "https";
+    const rlNum = draft.rateLimit === null || draft.rateLimit === undefined || draft.rateLimit === "" ? -1 : Number(draft.rateLimit);
+    const rlMode: "default" | "custom" | "unlimited" = rlNum < 0 ? "default" : rlNum === 0 ? "unlimited" : "custom";
     const isHttp = scheme === "http" || scheme === "https";
     const title = asText(draft.name) || (type === "hostgroups" && draft.host ? `${draft.host}${draft.port ? ":" + draft.port : ""}` : "") || `New ${meta.noun.toLowerCase()}`;
 
@@ -454,6 +456,30 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                         {apps.map((a: any) => <option key={a.id} value={a.id}>{a.name || a.id}</option>)}
                     </SelectInput>
                 </Field>
+            </Section>
+
+            <Section id="sec-protect" icon={FiShield} title="Rate limit & firewall" description="Protect this route from floods and common attacks.">
+                <Field label="Requests per client" htmlFor="f-rl" span={2}
+                    hint={rlMode === "default" ? "Follows the default on the Rate limiting page." : rlMode === "unlimited" ? "No limit for this route." : `About ${(Math.max(1, Number(draft.rateLimit) || 0) / 60).toFixed(1)} requests per second per client.`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Segmented id="f-rl" value={rlMode} onChange={v => set("rateLimit", v === "default" ? -1 : v === "unlimited" ? 0 : (Number(draft.rateLimit) > 0 ? draft.rateLimit : 6000))} options={[
+                            { value: "default", label: "Default" }, { value: "custom", label: "Custom" }, { value: "unlimited", label: "Unlimited" },
+                        ]} />
+                        {rlMode === "custom" && (
+                            <span className="flex items-center gap-2">
+                                <input id="f-rl-value" inputMode="numeric" value={asText(draft.rateLimit)} onChange={e => set("rateLimit", parseInt(e.target.value.replace(/[^\d]/g, "") || "1", 10))}
+                                    className={`${inputCls} ${okBorder} w-32 font-mono text-[13px]`} />
+                                <span className="text-[12px] text-slate-500">per minute</span>
+                            </span>
+                        )}
+                    </div>
+                </Field>
+                {!isNew && (
+                    <RouterLink to={`/firewall?route=${id}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/60 p-3.5 text-[13.5px] font-medium text-slate-800 transition-colors hover:border-teal-400/40 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-100 sm:col-span-2">
+                        <span>Web application firewall rules for this route<span className="mt-0.5 block text-[12px] font-normal text-slate-500 dark:text-slate-400">SQL injection, XSS, path traversal and more — configured on the Firewall page.</span></span>
+                        <FiArrowRight className="shrink-0 text-slate-400" />
+                    </RouterLink>
+                )}
             </Section>
 
             {isHttp && (

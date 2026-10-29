@@ -1,12 +1,11 @@
 package com.scaleguard.server.dns;
 
+import com.scaleguard.server.http.utils.NettyTransport;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.*;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.dns.*;
 import io.netty.util.NetUtil;
 import org.slf4j.Logger;
@@ -46,11 +45,11 @@ public final class TcpDnsClient {
     }
 
     public static void main(String[] args) throws Exception {
-        EventLoopGroup group = new NioEventLoopGroup();
+        EventLoopGroup group = NettyTransport.newGroup(1, "sg-dns-client");
         try {
             Bootstrap b = new Bootstrap();
             b.group(group)
-                    .channel(NioSocketChannel.class)
+                    .channel(NettyTransport.socketChannel())
                     .handler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) {

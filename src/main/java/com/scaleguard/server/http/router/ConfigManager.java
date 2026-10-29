@@ -118,7 +118,8 @@ public class ConfigManager {
             copy(s,hostGroup);
             fHg=hostGroup;
             try {
-                HostGroupsDB.getInstance().edit(toDBModel(s));
+                // Persist the merged record — saving only the incoming fields would wipe everything not sent.
+                HostGroupsDB.getInstance().edit(toDBModel(hostGroup));
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -156,16 +157,21 @@ public class ConfigManager {
             }
         }else{
             TargetSystem hostGroup = RouteTable.getInstance().getTargetSystems().values().stream().filter(hg -> hg.getId().equalsIgnoreCase(ss.getId())).findFirst().orElse(null);
+            if (hostGroup == null) {
+                throw new IllegalArgumentException("Target system " + ss.getId() + " not found");
+            }
             copy(ss,hostGroup);
             fTs=hostGroup;
             try {
-                TargetSystemDB.getInstance().edit(toDBModel(ss));
+                // Persist the merged record — saving only the incoming fields would wipe everything not sent.
+                TargetSystemDB.getInstance().edit(toDBModel(hostGroup));
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
-        if (ss.getHostGroupId() != null) {
-            ss.setHostGroups(RouteTable.getInstance().getHostGroups().stream().filter(s -> s.getGroupId().equals(fTs.getHostGroupId())).collect(Collectors.toList()));
+        if (fTs.getHostGroupId() != null) {
+            final TargetSystem live = fTs;
+            live.setHostGroups(RouteTable.getInstance().getHostGroups().stream().filter(s -> s.getGroupId().equals(live.getHostGroupId())).collect(Collectors.toList()));
         }
         RouteTable.getInstance().remapSourceSystems();
     }
@@ -190,10 +196,12 @@ public class ConfigManager {
                 throw new RuntimeException(e);
             }
         }else{
-            SourceSystem hostGroup = RouteTable.getInstance().getSourceSystsems().stream().filter(hg -> hg.getId().equalsIgnoreCase(ss.getId())).findFirst().get();
+            SourceSystem hostGroup = RouteTable.getInstance().getSourceSystsems().stream().filter(hg -> hg.getId().equalsIgnoreCase(ss.getId())).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Source system " + ss.getId() + " not found"));
             copy(ss,hostGroup);
             try {
-                SourceSystemDB.getInstance().edit(toDBModel(ss));
+                // Persist the merged record — saving only the incoming fields would wipe everything not sent.
+                SourceSystemDB.getInstance().edit(toDBModel(hostGroup));
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -274,7 +282,11 @@ public class ConfigManager {
         dm.setMts(System.currentTimeMillis());
         dm.setUts(System.currentTimeMillis());
         dm.setGroupId(d.getGroupId());
-        dm.setPayload(mapper.valueToTree(d).toString());
+        com.fasterxml.jackson.databind.JsonNode tree = mapper.valueToTree(d);
+        if (tree instanceof com.fasterxml.jackson.databind.node.ObjectNode on) {
+            on.remove("hostGroups"); // runtime-only: rebuilt from the host groups table on load
+        }
+        dm.setPayload(tree.toString());
         return dm;
     }
     public static DBModelSystem toDBModel(HostGroup d){

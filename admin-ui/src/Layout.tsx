@@ -5,7 +5,7 @@ import { Menu, MenuButton, MenuList, MenuItem, Tooltip, useColorMode } from '@ch
 import axios from "axios";
 import {
     FiActivity, FiChevronsLeft, FiChevronsRight, FiCommand, FiGlobe, FiLock, FiLogOut,
-    FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown,
+    FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown, FiSliders, FiKey,
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { useAuth } from "./contexts/AuthContext";
@@ -29,11 +29,18 @@ const navSections: { title: string; links: NavLink[] }[] = [
         ],
     },
     {
+        title: "Protect",
+        links: [
+            { to: "/firewall", label: "Firewall (WAF)", icon: FiShield },
+            { to: "/ratelimit", label: "Rate limiting", icon: FiSliders },
+            { to: "/security", label: "App Security", icon: FiKey },
+        ],
+    },
+    {
         title: "Edge",
         links: [
             { to: "/certificates", label: "Certificates", icon: FiLock },
             { to: "/dns", label: "DNS", icon: FiGlobe },
-            { to: "/security", label: "App Security", icon: FiShield },
         ],
     },
 ];

@@ -57,10 +57,9 @@ public class DNSEntriesDB extends DBManager<DNSEntry> {
                         + "\tuts integer,\n"
                         + "\tmts integer\n"
                         + ");";
-        String indexs = "CREATE INDEX IF NOT EXISTS system_group_id_idx ON dns_entries (groupId);\n" +
-                "CREATE INDEX IF NOT EXISTS system_idx ON dns_entries (id);\n" +
-                "CREATE INDEX IF NOT EXISTS system_target_idx ON dns_entries (target);\n" +
-                "CREATE INDEX IF NOT EXISTS system_name_idx ON dns_entries (name);";
+        // Index names are global per database, so they must be unique to this table
+        // (the generic "system_*_idx" names are already used by other tables and were silently skipped).
+        String indexs = "CREATE INDEX IF NOT EXISTS dns_entries_name_idx ON dns_entries (name);";
 
 
         try (Connection connection = ConnectionUtil.getConnection(); Statement statement = connection.createStatement()) {

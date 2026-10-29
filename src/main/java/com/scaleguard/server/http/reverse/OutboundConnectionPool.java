@@ -1,10 +1,10 @@
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.http.utils.NettyTransport;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.pool.*;
-import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.ssl.SslContext;
@@ -36,7 +36,7 @@ public final class OutboundConnectionPool {
 
     /** Shared event loop for ALL outbound connections. */
     public static final EventLoopGroup SHARED_WORKER =
-            new NioEventLoopGroup(Runtime.getRuntime().availableProcessors() * 2);
+            NettyTransport.newGroup(Runtime.getRuntime().availableProcessors() * 2, "sg-outbound");
 
     /** Pool map: "host:port:ssl" → FixedChannelPool */
     private static final ConcurrentHashMap<String, FixedChannelPool> POOLS =
@@ -85,7 +85,7 @@ public final class OutboundConnectionPool {
 
         Bootstrap bootstrap = new Bootstrap()
                 .group(SHARED_WORKER)
-                .channel(NioSocketChannel.class)
+                .channel(NettyTransport.socketChannel())
                 .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)

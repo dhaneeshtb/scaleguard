@@ -108,7 +108,8 @@ const sourceSystemSchema = {
     "callbackId": "",
     "jwtKeylookup": null,
     "autoProcure":true,
-    "asyncEngine":null
+    "asyncEngine":null,
+    "rateLimit":-1
 }
 const targetSystemSchemaDef = {
     "scheme": {

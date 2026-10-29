@@ -227,7 +227,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     );
 
     return (
-        <div className="relative min-h-screen">
+        <div className="relative min-h-screen" style={{ ["--sg-sidebar" as any]: collapsed ? "76px" : "248px" }}>
             <div className="sg-backdrop" aria-hidden />
 
             {/* Desktop sidebar */}

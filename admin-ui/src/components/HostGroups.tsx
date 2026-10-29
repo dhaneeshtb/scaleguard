@@ -1,3 +1,4 @@
+import { Link as RouterLink } from 'react-router-dom';
 import { IconButton, Link, Badge, Tooltip } from '@chakra-ui/react';
 import axios from 'axios';
 import React, { useEffect, useState, useMemo } from 'react';
@@ -77,7 +78,7 @@ export default function HostGroups({ initialData, targets: initialTargets, sourc
                             className="pl-6 pr-2 py-1 text-xs rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-white/60 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500/40 w-48 transition-all"
                         />
                     </div>
-                    <Link href='/managehost/hostgroups/new'>
+                    <Link as={RouterLink} to='/managehost/hostgroups/new'>
                         <IconButton aria-label='Add Host Group' icon={<FaPlusCircle />} colorScheme='teal' size="xs" variant="ghost" title="Add Host Group" />
                     </Link>
                 </div>
@@ -166,7 +167,7 @@ export default function HostGroups({ initialData, targets: initialTargets, sourc
                                                 </Tooltip>
                                             )}
                                             <div className='flex opacity-0 group-hover:opacity-100 transition-opacity'>
-                                                <Link href={`/managehost/hostgroups/${s.id}`}>
+                                                <Link as={RouterLink} to={`/managehost/hostgroups/${s.id}`}>
                                                     <Tooltip label="Edit" hasArrow>
                                                         <IconButton aria-label='Edit' icon={<FaEdit />} variant="ghost" size="xs" colorScheme='blue' minW="5" h="5" />
                                                     </Tooltip>
@@ -199,7 +200,7 @@ export default function HostGroups({ initialData, targets: initialTargets, sourc
                 <div className="rounded-xl border border-dashed border-slate-300/40 dark:border-slate-600/40 text-center py-10">
                     <FaNetworkWired className="mx-auto text-2xl text-slate-300 dark:text-slate-600 mb-2" />
                     <p className="text-sm text-slate-400 mb-1">No host groups yet</p>
-                    <Link href='/managehost/hostgroups/new'>
+                    <Link as={RouterLink} to='/managehost/hostgroups/new'>
                         <span className="text-sm text-teal-500 hover:text-teal-400 cursor-pointer font-medium">+ Add your first host group</span>
                     </Link>
                 </div>

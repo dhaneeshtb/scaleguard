@@ -1,3 +1,4 @@
+import { Link as RouterLink } from 'react-router-dom';
 import { Select, Button, IconButton, Link, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, useDisclosure, Badge, Tooltip } from '@chakra-ui/react';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
@@ -213,7 +214,7 @@ export default function Systems({ initialData, targets: initialTargets, hostGrou
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                     {systems.length} source {systems.length === 1 ? 'system' : 'systems'} configured
                 </p>
-                <Link href='/managehost/sourcesystems/new'>
+                <Link as={RouterLink} to='/managehost/sourcesystems/new'>
                     <Button leftIcon={<FaPlusCircle />} colorScheme='teal' size={"xs"} rounded="full" variant="solid">
                         Add Source
                     </Button>
@@ -333,7 +334,7 @@ export default function Systems({ initialData, targets: initialTargets, hostGrou
                                                 onClick={() => setExpandedFlow(expandedFlow === system.id ? null : system.id)}
                                             />
                                         </Tooltip>
-                                        <Link href={`/managehost/sourcesystems/${system.id}`}>
+                                        <Link as={RouterLink} to={`/managehost/sourcesystems/${system.id}`}>
                                             <Tooltip label="Edit" hasArrow>
                                                 <IconButton aria-label='Edit' icon={<FaEdit />} variant={"ghost"} size={"xs"} colorScheme='blue' />
                                             </Tooltip>
@@ -364,7 +365,7 @@ export default function Systems({ initialData, targets: initialTargets, hostGrou
                     <div className="text-center py-12">
                         <FaShieldAlt className="mx-auto text-3xl text-slate-300 dark:text-slate-600 mb-3" />
                         <p className="text-sm text-slate-400">No source systems configured</p>
-                        <Link href='/managehost/sourcesystems/new'>
+                        <Link as={RouterLink} to='/managehost/sourcesystems/new'>
                             <Button mt={3} size="sm" colorScheme="teal" rounded="full" leftIcon={<FaPlusCircle />}>
                                 Create First Source
                             </Button>

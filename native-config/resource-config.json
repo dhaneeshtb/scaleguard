@@ -1,0 +1,14 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "application\\.properties" },
+      { "pattern": "logback\\.xml" },
+      { "pattern": "META-INF/.*" },
+      { "pattern": ".*\\.sql" },
+      { "pattern": ".*\\.pem" },
+      { "pattern": ".*\\.crt" },
+      { "pattern": ".*\\.key" }
+    ]
+  },
+  "bundles": []
+}

@@ -1,0 +1,78 @@
+[
+  {
+    "name": "com.scaleguard.server.http.reverse.AppServer",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.scaleguard.server.http.router.RouteTable",
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.scaleguard.server.http.router.SourceSystem",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.scaleguard.server.http.router.TargetSystem",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.scaleguard.server.http.router.HostGroup",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.netty.channel.nio.NioEventLoopGroup",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true
+  },
+  {
+    "name": "io.netty.channel.socket.nio.NioServerSocketChannel",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true
+  },
+  {
+    "name": "io.netty.channel.socket.nio.NioSocketChannel",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true
+  },
+  {
+    "name": "io.netty.handler.ssl.SslContextBuilder",
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.ObjectMapper",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.node.ObjectNode",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "org.slf4j.LoggerFactory",
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "ch.qos.logback.classic.Logger",
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  }
+]

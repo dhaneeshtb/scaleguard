@@ -136,7 +136,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className={`flex h-16 items-center ${compact ? "justify-center" : "gap-2.5 px-5"}`}>
                 <Link to="/home" className="group flex items-center gap-2.5">
                     <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400/20 to-violet-500/20 ring-1 ring-inset ring-white/10">
-                        <img src="/lb.svg" alt="" className="h-6 w-6 transition-transform duration-500 group-hover:rotate-[20deg]" />
+                        <img src={`${process.env.PUBLIC_URL}/lb.svg`} alt="" className="h-6 w-6 transition-transform duration-500 group-hover:rotate-[20deg]" />
                     </span>
                     {!compact && (
                         <span className="leading-none">

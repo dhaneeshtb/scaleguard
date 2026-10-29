@@ -30,7 +30,8 @@ import BackendHealth from './pages/traffic/BackendHealth';
 
 function App() {
   return (
-    <Router>
+    // basename lets the same build run at the site root (hosted UI) or under /adminui on the server
+    <Router basename={process.env.REACT_APP_HASH_ROUTER === "true" ? undefined : (process.env.PUBLIC_URL || undefined)}>
       <Routes>
         <Route path="/sign-in" element={<SignIn />} />
         <Route path="/" element={<Landing />} />

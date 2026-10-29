@@ -35,8 +35,11 @@ public class SystemsRoute implements RequestRoute {
                 JsonNode node = mapper.readTree(body);
                 return RequestRoutingResponse.succes(mapper.writeValueAsString(SystemAdapter.configure(node,false)));
             } else {
-                List<SystemProperty> nodes = mapper.readValue(body, new TypeReference<SystemProperty>() {
-                });
+                // Accept a list of properties or a single one (previously read one and cast it to a List → ClassCastException).
+                JsonNode tree = mapper.readTree(body);
+                List<SystemProperty> nodes = tree != null && tree.isArray()
+                        ? mapper.convertValue(tree, new TypeReference<List<SystemProperty>>() {})
+                        : List.of(mapper.convertValue(tree, SystemProperty.class));
                 return RequestRoutingResponse.succes(mapper.valueToTree(cm.createProperty(nodes)).toString());
             }
         } else {

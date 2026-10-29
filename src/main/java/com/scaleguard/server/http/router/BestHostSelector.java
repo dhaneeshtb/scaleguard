@@ -126,10 +126,16 @@ public class BestHostSelector {
      * {@link HostGroup#decrementConnections()} in the proxy handlers.
      */
     static HostGroup selectLeastConnections(List<HostGroup> hosts) {
-        return hosts.stream()
-                .min(Comparator.comparingInt(h -> h.getActiveConnections().get()))
-                .orElse(hosts.get(0));
+        int min = Integer.MAX_VALUE;
+        for (HostGroup h : hosts) min = Math.min(min, h.getActiveConnections().get());
+        // Rotate among the hosts tied for the fewest connections; otherwise the first host in the
+        // list wins every tie and takes all traffic whenever connections are short-lived.
+        List<HostGroup> least = new java.util.ArrayList<>(hosts.size());
+        for (HostGroup h : hosts) if (h.getActiveConnections().get() == min) least.add(h);
+        return least.get((int) (Math.abs(leastConnCounter.getAndIncrement()) % least.size()));
     }
+
+    private static final AtomicLong leastConnCounter = new AtomicLong(0);
 
     /**
      * Weighted round-robin: distribute proportionally to each host's {@code weight} field.

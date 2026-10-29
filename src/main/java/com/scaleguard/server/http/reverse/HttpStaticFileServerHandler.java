@@ -354,11 +354,30 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
      * @param file
      *            file to extract content type
      */
-    private static void setContentTypeHeader(HttpResponse response, File file) {
-        MimetypesFileTypeMap mimeTypesMap = new MimetypesFileTypeMap();
-        mimeTypesMap.addMimeTypes("application/javascript js");
-        mimeTypesMap.addMimeTypes("text/css css");
+    /** Types the admin UI ships; anything else falls back to the JDK's map. (SVGs used to go out as
+     *  application/octet-stream, which browsers refuse to render in an img tag.) */
+    private static final java.util.Map<String, String> MIME = java.util.Map.ofEntries(
+            java.util.Map.entry("html", "text/html; charset=UTF-8"),
+            java.util.Map.entry("js", "application/javascript; charset=UTF-8"),
+            java.util.Map.entry("css", "text/css; charset=UTF-8"),
+            java.util.Map.entry("json", "application/json"),
+            java.util.Map.entry("map", "application/json"),
+            java.util.Map.entry("svg", "image/svg+xml"),
+            java.util.Map.entry("png", "image/png"),
+            java.util.Map.entry("jpg", "image/jpeg"),
+            java.util.Map.entry("jpeg", "image/jpeg"),
+            java.util.Map.entry("gif", "image/gif"),
+            java.util.Map.entry("webp", "image/webp"),
+            java.util.Map.entry("ico", "image/x-icon"),
+            java.util.Map.entry("woff", "font/woff"),
+            java.util.Map.entry("woff2", "font/woff2"),
+            java.util.Map.entry("txt", "text/plain; charset=UTF-8"));
+    private static final MimetypesFileTypeMap FALLBACK = new MimetypesFileTypeMap();
 
-        response.headers().set(HttpHeaderNames.CONTENT_TYPE, mimeTypesMap.getContentType(file.getPath()));
+    private static void setContentTypeHeader(HttpResponse response, File file) {
+        String name = file.getName();
+        int dot = name.lastIndexOf('.');
+        String type = dot < 0 ? null : MIME.get(name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, type != null ? type : FALLBACK.getContentType(file.getPath()));
     }
 }

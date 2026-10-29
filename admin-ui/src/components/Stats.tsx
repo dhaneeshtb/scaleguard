@@ -125,11 +125,11 @@ export function RouteTable({ stats, loading }: { stats: StatEntry[]; loading?: b
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums">{stat.total.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums text-emerald-600 dark:text-emerald-400">{stat.min}</td>
-                    <td className="px-4 py-3 text-right font-mono text-[12px] font-semibold tabular-nums text-slate-900 dark:text-white">{stat.avg}</td>
+                    <td className="px-4 py-3 text-right font-mono text-[12px] font-semibold tabular-nums text-slate-900 dark:text-white">{Number(stat.avg).toFixed(stat.avg < 10 ? 1 : 0)}</td>
                     <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums text-amber-600 dark:text-amber-400">{stat.max}</td>
                     <td className="px-5 py-3">
                       {/* min–max range with avg marker */}
-                      <div className="relative h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.05]" title={`min ${stat.min} · avg ${stat.avg} · max ${stat.max} ms`}>
+                      <div className="relative h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.05]" title={`min ${stat.min} · avg ${Number(stat.avg).toFixed(1)} · max ${stat.max} ms`}>
                         <div
                           className={`absolute inset-y-0 rounded-full opacity-40 ${healthy ? "bg-emerald-400" : "bg-amber-400"}`}
                           style={{ left: `${minPct}%`, width: `${Math.max(2, maxPct - minPct)}%` }}

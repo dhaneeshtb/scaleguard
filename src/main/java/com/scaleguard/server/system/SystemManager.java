@@ -106,9 +106,10 @@ public class SystemManager {
 
 
     public List<SystemProperty> createProperty(List<SystemProperty> property) throws Exception {
-        List<SystemProperty> properties =  property.stream().map(this::sanitize).collect(Collectors.toList());
-        List<SystemProperty> uproperties= properties.stream().filter(s->s.getId()!=null).collect(Collectors.toList());
-        List<SystemProperty> cproperties= properties.stream().filter(s->s.getId()==null).collect(Collectors.toList());
+        // Split new (no id) from existing BEFORE sanitize(), which assigns ids — otherwise new properties were
+        // sent to edit() and never created.
+        List<SystemProperty> uproperties= property.stream().filter(s->s.getId()!=null).collect(Collectors.toList());
+        List<SystemProperty> cproperties= property.stream().filter(s->s.getId()==null).collect(Collectors.toList());
         SystemPropertyDB.getInstance().edit(uproperties.stream().map(this::sanitize).collect(Collectors.toList()));
         SystemPropertyDB.getInstance().create(cproperties.stream().map(this::sanitize).collect(Collectors.toList()));
         return property;

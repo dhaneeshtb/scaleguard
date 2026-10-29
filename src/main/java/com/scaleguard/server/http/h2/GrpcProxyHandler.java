@@ -191,6 +191,11 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
                 return;
             }
             outbound = ch;
+            if (backendHost != null) {   // in-flight calls per host, for LEAST_CONNECTIONS
+                HostGroup counted = backendHost;
+                counted.incrementConnections();
+                ch.closeFuture().addListener(c -> counted.decrementConnections());
+            }
             Http2StreamFrame f;
             while ((f = queued.poll()) != null) outbound.write(f);
             outbound.flush();

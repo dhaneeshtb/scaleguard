@@ -68,7 +68,9 @@ export default function SignIn() {
   };
 
   useEffect(() => {
-    setHost(localStorage.getItem("host"));
+    // Served by a ScaleGuard server (under /adminui)? Default to that server.
+    const served = process.env.PUBLIC_URL && window.location.pathname.startsWith(process.env.PUBLIC_URL) ? window.location.origin : null;
+    setHost(localStorage.getItem("host") || served);
   }, []);
 
   const field = "peer w-full rounded-xl border border-slate-200 bg-white/70 py-3 pl-10 pr-4 text-[14px] text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-teal-400 focus:ring-4 focus:ring-teal-400/15 dark:border-white/10 dark:bg-white/[0.03] dark:text-white";
@@ -85,7 +87,7 @@ export default function SignIn() {
 
         <div className="relative flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400/20 to-violet-500/20 ring-1 ring-inset ring-white/10">
-            <img src="/lb.svg" alt="" className="h-7 w-7" />
+            <img src={`${process.env.PUBLIC_URL}/lb.svg`} alt="" className="h-7 w-7" />
           </span>
           <span className="text-lg font-bold tracking-tight text-white">ScaleGuard</span>
         </div>
@@ -125,7 +127,7 @@ export default function SignIn() {
           className="w-full max-w-[400px]"
         >
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <img src="/lb.svg" className="h-9 w-9" alt="" />
+            <img src={`${process.env.PUBLIC_URL}/lb.svg`} className="h-9 w-9" alt="" />
             <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">ScaleGuard</span>
           </div>
 

@@ -3,7 +3,7 @@ import axios from "axios";
 import { useToast } from "@chakra-ui/react";
 import { FiActivity, FiAlertTriangle, FiHeart, FiRotateCcw, FiServer, FiSliders } from "react-icons/fi";
 import { useAuth } from "../../contexts/AuthContext";
-import { Card, Field, PageHeader, Pill, SaveBar, Stat, ToggleRow, ago, fmt, inputCls } from "../../components/ui/controls";
+import { Card, Field, PageHeader, Pill, SaveBar, ToggleRow, ago, fmt, inputCls } from "../../components/ui/controls";
 
 interface Settings {
     enabled: boolean;
@@ -168,11 +168,18 @@ export default function BackendHealth() {
 
                 <aside className="space-y-4 lg:sticky lg:top-24">
                     <Card icon={FiActivity} title="Right now">
-                        <div className="grid grid-cols-3 gap-2">
-                            <Stat label="Backends" value={fmt(view.summary.hosts)} />
-                            <Stat label="Ejected" value={fmt(view.summary.ejected)} tone={view.summary.ejected ? "warn" : undefined} />
-                            <Stat label="Down" value={fmt(view.summary.down)} tone={view.summary.down ? "bad" : undefined} />
-                        </div>
+                        <dl className="grid grid-cols-3 divide-x divide-slate-200 rounded-xl border border-slate-200 text-center dark:divide-white/[0.07] dark:border-white/[0.07]">
+                            {[
+                                { label: "Backends", value: view.summary.hosts, tone: "text-slate-900 dark:text-white" },
+                                { label: "Ejected", value: view.summary.ejected, tone: view.summary.ejected ? "text-amber-600 dark:text-amber-300" : "text-slate-900 dark:text-white" },
+                                { label: "Down", value: view.summary.down, tone: view.summary.down ? "text-rose-600 dark:text-rose-300" : "text-slate-900 dark:text-white" },
+                            ].map(s => (
+                                <div key={s.label} className="px-2 py-3">
+                                    <dd className={`text-[22px] font-bold tabular-nums ${s.tone}`}>{fmt(s.value)}</dd>
+                                    <dt className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">{s.label}</dt>
+                                </div>
+                            ))}
+                        </dl>
                     </Card>
                     <Card title="How it works">
                         <ul className="list-disc space-y-1.5 pl-4 text-[12.5px] text-slate-600 dark:text-slate-300">

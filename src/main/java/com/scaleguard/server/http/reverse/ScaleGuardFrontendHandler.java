@@ -234,6 +234,11 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
     f.addListener((ChannelFutureListener) future -> {
       if (future.isSuccess()) {
+        if (chosen != null) {
+          // open backend connections per host — what LEAST_CONNECTIONS balances on
+          chosen.incrementConnections();
+          future.channel().closeFuture().addListener(c -> chosen.decrementConnections());
+        }
         inboundChannel.config().setAutoRead(true);
         outboundChannel.writeAndFlush(msg);
       } else {

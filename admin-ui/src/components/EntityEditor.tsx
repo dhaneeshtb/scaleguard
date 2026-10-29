@@ -561,7 +561,7 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
     const lf = Math.max(0, Math.min(1, parseFloat(asText(draft.loadFactor)) || 0));
     const hostGroupSections = (
         <>
-            <Section id="sec-identity" icon={FiServer} title="Server" description="The upstream server and how ScaleGuard checks it's healthy.">
+            <Section id="sec-identity" icon={FiServer} title="Server" description="The upstream server and how ScaleGuard checks its health.">
                 <Field label="Protocol" required htmlFor="f-scheme" span={2}>
                     <Segmented id="f-scheme" value={scheme} onChange={setScheme} options={[
                         { value: "https", label: "HTTPS" }, { value: "http", label: "HTTP" }, { value: "tcp", label: "TCP" },

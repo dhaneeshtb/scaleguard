@@ -19,6 +19,13 @@ One process replaces the five or six tools you put in front of your services tod
 
 </div>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+    <img src="docs/images/overview-dark.png" alt="ScaleGuard admin UI: overview with live topology, route performance and traffic insights" width="100%">
+  </picture>
+</p>
+
 ---
 
 ## Why an application gateway?
@@ -34,10 +41,10 @@ flowchart LR
     C([Clients<br/>browsers · apps · gRPC]) --> T
     subgraph SG [ScaleGuard]
         direction LR
-        T[TLS + ALPN<br/>HTTP/1.1 · HTTP/2 · h2c] --> R[Rate limiter<br/>per client · per route]
+        T[TLS + ALPN<br/>HTTP/1.1 · HTTP/2 · h2c] --> M[Router<br/>host · path · header · JWT]
+        M --> R[Rate limiter<br/>per client · per route]
         R --> W[WAF<br/>per-route policy]
-        W --> M[Router<br/>host · path · header · JWT]
-        M --> L[Load balancer<br/>4 strategies<br/>active + passive health]
+        W --> L[Load balancer<br/>4 strategies<br/>active + passive health]
     end
     L --> B1[(Service A)]
     L --> B2[(Service B)]
@@ -223,10 +230,23 @@ curl -X POST "http://localhost/config/sourcesystems?scaleguard=true" -H "Authori
 
 ## 🖥️ Admin UI
 
-![ScaleGuard Admin UI](screen1.png)
+Everything is live: open `/adminui/` on your gateway, or point the hosted build at
+[scaleguard.vercel.app](https://scaleguard.vercel.app/sign-in) to your server. Light and dark themes included.
 
-Use it at `/adminui/` on your gateway, or the hosted build at [scaleguard.vercel.app](https://scaleguard.vercel.app/sign-in)
-pointed at your server. To develop it: `cd admin-ui && npm install && npm start`.
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/backend-health.png" alt="Backend health: per-backend state, failures, ejections and passive health-check settings"><br><b>Backend health</b>: every backend's live state, failure rate and ejections, with passive health-check settings.</td>
+    <td width="50%"><img src="docs/images/firewall.png" alt="Web application firewall: per-route policies, block or detect-only, rule groups"><br><b>Firewall (WAF)</b>: per-route policies, block or detect-only, and every rule switchable.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/rate-limiting.png" alt="Rate limiting: default limit, burst, trusted proxies and live list of limited clients"><br><b>Rate limiting</b>: limits, burst and trusted proxies, with the clients being limited right now.</td>
+    <td width="50%"><img src="docs/images/route-editor.png" alt="Route editor with live preview of the request path"><br><b>Route editor</b>: guided forms with validation and a live preview of where traffic goes.</td>
+  </tr>
+</table>
+
+<sub>Screenshots from a demo gateway serving three services (REST, storefront and gRPC) under live traffic.</sub>
+
+To work on the UI: `cd admin-ui && npm install && npm start`. `./build.sh` builds it into `adminui/`, served at `/adminui/`.
 
 ## 🔌 SafeExpose: self-hosted tunnels
 

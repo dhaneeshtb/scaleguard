@@ -13,7 +13,7 @@ const LoadingScreen = () => {
         <div className="relative flex h-20 w-20 items-center justify-center">
           <span className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-teal-300 border-r-violet-400" style={{ animationDuration: '1.1s' }} />
           <span className="absolute inset-2 rounded-full border border-white/10" />
-          <img src="/lb.svg" alt="" className="h-9 w-9" />
+          <img src={`${process.env.PUBLIC_URL}/lb.svg`} alt="" className="h-9 w-9" />
         </div>
         <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Connecting to control plane</p>
       </div>

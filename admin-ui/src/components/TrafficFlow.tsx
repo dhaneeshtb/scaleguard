@@ -91,7 +91,7 @@ export default function TrafficFlow({ sources, targets, loading }: { sources?: a
                         className="animate-spin-slow" style={{ transformOrigin: `${CX}px ${CY}px` }} />
                     <circle cx={CX} cy={CY} r="44" fill="none" stroke="#a78bfa" strokeOpacity="0.25" />
                     <circle cx={CX} cy={CY} r="34" fill="url(#sg-core)" filter="url(#sg-glow)" />
-                    <image href="/lb.svg" x={CX - 16} y={CY - 16} width="32" height="32" />
+                    <image href={`${process.env.PUBLIC_URL}/lb.svg`} x={CX - 16} y={CY - 16} width="32" height="32" />
                     <text x={CX} y={CY + 76} textAnchor="middle" className="fill-slate-700 dark:fill-slate-200" fontSize="11" fontWeight="700" letterSpacing="0.14em">SCALEGUARD</text>
                     <text x={CX} y={CY + 90} textAnchor="middle" className="fill-slate-400" fontSize="9.5">route · balance · secure</text>
                 </g>

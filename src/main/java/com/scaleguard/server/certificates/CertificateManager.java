@@ -203,6 +203,9 @@ public class CertificateManager {
             try {
                 Thread.sleep(4000);
             } catch (InterruptedException e) {
+                // FIX #9: Restore the interrupt flag before re-throwing so callers /
+                // thread-pool frameworks can observe the interruption correctly.
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
         }
@@ -223,6 +226,8 @@ public class CertificateManager {
             try {
                 Thread.sleep(3000L);
             } catch (InterruptedException e) {
+                // FIX #9: Restore the interrupt flag before re-throwing.
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
             order.update();

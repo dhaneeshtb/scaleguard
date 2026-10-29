@@ -49,6 +49,15 @@ public class CertificateRenewalWatcherTest {
     }
 
     @Test
+    public void testShouldRenewExpiredCertWithExpiredAcmeStatus() {
+        // Certificate expired 5 days ago AND its ACME order status is "expired" (not "valid").
+        // This is the critical scenario: the watcher must still renew it.
+        DBModelSystem cert = createCertRecord("cert-3b",
+                System.currentTimeMillis() - TimeUnit.DAYS.toMillis(5), "expired");
+        assertTrue("Should renew expired cert even if ACME status is not valid", watcher.shouldRenew(cert));
+    }
+
+    @Test
     public void testShouldNotRenewWhenExpiryExactlyAtThreshold() {
         // Certificate expires in exactly 30 days — SHOULD renew (<=30)
         DBModelSystem cert = createCertRecord("cert-4",
@@ -62,6 +71,33 @@ public class CertificateRenewalWatcherTest {
         DBModelSystem cert = createCertRecord("cert-5",
                 System.currentTimeMillis() + TimeUnit.DAYS.toMillis(5), "pending");
         assertFalse("Should not renew pending certificate", watcher.shouldRenew(cert));
+    }
+
+    @Test
+    public void testIsPendingDetection() {
+        DBModelSystem pendingCert = createCertRecord("pending-1",
+                System.currentTimeMillis() + TimeUnit.DAYS.toMillis(5), "pending");
+        assertTrue("Should detect pending status", watcher.isPending(pendingCert));
+
+        DBModelSystem readyCert = createCertRecord("ready-1",
+                System.currentTimeMillis() + TimeUnit.DAYS.toMillis(5), "ready");
+        assertTrue("Should detect ready status as pending", watcher.isPending(readyCert));
+
+        // FIX #4: "processing" is an intermediate ACME state that must also be polled
+        DBModelSystem processingCert = createCertRecord("processing-1",
+                System.currentTimeMillis() + TimeUnit.DAYS.toMillis(5), "processing");
+        assertTrue("Should detect processing status as pending (FIX #4)", watcher.isPending(processingCert));
+
+        DBModelSystem validCert = createCertRecord("valid-1",
+                System.currentTimeMillis() + TimeUnit.DAYS.toMillis(5), "valid");
+        assertFalse("Valid cert should not be considered pending", watcher.isPending(validCert));
+
+        DBModelSystem invalidCert = createCertRecord("invalid-1",
+                System.currentTimeMillis() + TimeUnit.DAYS.toMillis(5), "invalid");
+        assertFalse("Invalid cert should not be considered pending", watcher.isPending(invalidCert));
+
+        DBModelSystem nullPayload = new DBModelSystem();
+        assertFalse("Null payload should not be pending", watcher.isPending(nullPayload));
     }
 
     @Test

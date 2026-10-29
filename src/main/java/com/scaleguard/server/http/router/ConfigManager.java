@@ -171,7 +171,12 @@ public class ConfigManager {
             try {
                 SourceSystemDB.getInstance().create(toDBModel(ss));
                 if(isCertificateOrdered){
-                    CertificatesRoute.getCm().verifyOrder(ss.getCertificateId(),"http");
+                    try {
+                        CertificatesRoute.getCm().verifyOrder(ss.getCertificateId(),"http");
+                    } catch (Exception e) {
+                        logger.warn("Initial verification for {} failed (will be retried by auto-verifier): {}",
+                                ss.getHost(), e.getMessage());
+                    }
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -191,18 +196,29 @@ public class ConfigManager {
     }
 
     public static boolean renewSourceCertificate(SourceSystem ss) {
-            boolean isCertificateOrdered=orderCertificate(ss);
-            try {
-                if(isCertificateOrdered){
-                    SourceSystemDB.getInstance().edit(toDBModel(ss));
-                    CertificatesRoute.getCm().verifyOrder(ss.getCertificateId(),"http");
-                }else{
-                    throw  new RuntimeException("failed to order certificate");
-                }
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+        boolean isCertificateOrdered = false;
+        try {
+            if (ss.getCertificateId() != null && !ss.getCertificateId().isEmpty()) {
+                CertificatesRoute.getCm().renewCertificate(ss.getCertificateId());
+                isCertificateOrdered = true;
+            } else {
+                isCertificateOrdered = orderCertificate(ss);
             }
-            return isCertificateOrdered;
+            if (isCertificateOrdered) {
+                SourceSystemDB.getInstance().edit(toDBModel(ss));
+                // FIX #1: Do NOT call verifyOrder() here immediately after renewCertificate().
+                // The ACME challenge cannot be satisfied before the new order has been saved
+                // and the challenge token is registered. The background CertificateRenewalWatcher
+                // will detect the pending/ready status and call verifyOrder() on the next cycle.
+                logger.info("Certificate renewal ordered for {} — background verifier will complete verification",
+                        ss.getHost());
+            } else {
+                throw new RuntimeException("failed to order certificate");
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return isCertificateOrdered;
     }
 
     public static boolean orderCertificate(SourceSystem ss){
@@ -224,7 +240,9 @@ public class ConfigManager {
                     logger.error("unable to autoprocure the certificate : host not mapped");
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                // FIX #8: Route through SLF4J so the error appears in the configured log
+                // appender (file, JSON, etc.) instead of stderr only.
+                logger.error("Failed to order certificate for host {}: {}", ss.getHost(), e.getMessage(), e);
             }
         }
         return isCertificateOrdered;

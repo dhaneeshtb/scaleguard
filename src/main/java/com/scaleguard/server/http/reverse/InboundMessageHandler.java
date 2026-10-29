@@ -107,6 +107,10 @@ public class InboundMessageHandler {
         return null;
       }
 
+      if(request.uri().startsWith("/.well-known")){
+        return null;
+      }
+
       if(request.uri().contains("?scaleguard=true")){
         return null;
       }

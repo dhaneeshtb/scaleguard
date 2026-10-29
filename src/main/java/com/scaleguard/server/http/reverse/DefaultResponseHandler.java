@@ -128,7 +128,7 @@ public class DefaultResponseHandler {
 
                     try {
                       RequestRoutingResponse resp =   rr.handle(request.getMethod().name(), uri, body);
-                      handleSuccess(ctx,resp.getBody());
+                      handleResponse(ctx,resp);
                       return;
                     }catch (Exception e){
                         handleFailure(ctx,e.getMessage());
@@ -321,6 +321,35 @@ public class DefaultResponseHandler {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
                 //It is successful here, and does not represent the success of the customer, and brush out the data success default representative has completed
+                if (future.isSuccess()) {
+                    ctx.channel().read();
+                } else {
+                    future.channel().close();
+                }
+            }
+        });
+    }
+
+    public void handleResponse(final ChannelHandlerContext ctx, RequestRoutingResponse resp) {
+        ByteBuf content = null;
+        try {
+            content = Unpooled.copiedBuffer(resp.getBody() != null ? resp.getBody() : "", CharsetUtil.UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        HttpResponseStatus status = HttpResponseStatus.valueOf(resp.getStatus());
+        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, content);
+        String contentType = resp.getContentType() != null ? resp.getContentType() : "application/json";
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, contentType);
+        response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+        response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+        response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_HEADERS, "*");
+        response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS, "*");
+        response.headers().set("Access-Control-Allow-Private-Network", "true");
+
+        ctx.writeAndFlush(response).addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
                 if (future.isSuccess()) {
                     ctx.channel().read();
                 } else {

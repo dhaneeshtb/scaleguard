@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -79,29 +80,47 @@ public class HostGroupWatcher {
         }
     }
 
-    public static String getResponseData(String urlToRead)  {
-        StringBuilder result = new StringBuilder();
-
+    /**
+     * Fetch the body of {@code urlToRead} as a String (silent overload).
+     *
+     * <p>Exceptions are swallowed and an empty string is returned. Use this for
+     * non-critical calls such as health-check probes where a failure is acceptable.</p>
+     */
+    public static String getResponseData(String urlToRead) {
         try {
-           URL url = new URL(urlToRead);
-           HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-           try {
-               conn.setReadTimeout(15000);
-               conn.setRequestMethod("GET");
-               try (BufferedReader reader = new BufferedReader(
-                       new InputStreamReader(conn.getInputStream()))) {
-                   for (String line; (line = reader.readLine()) != null; ) {
-                       result.append(line);
-                   }
-               }
-           } finally {
-               conn.disconnect();
-           }
-           return result.toString();
-       }catch (Exception e){
+            return getResponseDataOrThrow(urlToRead);
+        } catch (IOException e) {
             e.printStackTrace();
-            return  result.toString();
+            return "";
         }
+    }
+
+    /**
+     * FIX #3: Throwing overload of {@link #getResponseData}.
+     *
+     * <p>Use this variant when the caller <em>must</em> know whether the request
+     * succeeded — for example, ACME HTTP-01 challenge verification.  Any network
+     * or I/O error is propagated as an {@link IOException} so the caller can wrap
+     * it with a meaningful error message instead of silently returning {@code ""}
+     * and then falsely reporting a content mismatch.</p>
+     */
+    public static String getResponseDataOrThrow(String urlToRead) throws IOException {
+        StringBuilder result = new StringBuilder();
+        URL url = new URL(urlToRead);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        try {
+            conn.setReadTimeout(15000);
+            conn.setRequestMethod("GET");
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream()))) {
+                for (String line; (line = reader.readLine()) != null; ) {
+                    result.append(line);
+                }
+            }
+        } finally {
+            conn.disconnect();
+        }
+        return result.toString();
     }
 
     public static void main(String[] args) {

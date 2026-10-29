@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Background daemon that periodically checks SSL/TLS certificate expiry dates
@@ -38,6 +40,13 @@ public class CertificateRenewalWatcher {
             System.getProperty("cert.renewal.interval.hours", "12")) * 60 * 60 * 1000;
 
     /**
+     * How often to check and auto-verify pending certificates (in milliseconds).
+     * Default: 60 seconds. Configurable via system property.
+     */
+    private static final long PENDING_CHECK_INTERVAL_MS = Long.parseLong(
+            System.getProperty("cert.pending.interval.seconds", "60")) * 1000;
+
+    /**
      * How many days before expiry to trigger renewal.
      * Default: 30 days (Let's Encrypt recommends renewing at 60 days remaining = 30 days before expiry).
      */
@@ -46,7 +55,11 @@ public class CertificateRenewalWatcher {
 
     private static CertificateRenewalWatcher instance;
 
-    private volatile boolean running = false;
+    // FIX #7: Use AtomicBoolean to prevent double-start races.
+    // compareAndSet guarantees only one thread can transition false→true at a time,
+    // so a stop()+start() sequence cannot launch a second watchLoop while the first
+    // is still sleeping in its current PENDING_CHECK_INTERVAL_MS cycle.
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     private CertificateRenewalWatcher() {
     }
@@ -63,50 +76,154 @@ public class CertificateRenewalWatcher {
      * Safe to call multiple times — only starts once.
      */
     public void start() {
-        if (running) {
+        // FIX #7: compareAndSet guarantees only one thread transitions false→true.
+        // A concurrent stop()+start() cannot launch a second watchLoop while the first
+        // is still sleeping.
+        if (!running.compareAndSet(false, true)) {
             LOG.info("Certificate renewal watcher is already running");
             return;
         }
-        running = true;
-        // Virtual thread: no OS thread held during the 12h sleep interval
+        // Virtual thread: no OS thread held during sleep intervals
         VirtualThreads.submit("cert-renewal-watcher", this::watchLoop);
-        LOG.info("\uD83D\uDD10 Certificate auto-renewal watcher started " +
-                "(check interval: {}h, renew before: {} days)",
-                CHECK_INTERVAL_MS / (60 * 60 * 1000), RENEW_BEFORE_DAYS);
+        LOG.info("\uD83D\uDD10 Certificate auto-renewal and verification watcher started " +
+                "(renewal check: {}h, pending check: {}s, renew before: {} days)",
+                CHECK_INTERVAL_MS / (60 * 60 * 1000), PENDING_CHECK_INTERVAL_MS / 1000, RENEW_BEFORE_DAYS);
     }
 
     /**
      * Stop the watcher. The daemon thread will exit on the next iteration.
      */
     public void stop() {
-        running = false;
+        running.set(false);
         LOG.info("Certificate renewal watcher stopping...");
     }
 
     private void watchLoop() {
-        // Wait 60 seconds after startup before first check — let the server fully initialize
+        // Wait 15 seconds after startup before first check — let the server fully initialize
         try {
-            Thread.sleep(60_000);
+            Thread.sleep(15_000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return;
         }
 
-        while (running) {
+        long lastRenewalCheck = 0;
+
+        while (running.get()) {
+            long now = System.currentTimeMillis();
+
+            // Check and auto-verify pending certificates on every cycle
             try {
-                checkAndRenewCertificates();
+                checkAndVerifyPendingCertificates();
             } catch (Exception e) {
-                LOG.error("Error during certificate renewal check", e);
+                LOG.error("Error during pending certificate verification check", e);
+            }
+
+            // Check expiring/expired certificates every CHECK_INTERVAL_MS
+            if (now - lastRenewalCheck >= CHECK_INTERVAL_MS) {
+                try {
+                    LOG.info("Running certificate renewal check...");
+                    checkAndRenewCertificates();
+                    lastRenewalCheck = now;
+                } catch (Exception e) {
+                    LOG.error("Error during certificate renewal check", e);
+                }
             }
 
             try {
-                Thread.sleep(CHECK_INTERVAL_MS);
+                Thread.sleep(PENDING_CHECK_INTERVAL_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
         LOG.info("Certificate renewal watcher stopped");
+    }
+
+    /**
+     * Check for any pending or ready certificate orders and attempt to auto-verify them.
+     *
+     * <p>FIX #2: Each pending certificate is verified on its own virtual thread so that
+     * one slow/blocking {@code verifyOrder()} call (up to ~34 s) cannot delay verification
+     * of the other pending certificates in the same cycle.</p>
+     */
+    public void checkAndVerifyPendingCertificates() {
+        LOG.debug("Checking pending certificates for auto-verification...");
+        int pending = 0;
+
+        // FIX #2: Use AtomicIntegers so per-thread closures can update them safely.
+        AtomicInteger verifiedCount = new AtomicInteger(0);
+        AtomicInteger failedCount = new AtomicInteger(0);
+
+        try {
+            List<DBModelSystem> certRecords = CertificateOrdersDB.getInstance().readAll();
+
+            for (DBModelSystem certRecord : certRecords) {
+                try {
+                    if (isPending(certRecord)) {
+                        pending++;
+                        final String certId = certRecord.getId();
+                        LOG.info("Found pending certificate {}, dispatching async verification...", certId);
+
+                        // FIX #2: Each verification runs in its own virtual thread.
+                        // verifyOrder() can block for up to 34 s; parallelising prevents
+                        // one certificate from stalling all others.
+                        VirtualThreads.submit("cert-verify-" + certId, () -> {
+                            try {
+                                String status = CertificatesRoute.getCm().verifyOrder(certId, "http");
+                                if ("valid".equalsIgnoreCase(status)) {
+                                    verifiedCount.incrementAndGet();
+                                    LOG.info("✅ Pending certificate {} auto-verified successfully", certId);
+                                } else {
+                                    LOG.warn("Certificate {} verification returned status: {}", certId, status);
+                                }
+                            } catch (Exception e) {
+                                failedCount.incrementAndGet();
+                                LOG.warn("Failed to auto-verify pending certificate {}: {}", certId, e.getMessage());
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    LOG.error("Error checking pending certificate {}: {}", certRecord.getId(), e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to load certificate records for pending verification check", e);
+        }
+
+        if (pending > 0) {
+            LOG.info("Pending certificate check complete: {} dispatched for async verification", pending);
+        }
+    }
+
+    /**
+     * Determine if a certificate order is pending verification.
+     */
+    boolean isPending(DBModelSystem certRecord) {
+        if (certRecord.getPayload() == null || certRecord.getPayload().isEmpty()) {
+            return false;
+        }
+
+        try {
+            JsonNode payload = mapper.readTree(certRecord.getPayload());
+            if (payload.has("json")) {
+                JsonNode inner = payload.get("json");
+                if (inner.isTextual()) {
+                    inner = mapper.readTree(inner.asText());
+                }
+                if (inner.has("status")) {
+                    String status = inner.get("status").asText();
+                    // FIX #4: "processing" is an intermediate ACME state (order submitted,
+                    // CA is validating) — treat it as pending so the watcher keeps polling.
+                    return "pending".equalsIgnoreCase(status)
+                            || "ready".equalsIgnoreCase(status)
+                            || "processing".equalsIgnoreCase(status);
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
@@ -133,11 +250,14 @@ public class CertificateRenewalWatcher {
                             renewed++;
                             LOG.info("✅ Certificate {} renewed successfully", certId);
                         } else {
-                            // Fall back to direct certificate renewal
+                            // FIX #5: renewCertificate() only re-places the ACME order; the
+                            // certificate is NOT yet issued.  The background pending-verifier
+                            // will complete verification on the next cycle — don't claim success.
                             try {
                                 CertificatesRoute.getCm().renewCertificate(certId);
                                 renewed++;
-                                LOG.info("✅ Certificate {} renewed via direct renewal", certId);
+                                LOG.info("✅ Certificate {} re-ordered via direct renewal — " +
+                                        "background verifier will complete verification", certId);
                             } catch (Exception e) {
                                 failed++;
                                 LOG.error("❌ Failed to renew certificate {}: {}", certId, e.getMessage());
@@ -168,21 +288,9 @@ public class CertificateRenewalWatcher {
         try {
             JsonNode payload = mapper.readTree(certRecord.getPayload());
 
-            // Check if the certificate has a valid status — only renew VALID certificates
-            if (payload.has("json")) {
-                JsonNode inner = payload.get("json");
-                if (inner.isTextual()) {
-                    inner = mapper.readTree(inner.asText());
-                }
-                if (inner.has("status")) {
-                    String status = inner.get("status").asText();
-                    if (!"valid".equalsIgnoreCase(status)) {
-                        return false; // Don't renew pending/invalid/expired orders
-                    }
-                }
-            }
-
-            // Check expiry time
+            // Check expiry time FIRST — already-expired certificates should always
+            // be renewed regardless of their ACME order status (which may have
+            // transitioned away from "valid" once the cert expired).
             if (payload.has("expiryTime")) {
                 long expiryTimeMs = payload.get("expiryTime").asLong();
                 long now = System.currentTimeMillis();
@@ -201,11 +309,26 @@ public class CertificateRenewalWatcher {
                             certRecord.getId(), daysRemaining, RENEW_BEFORE_DAYS);
                     return true;
                 }
-
-                return false; // Not yet approaching expiry
             }
 
-            // No expiryTime recorded — can't determine, skip
+            // For non-expired certificates, only renew those with a VALID ACME order status.
+            // Don't renew pending/invalid orders that haven't expired yet.
+            if (payload.has("json")) {
+                JsonNode inner = payload.get("json");
+                if (inner.isTextual()) {
+                    inner = mapper.readTree(inner.asText());
+                }
+                if (inner.has("status")) {
+                    String status = inner.get("status").asText();
+                    if (!"valid".equalsIgnoreCase(status)) {
+                        return false; // Not expired and not valid — skip
+                    }
+                }
+            }
+
+            // FIX #10: Remove dead if-block — the outer if (payload.has("expiryTime")) above
+            // already handled the only path that returns true; reaching here means there is no
+            // expiryTime.  Log unconditionally (no wrapping if) and return false.
             LOG.debug("Certificate {} has no expiryTime field, skipping", certRecord.getId());
             return false;
 

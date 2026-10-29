@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # =============================================================================
 # ScaleGuard — start / stop / status script
 #
@@ -33,9 +33,9 @@
 # DuckDB cache is fully embedded — no external server required.
 # =============================================================================
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── defaults ──────────────────────────────────────────────────────────────────
 SCALEGUARD_JAR="${SCALEGUARD_JAR:-${SCRIPT_DIR}/target/scaleguard-1.0-SNAPSHOT.jar}"

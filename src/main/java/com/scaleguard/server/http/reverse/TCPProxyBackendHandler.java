@@ -2,8 +2,11 @@ package com.scaleguard.server.http.reverse;
 
 
 import io.netty.channel.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TCPProxyBackendHandler extends ChannelInboundHandlerAdapter {
+    private static final Logger logger = LoggerFactory.getLogger(TCPProxyBackendHandler.class);
 
 
     private final Channel inboundChannel;
@@ -44,7 +47,7 @@ public class TCPProxyBackendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        cause.printStackTrace();
+        logger.error("Channel exception caught", cause);
         TCPChannelFrontendHandler.closeOnFlush(ctx.channel());
     }
 }

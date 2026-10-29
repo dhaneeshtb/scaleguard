@@ -1,252 +1,339 @@
-import { Link, useLocation } from "react-router-dom";
-import ThemeSwitcher from "./components/Themeswitcher";
-import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Menu, MenuButton, MenuList, MenuItem, Tooltip, useColorMode } from '@chakra-ui/react';
+import axios from "axios";
 import {
-    Menu,
-    MenuButton,
-    MenuList,
-    MenuItem,
-    Button,
-} from '@chakra-ui/react'
-import { ChevronDownIcon } from "@chakra-ui/icons";
+    FiActivity, FiChevronsLeft, FiChevronsRight, FiCommand, FiGlobe, FiLock, FiLogOut,
+    FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown,
+} from "react-icons/fi";
+import type { IconType } from "react-icons";
 import { useAuth } from "./contexts/AuthContext";
-import { FaBolt, FaCertificate, FaGlobe, FaHome, FaLock, FaShieldAlt, FaSignOutAlt, FaUserCircle } from "react-icons/fa";
+import useThemeContext from "./contexts/Themeprovider";
+import useSystemContext from "./contexts/SystemContext";
 import { ConfigureSystem } from "./components/ConfigureSystem";
+import CommandPalette, { Command } from "./components/CommandPalette";
 
 interface LayoutProps {
     children: React.ReactNode;
 }
 
-const navLinks = [
-    { to: "/home", label: "Home", icon: FaHome },
-    { to: "/asyncengines", label: "Async Engines", icon: FaBolt },
-    { to: "/certificates", label: "Certificates", icon: FaCertificate },
-    { to: "/dns", label: "DNS", icon: FaGlobe },
-    { to: "/security", label: "App Security", icon: FaShieldAlt },
+interface NavLink { to: string; label: string; icon: IconType; match?: string[] }
+
+const navSections: { title: string; links: NavLink[] }[] = [
+    {
+        title: "Traffic",
+        links: [
+            { to: "/home", label: "Overview", icon: FiActivity, match: ["/home", "/managehost", "/hostgroups"] },
+            { to: "/asyncengines", label: "Async Engines", icon: FiZap },
+        ],
+    },
+    {
+        title: "Edge",
+        links: [
+            { to: "/certificates", label: "Certificates", icon: FiLock },
+            { to: "/dns", label: "DNS", icon: FiGlobe },
+            { to: "/security", label: "App Security", icon: FiShield },
+        ],
+    },
 ];
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const { auth, setAuthData } = useAuth() as any;
-    const location = useLocation();
+const allLinks = navSections.flatMap(s => s.links);
 
-    const logout = () => {
+type PlaneStatus = { state: "checking" | "online" | "offline"; latency?: number };
+
+/** Measures round-trip time to the control plane so the shell always shows real connectivity. */
+function useControlPlane(auth: any): PlaneStatus {
+    const [status, setStatus] = useState<PlaneStatus>({ state: "checking" });
+    useEffect(() => {
+        if (!auth?.data) return;
+        let cancelled = false;
+        const ping = async () => {
+            const t0 = performance.now();
+            try {
+                await axios.get(auth.data.host + "/systems", { headers: { Authorization: auth.data.token }, timeout: 8000 });
+                if (!cancelled) setStatus({ state: "online", latency: Math.round(performance.now() - t0) });
+            } catch {
+                if (!cancelled) setStatus({ state: "offline" });
+            }
+        };
+        ping();
+        const id = setInterval(ping, 30000);
+        return () => { cancelled = true; clearInterval(id); };
+    }, [auth?.data]);
+    return status;
+}
+
+const Layout: React.FC<LayoutProps> = ({ children }) => {
+    const [mobileOpen, setMobileOpen] = useState(false);
+    const [paletteOpen, setPaletteOpen] = useState(false);
+    const [collapsed, setCollapsed] = useState<boolean>(() => {
+        try { return localStorage.getItem("sg.sidebar") === "collapsed"; } catch { return false; }
+    });
+    const { auth, setAuthData } = useAuth() as any;
+    const { theme, setTheme } = useThemeContext();
+    const { properties } = useSystemContext() as any;
+    const { setColorMode } = useColorMode();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const plane = useControlPlane(auth);
+
+    // Keep Chakra components in the same mode as the Tailwind theme.
+    useEffect(() => { setColorMode(theme === "light" ? "light" : "dark"); }, [theme, setColorMode]);
+
+    useEffect(() => {
+        try { localStorage.setItem("sg.sidebar", collapsed ? "collapsed" : "expanded"); } catch { /* ignore */ }
+    }, [collapsed]);
+
+    useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                setPaletteOpen(o => !o);
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
+    const logout = useCallback(() => {
         localStorage.removeItem("authData");
         setAuthData({ data: null });
-    };
+    }, [setAuthData]);
 
-    const isActive = (path: string) => location.pathname.startsWith(path);
+    const toggleTheme = useCallback(() => setTheme(theme === "dark" ? "light" : "dark"), [theme, setTheme]);
 
-    return (
-        <>
-            <AnimatePresence>
-                <nav className="navbar flex items-center w-screen">
-                    {/* Theme switcher - absolute positioned */}
-                    <div className="flex justify-center items-center absolute right-0 top-0">
-                        <ThemeSwitcher />
-                    </div>
+    const isActive = (link: NavLink) =>
+        (link.match || [link.to]).some(p => location.pathname.startsWith(p));
 
-                    <div className="mx-auto px-4 sm:px-6 lg:px-8 w-full max-w-7xl">
-                        <div className="flex items-center justify-between h-14">
-                            {/* Logo Area */}
-                            <div className="flex items-center">
-                                <Link to="/home" className="flex items-center gap-1 group">
-                                    <img
-                                        className="h-9 w-9 transition-transform duration-300 group-hover:scale-110"
-                                        src="/lb.svg"
-                                        alt="Scaleguard"
-                                    />
-                                    <span className="text-white font-bold text-[15px] tracking-tight ml-0.5">
-                                        Scaleguard
-                                    </span>
-                                </Link>
-                            </div>
+    const current = allLinks.find(isActive);
+    const hostname = properties?.hostName?.value || "ScaleGuard";
+    const username: string = auth?.data?.username || "admin";
 
-                            {/* Desktop Navigation */}
-                            <div className="hidden md:flex items-center gap-1">
-                                {navLinks.map((link) => {
-                                    const active = isActive(link.to);
-                                    const Icon = link.icon;
-                                    return (
-                                        <Link
-                                            key={link.to}
-                                            to={link.to}
-                                            className={`
-                                                relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium
-                                                transition-all duration-200 ease-out
-                                                ${active
-                                                    ? 'text-white bg-white/[0.08]'
-                                                    : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
-                                                }
-                                            `}
-                                        >
-                                            <Icon className={`text-[10px] ${active ? 'text-teal-400' : 'text-slate-500'} transition-colors`} />
-                                            {link.label}
-                                            {active && (
-                                                <motion.div
-                                                    layoutId="nav-indicator"
-                                                    className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-gradient-to-r from-teal-400 to-cyan-400"
-                                                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                                                />
-                                            )}
-                                        </Link>
-                                    );
-                                })}
-                            </div>
+    const commands: Command[] = useMemo(() => [
+        ...allLinks.map(l => ({ id: l.to, label: l.label, group: "Navigate", icon: l.icon, hint: l.to, run: () => navigate(l.to) })),
+        { id: "theme", label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme", group: "Actions", icon: theme === "dark" ? FiSun : FiMoon, run: toggleTheme },
+        { id: "collapse", label: collapsed ? "Expand sidebar" : "Collapse sidebar", group: "Actions", icon: collapsed ? FiChevronsRight : FiChevronsLeft, run: () => setCollapsed(c => !c) },
+        { id: "logout", label: "Sign out", group: "Account", icon: FiLogOut, run: logout },
+    ], [navigate, theme, toggleTheme, collapsed, logout]);
 
-                            {/* Right Actions */}
-                            <div className="hidden md:flex items-center gap-2">
-                                <ConfigureSystem onUpdate={() => { }} auth={auth} load={false} />
+    const sidebarWidth = collapsed ? "md:w-[76px]" : "md:w-[248px]";
+    const contentPad = collapsed ? "md:pl-[76px]" : "md:pl-[248px]";
 
-                                <div className="w-px h-5 bg-slate-700/60 mx-1" />
+    const renderSidebar = (compact: boolean) => (
+        <div className="flex h-full flex-col">
+            {/* Brand */}
+            <div className={`flex h-16 items-center ${compact ? "justify-center" : "gap-2.5 px-5"}`}>
+                <Link to="/home" className="group flex items-center gap-2.5">
+                    <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400/20 to-violet-500/20 ring-1 ring-inset ring-white/10">
+                        <img src="/lb.svg" alt="" className="h-6 w-6 transition-transform duration-500 group-hover:rotate-[20deg]" />
+                    </span>
+                    {!compact && (
+                        <span className="leading-none">
+                            <span className="block text-[15px] font-bold tracking-tight text-slate-900 dark:text-white">ScaleGuard</span>
+                            <span className="mt-1 block text-[10px] font-medium uppercase tracking-[0.18em] text-teal-600 dark:text-teal-300/80">Control plane</span>
+                        </span>
+                    )}
+                </Link>
+            </div>
 
-                                <Menu>
-                                    <MenuButton
-                                        as={Button}
-                                        rightIcon={<ChevronDownIcon />}
-                                        variant="ghost"
-                                        size="sm"
-                                        rounded="lg"
-                                        color="slate.300"
-                                        fontWeight="medium"
-                                        fontSize="13px"
-                                        px={3}
-                                        h="34px"
-                                        _hover={{ bg: "whiteAlpha.100", color: "white" }}
-                                        _active={{ bg: "whiteAlpha.150" }}
+            {/* Search trigger */}
+            <div className={compact ? "px-3" : "px-4"}>
+                <button
+                    onClick={() => setPaletteOpen(true)}
+                    className={`group flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-white/60 text-slate-500 transition-colors hover:border-teal-400/40 hover:text-slate-700 dark:border-white/[0.07] dark:bg-white/[0.03] dark:text-slate-400 dark:hover:text-slate-200 ${compact ? "h-10 justify-center" : "h-10 px-3"}`}
+                    aria-label="Open command palette"
+                >
+                    <FiSearch className="text-[14px]" />
+                    {!compact && <>
+                        <span className="flex-1 text-left text-[13px]">Search…</span>
+                        <span className="flex items-center gap-0.5"><span className="sg-kbd"><FiCommand className="text-[9px]" /></span><span className="sg-kbd">K</span></span>
+                    </>}
+                </button>
+            </div>
+
+            {/* Nav */}
+            <nav className="mt-4 flex-1 space-y-6 overflow-y-auto px-3 pb-4">
+                {navSections.map(section => (
+                    <div key={section.title}>
+                        {!compact
+                            ? <p className="sg-eyebrow mb-2 px-3">{section.title}</p>
+                            : <div className="mx-auto mb-2 h-px w-6 bg-slate-200 dark:bg-white/10" />}
+                        <div className="space-y-0.5">
+                            {section.links.map(link => {
+                                const active = isActive(link);
+                                const Icon = link.icon;
+                                const item = (
+                                    <Link
+                                        key={link.to}
+                                        to={link.to}
+                                        className={`group relative flex items-center rounded-xl text-[13.5px] font-medium transition-colors ${compact ? "h-10 justify-center" : "h-10 gap-3 px-3"} ${active
+                                            ? "text-slate-900 dark:text-white"
+                                            : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.04] dark:hover:text-white"}`}
                                     >
-                                        <div className="flex gap-2 items-center">
-                                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center flex-shrink-0">
-                                                <span className="text-[9px] font-bold text-white uppercase">
-                                                    {auth.data.username?.charAt(0)}
-                                                </span>
-                                            </div>
-                                            <span className="text-slate-300">{auth.data.username}</span>
-                                        </div>
-                                    </MenuButton>
-                                    <MenuList
-                                        bg="gray.900"
-                                        borderColor="gray.700"
-                                        shadow="xl"
-                                        borderRadius="xl"
-                                        py={2}
-                                        minW="180px"
-                                    >
-                                        <div className="px-4 py-2 mb-1 border-b border-gray-700/60">
-                                            <p className="text-xs font-semibold text-white">{auth.data.username}</p>
-                                            <p className="text-[10px] text-slate-500 mt-0.5">Administrator</p>
-                                        </div>
-                                        <MenuItem
-                                            onClick={logout}
-                                            bg="transparent"
-                                            _hover={{ bg: "red.900/30" }}
-                                            color="red.400"
-                                            fontSize="13px"
-                                            icon={<FaSignOutAlt />}
-                                            borderRadius="md"
-                                            mx={2}
-                                            px={3}
-                                        >
-                                            Sign Out
-                                        </MenuItem>
-                                    </MenuList>
-                                </Menu>
-                            </div>
-
-                            {/* Mobile menu button */}
-                            <div className="-mr-2 flex md:hidden">
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center justify-center p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 focus:outline-none transition-colors"
-                                    aria-controls="mobile-menu"
-                                    aria-expanded={mobileMenuOpen}
-                                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                                >
-                                    <span className="sr-only">Open main menu</span>
-                                    <svg
-                                        className={`${mobileMenuOpen ? 'hidden' : 'block'} h-5 w-5`}
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-                                    </svg>
-                                    <svg
-                                        className={`${mobileMenuOpen ? 'block' : 'hidden'} h-5 w-5`}
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
-                            </div>
+                                        {active && (
+                                            <motion.span
+                                                layoutId="sg-nav-active"
+                                                className="absolute inset-0 rounded-xl border border-teal-500/20 bg-gradient-to-r from-teal-400/[0.14] via-cyan-400/[0.06] to-transparent dark:border-teal-300/15"
+                                                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                                            />
+                                        )}
+                                        {active && <span className="absolute -left-3 top-2.5 h-5 w-[3px] rounded-r-full bg-gradient-to-b from-teal-300 to-cyan-400" />}
+                                        <Icon className={`relative text-[16px] ${active ? "text-teal-600 dark:text-teal-300" : ""}`} />
+                                        {!compact && <span className="relative">{link.label}</span>}
+                                    </Link>
+                                );
+                                return compact
+                                    ? <Tooltip key={link.to} label={link.label} placement="right" hasArrow>{item}</Tooltip>
+                                    : item;
+                            })}
                         </div>
                     </div>
+                ))}
+            </nav>
 
-                    {/* Mobile menu */}
-                    {mobileMenuOpen && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="md:hidden absolute top-14 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-b border-slate-700/40"
-                            id="mobile-menu"
-                        >
-                            <div className="px-4 py-3 space-y-1">
-                                {navLinks.map((link) => {
-                                    const active = isActive(link.to);
-                                    const Icon = link.icon;
-                                    return (
-                                        <Link
-                                            key={link.to}
-                                            to={link.to}
-                                            className={`
-                                                flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-                                                ${active
-                                                    ? 'text-white bg-white/[0.08]'
-                                                    : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'
-                                                }
-                                            `}
-                                            onClick={() => setMobileMenuOpen(false)}
-                                        >
-                                            <Icon className={`text-xs ${active ? 'text-teal-400' : 'text-slate-500'}`} />
-                                            {link.label}
-                                        </Link>
-                                    );
-                                })}
-                                <div className="pt-2 mt-2 border-t border-slate-700/40">
-                                    <button
-                                        onClick={() => { logout(); setMobileMenuOpen(false); }}
-                                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-400 hover:bg-red-900/20 transition-all w-full"
-                                    >
-                                        <FaSignOutAlt className="text-xs" />
-                                        Sign Out
-                                    </button>
-                                </div>
+            {/* Control plane status */}
+            <div className={compact ? "px-3 pb-3" : "px-4 pb-4"}>
+                {compact ? (
+                    <Tooltip label={plane.state === "online" ? `Control plane · ${plane.latency} ms` : plane.state === "offline" ? "Control plane unreachable" : "Checking control plane…"} placement="right" hasArrow>
+                        <div className="flex h-10 items-center justify-center"><StatusDot state={plane.state} /></div>
+                    </Tooltip>
+                ) : (
+                    <div className="sg-card overflow-hidden p-3.5">
+                        <div className="flex items-center justify-between">
+                            <span className="sg-eyebrow">Control plane</span>
+                            <StatusDot state={plane.state} />
+                        </div>
+                        <p className="mt-2 truncate text-[13px] font-semibold text-slate-800 dark:text-slate-100" title={hostname}>{hostname}</p>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                            <span className="truncate font-mono" title={auth?.data?.host}>{(auth?.data?.host || "").replace(/^https?:\/\//, "")}</span>
+                            <span className="ml-2 shrink-0 font-mono">
+                                {plane.state === "online" ? `${plane.latency} ms` : plane.state === "offline" ? "offline" : "…"}
+                            </span>
+                        </div>
+                    </div>
+                )}
+                <button
+                    onClick={() => setCollapsed(c => !c)}
+                    className={`mt-2 hidden h-9 w-full items-center rounded-xl text-[12px] font-medium text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/[0.04] dark:hover:text-slate-200 md:flex ${compact ? "justify-center" : "gap-2 px-3"}`}
+                    aria-label={compact ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                    {compact ? <FiChevronsRight /> : <><FiChevronsLeft /> Collapse</>}
+                </button>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="relative min-h-screen">
+            <div className="sg-backdrop" aria-hidden />
+
+            {/* Desktop sidebar */}
+            <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-slate-200/80 bg-white/70 backdrop-blur-2xl transition-[width] duration-300 ease-out dark:border-white/[0.06] dark:bg-slate-950/60 md:block ${sidebarWidth}`}>
+                {renderSidebar(collapsed)}
+            </aside>
+
+            {/* Mobile drawer */}
+            <AnimatePresence>
+                {mobileOpen && (
+                    <>
+                        <motion.div className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm md:hidden"
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMobileOpen(false)} />
+                        <motion.aside className="fixed inset-y-0 left-0 z-50 w-[272px] border-r border-white/[0.06] bg-white dark:bg-slate-950 md:hidden"
+                            initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }} transition={{ type: "spring", stiffness: 380, damping: 36 }}>
+                            <button onClick={() => setMobileOpen(false)} className="absolute right-3 top-4 rounded-lg p-2 text-slate-400 hover:bg-white/5" aria-label="Close menu"><FiX /></button>
+                            {renderSidebar(false)}
+                        </motion.aside>
+                    </>
+                )}
+            </AnimatePresence>
+
+            <div className={`relative z-10 transition-[padding] duration-300 ease-out ${contentPad}`}>
+                {/* Top bar */}
+                <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/60 dark:bg-slate-950/50 backdrop-blur-xl dark:border-white/[0.05]">
+                    <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-10">
+                        <button className="-ml-1 rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+                            <FiMenu className="text-lg" />
+                        </button>
+
+                        <div className="flex min-w-0 items-center gap-2 text-[13px]">
+                            <span className="hidden text-slate-400 sm:inline">{hostname}</span>
+                            <span className="hidden text-slate-300 dark:text-slate-600 sm:inline">/</span>
+                            <span className="truncate font-semibold text-slate-900 dark:text-white">{current?.label || "Overview"}</span>
+                        </div>
+
+                        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+                            <button onClick={() => setPaletteOpen(true)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5 md:hidden" aria-label="Search">
+                                <FiSearch />
+                            </button>
+
+                            <div className="hidden sm:block">
+                                <ConfigureSystem onUpdate={() => { }} auth={auth} load={false} />
                             </div>
-                        </motion.div>
-                    )}
-                </nav>
 
-                <motion.div
-                    initial={{ opacity: 0, y: 40 }}
-                    animate={{ opacity: 1, y: 0, paddingTop: "72px", paddingBottom: "60px" }}
-                    transition={{
-                        delay: 0.15,
-                        duration: 0.95,
-                        ease: [0.165, 0.84, 0.44, 1],
-                    }}
-                    className="md:px-[100px] dark:bg-slate-800"
+                            <Tooltip label={theme === "dark" ? "Light theme" : "Dark theme"} hasArrow>
+                                <button
+                                    onClick={toggleTheme}
+                                    className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white/60 text-slate-500 transition-colors hover:text-slate-900 dark:border-white/[0.07] dark:bg-white/[0.03] dark:text-slate-400 dark:hover:text-white"
+                                    aria-label="Toggle theme"
+                                >
+                                    <AnimatePresence mode="wait" initial={false}>
+                                        <motion.span key={theme} initial={{ y: 14, opacity: 0, rotate: -45 }} animate={{ y: 0, opacity: 1, rotate: 0 }} exit={{ y: -14, opacity: 0, rotate: 45 }} transition={{ duration: 0.2 }}>
+                                            {theme === "dark" ? <FiMoon /> : <FiSun />}
+                                        </motion.span>
+                                    </AnimatePresence>
+                                </button>
+                            </Tooltip>
+
+                            <Menu placement="bottom-end">
+                                <MenuButton className="rounded-xl border border-transparent py-1 pl-1 pr-2 transition-colors hover:border-slate-200 hover:bg-white/60 dark:hover:border-white/[0.07] dark:hover:bg-white/[0.03]">
+                                    <span className="flex items-center gap-2">
+                                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-teal-400 to-violet-500 text-[11px] font-bold uppercase text-white shadow-glow">
+                                            {username.charAt(0)}
+                                        </span>
+                                        <span className="hidden text-[13px] font-medium text-slate-700 dark:text-slate-200 sm:inline">{username}</span>
+                                        <FiChevronDown className="hidden text-xs text-slate-400 sm:inline" />
+                                    </span>
+                                </MenuButton>
+                                <MenuList minW="220px" zIndex={60}>
+                                    <div className="mb-1 border-b border-slate-200 px-3 pb-2.5 pt-1.5 dark:border-white/[0.07]">
+                                        <p className="text-[13px] font-semibold text-slate-900 dark:text-white">{username}</p>
+                                        <p className="text-[11px] text-slate-500">Administrator</p>
+                                    </div>
+                                    <MenuItem icon={<FiSearch />} fontSize="13px" onClick={() => setPaletteOpen(true)} command="⌘K">Command palette</MenuItem>
+                                    <MenuItem icon={<FiLogOut />} fontSize="13px" color="red.400" onClick={logout}>Sign out</MenuItem>
+                                </MenuList>
+                            </Menu>
+                        </div>
+                    </div>
+                </header>
+
+                <motion.main
+                    key={location.pathname}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.45, ease: [0.165, 0.84, 0.44, 1] }}
+                    className="mx-auto max-w-[1600px] px-4 pb-16 pt-6 sm:px-6 lg:px-10"
                 >
                     {children}
-                </motion.div>
-            </AnimatePresence>
-        </>
+                </motion.main>
+            </div>
+
+            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+        </div>
     );
 };
+
+function StatusDot({ state }: { state: PlaneStatus["state"] }) {
+    const color = state === "online" ? "bg-emerald-400" : state === "offline" ? "bg-rose-500" : "bg-amber-400";
+    return (
+        <span className="relative flex h-2.5 w-2.5">
+            {state === "online" && <span className={`absolute inline-flex h-full w-full rounded-full ${color} animate-pulse-ring`} />}
+            <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${color}`} />
+        </span>
+    );
+}
 
 export default Layout;

@@ -10,9 +10,17 @@ import com.scaleguard.server.kafka.KafkaEventsConsumer;
 import com.scaleguard.server.ssh.SshServerWithTunnelListener;
 import com.scaleguard.server.system.SystemAdapter;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.WriteBufferWaterMark;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.kqueue.KQueue;
+import io.netty.channel.kqueue.KQueueEventLoopGroup;
+import io.netty.channel.kqueue.KQueueServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
@@ -33,19 +41,57 @@ public class AppServer implements Server{
             = LoggerFactory.getLogger(AppServer.class);
     HashSet<String> ports = new HashSet<>();
 
-    // 1 boss thread is optimal — it only accepts connections.
-    // Workers: 2 × CPU cores handles hundreds of thousands of concurrent channels.
+    // ── Native transport detection ────────────────────────────────────────────
+    // Epoll (Linux) > KQueue (macOS) > NIO (fallback).
+    // Native transports eliminate JNI-free NIO overhead and allow SO_REUSEPORT
+    // which lets each worker thread own its own accept socket, removing the
+    // single-threaded accept-mutex that caps multi-core throughput.
+    private static final boolean USE_EPOLL  = Epoll.isAvailable();
+    private static final boolean USE_KQUEUE = !USE_EPOLL && KQueue.isAvailable();
+
     private static final int CPU = Runtime.getRuntime().availableProcessors();
 
-    EventLoopGroup bossGroup = new NioEventLoopGroup(1);
-    EventLoopGroup workerGroup = new NioEventLoopGroup(CPU * 2);
+    // ── Write-buffer watermarks ───────────────────────────────────────────────
+    // When the outbound buffer exceeds HIGH, Netty pauses reads on the
+    // inbound channel (back-pressure).  When it drains below LOW, reads resume.
+    // Prevents a slow backend from filling unbounded memory with un-sent bytes.
+    private static final WriteBufferWaterMark WRITE_WATERMARK =
+            new WriteBufferWaterMark(32 * 1024, 64 * 1024);  // 32 KB low / 64 KB high
 
-    EventLoopGroup tcpbossGroup = new NioEventLoopGroup(1);
-    EventLoopGroup tcpworkerGroup = new NioEventLoopGroup(CPU * 2);
+    EventLoopGroup bossGroup   = createBossGroup();
+    EventLoopGroup workerGroup = createWorkerGroup();
+
+    EventLoopGroup tcpbossGroup   = createBossGroup();
+    EventLoopGroup tcpworkerGroup = createWorkerGroup();
     ArrayList<ChannelFuture> futureChannels = new ArrayList<>();
 
+    private static EventLoopGroup createBossGroup() {
+        // 1 boss thread is optimal — it only accepts connections.
+        if (USE_EPOLL)  return new EpollEventLoopGroup(1);
+        if (USE_KQUEUE) return new KQueueEventLoopGroup(1);
+        return new NioEventLoopGroup(1);
+    }
+
+    private static EventLoopGroup createWorkerGroup() {
+        // Workers: 2 × CPU cores handles hundreds of thousands of concurrent channels.
+        if (USE_EPOLL)  return new EpollEventLoopGroup(CPU * 2);
+        if (USE_KQUEUE) return new KQueueEventLoopGroup(CPU * 2);
+        return new NioEventLoopGroup(CPU * 2);
+    }
+
+    private static Class<?> serverChannelClass() {
+        if (USE_EPOLL)  return EpollServerSocketChannel.class;
+        if (USE_KQUEUE) return KQueueServerSocketChannel.class;
+        return NioServerSocketChannel.class;
+    }
+
     public static void main(String[] args) throws Exception {
-        System.setProperty("io.netty.leakDetection.level", "PARANOID");
+        // PARANOID mode samples every ByteBuf allocation (full stack trace) — never use in production.
+        // SIMPLE (1-in-128 sample) is sufficient to catch leaks without hurting throughput.
+        // Override by passing -Dio.netty.leakDetection.level=ADVANCED / PARANOID explicitly.
+        if (System.getProperty("io.netty.leakDetection.level") == null) {
+            System.setProperty("io.netty.leakDetection.level", "SIMPLE");
+        }
         ConnectionUtil.checkDBProperties();
 
         // Support environment variables as fallback for admin credentials
@@ -75,7 +121,7 @@ public class AppServer implements Server{
         // Print parsed key-value pairs
         parameters.forEach((key, value) -> {
             if (!"password".equalsIgnoreCase(key) && !"adminPassword".equalsIgnoreCase(key)) {
-                System.out.println(key + " = " + value);
+                logger.info("{} = {}", key, value);
             }
         });
 
@@ -114,15 +160,7 @@ public class AppServer implements Server{
 
         SSLServerInitializer server = new SSLServerInitializer(port);
         try {
-            ServerBootstrap httpBootstrap = new ServerBootstrap();
-            return httpBootstrap.group(bossGroup, workerGroup)
-                    .channel(NioServerSocketChannel.class)
-                    .option(ChannelOption.SO_BACKLOG, 65535)     // OS max — supports 1M+ queued accepts
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
-                    .childOption(ChannelOption.TCP_NODELAY, true) // Eliminate Nagle for low latency
-                    .handler(new LoggingHandler(LogLevel.INFO))
-                    .childHandler(server)
-                    .childOption(ChannelOption.AUTO_READ, false)
+            return newBootstrap(bossGroup, workerGroup, server)
                     .bind(port).sync();
         } catch (Exception e) {
             return null;
@@ -133,15 +171,7 @@ public class AppServer implements Server{
         int port = Integer.parseInt(s.getPort());
         ServerInitializer server = new ServerInitializer(port);
         try {
-            ServerBootstrap httpBootstrap = new ServerBootstrap();
-            return httpBootstrap.group(bossGroup, workerGroup)
-                    .channel(NioServerSocketChannel.class)
-                    .option(ChannelOption.SO_BACKLOG, 65535)
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
-                    .childOption(ChannelOption.TCP_NODELAY, true)
-                    .handler(new LoggingHandler(LogLevel.INFO))
-                    .childHandler(server)
-                    .childOption(ChannelOption.AUTO_READ, false)
+            return newBootstrap(bossGroup, workerGroup, server)
                     .bind(port).sync();
         } catch (Exception e) {
             return null;
@@ -150,21 +180,65 @@ public class AppServer implements Server{
 
     private ChannelFuture startTcp(SourceSystem s, EventLoopGroup bossGroup, EventLoopGroup workerGroup) throws Exception {
         int port = Integer.parseInt(s.getPort());
-        TCPServerInitializer server = new TCPServerInitializer(s.getId(),port);
+        TCPServerInitializer server = new TCPServerInitializer(s.getId(), port);
         try {
-            ServerBootstrap httpBootstrap = new ServerBootstrap();
-            return httpBootstrap.group(bossGroup, workerGroup)
-                    .channel(NioServerSocketChannel.class)
-                    .option(ChannelOption.SO_BACKLOG, 65535)
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
-                    .childOption(ChannelOption.TCP_NODELAY, true)
-                    .handler(new LoggingHandler(LogLevel.INFO))
-                    .childHandler(server)
-                    .childOption(ChannelOption.AUTO_READ, false)
+            return newBootstrap(bossGroup, workerGroup, server)
                     .bind(port).sync();
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * Shared bootstrap factory — all server sockets use identical high-performance options:
+     *
+     * <ul>
+     *   <li><b>Native transport</b>: Epoll (Linux) or KQueue (macOS) when available.
+     *       These replace the JVM NIO selector with an OS-level event queue, cutting
+     *       syscall overhead and enabling SO_REUSEPORT.</li>
+     *   <li><b>SO_REUSEPORT</b> (Epoll only): each worker binds its own accept socket so
+     *       the Linux kernel load-balances new connections across cores — no single-threaded
+     *       accept mutex, full multi-core accept throughput.</li>
+     *   <li><b>PooledByteBufAllocator</b>: reuses heap/direct buffers instead of allocating
+     *       new ones per request — drastically reduces GC pressure at high RPS.</li>
+     *   <li><b>WriteBufferWaterMark</b>: pauses reads when the outbound queue exceeds the
+     *       HIGH watermark and resumes at LOW — prevents slow backends from exhausting heap.</li>
+     *   <li><b>SO_BACKLOG 65535</b>: maximum OS queue depth for pending accepts.</li>
+     *   <li><b>TCP_NODELAY</b>: disables Nagle's algorithm — critical for low-latency proxying.</li>
+     * </ul>
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private ServerBootstrap newBootstrap(EventLoopGroup boss, EventLoopGroup worker,
+                                         io.netty.channel.ChannelHandler childHandler) {
+        ServerBootstrap b = new ServerBootstrap();
+        b.group(boss, worker)
+         .channel((Class) serverChannelClass())
+         .option(ChannelOption.SO_BACKLOG, 65535)
+         .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+         .childOption(ChannelOption.SO_KEEPALIVE, true)
+         .childOption(ChannelOption.TCP_NODELAY, true)
+         .childOption(ChannelOption.AUTO_READ, false)
+         .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+         .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, WRITE_WATERMARK)
+         .handler(new LoggingHandler(LogLevel.INFO))
+         .childHandler(childHandler);
+
+        // SO_REUSEPORT: Linux-only — lets each I/O thread have its own accept socket.
+        // The kernel distributes incoming connections across sockets → full CPU scaling.
+        if (USE_EPOLL) {
+            try {
+                // Raw cast needed: EpollChannelOption<Boolean> → ChannelOption<Boolean>
+                b.option((ChannelOption<Boolean>) (ChannelOption)
+                         io.netty.channel.epoll.EpollChannelOption.SO_REUSEPORT, Boolean.TRUE);
+                logger.info("[Netty] SO_REUSEPORT enabled (Epoll/Linux)");
+            } catch (Exception ignored) {
+                // EpollChannelOption not available in this build — skip silently
+            }
+        }
+
+        String transport = USE_EPOLL ? "Epoll" : USE_KQUEUE ? "KQueue" : "NIO";
+        logger.info("[Netty] Transport: {} | PooledAllocator | WriteWatermark 32K/64K", transport);
+        return b;
     }
 
     @Override
@@ -192,7 +266,7 @@ public class AppServer implements Server{
                 logger.info("ssh server started");
 
             }catch (Exception e){
-                e.printStackTrace();
+                logger.error("Failed to start SSH server", e);
             }
 
             // Start certificate auto-renewal watcher

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.server.http.auth.AuthUtils;
+import com.scaleguard.server.http.cache.CacheManagers;
+import com.scaleguard.server.http.cache.DuckDBCacheManager;
 import com.scaleguard.server.http.metrics.MetricsHandler;
 import com.scaleguard.server.http.router.*;
 import io.netty.buffer.ByteBuf;
@@ -13,6 +15,8 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,6 +26,16 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class DefaultResponseHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(DefaultResponseHandler.class);
+
+    /** Shared singleton — DefaultResponseHandler has no per-instance mutable state. */
+    private static final DefaultResponseHandler INSTANCE = new DefaultResponseHandler();
+
+    /** Return the shared singleton to avoid per-request allocation. */
+    public static DefaultResponseHandler getInstance() {
+        return INSTANCE;
+    }
 
     private static String version = null;
 
@@ -207,6 +221,17 @@ public class DefaultResponseHandler {
         memory.put("total_bytes", runtime.totalMemory());
         health.set("memory", memory);
 
+        // Cache stats (DuckDB if active, otherwise in-memory note)
+        try {
+            if (CacheManagers.get() instanceof DuckDBCacheManager) {
+                health.put("cache", ((DuckDBCacheManager) CacheManagers.get()).stats());
+            } else {
+                health.put("cache", "in-memory");
+            }
+        } catch (Exception ignored) {
+            health.put("cache", "unavailable");
+        }
+
         // Overall status: unhealthy if we have host groups configured but none reachable
         boolean isHealthy = totalHosts == 0 || reachableHosts > 0;
         health.put("status", isHealthy ? "healthy" : "unhealthy");
@@ -305,11 +330,13 @@ public class DefaultResponseHandler {
             JsonNode sourceSystems = LocalSystemLoader.mapper.valueToTree(ss);
             finalObject.set("hostgroups", sourceSystems);
         }
-        ByteBuf content = null;
+        ByteBuf content;
         try {
             content = Unpooled.copiedBuffer(LocalSystemLoader.mapper.writerWithDefaultPrettyPrinter().writeValueAsString(finalObject), CharsetUtil.UTF_8);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+            logger.error("Failed to serialise config response: {}", e.getMessage(), e);
+            handleFailure(ctx, "failed to serialise config");
+            return;
         }
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, content);
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
@@ -331,12 +358,7 @@ public class DefaultResponseHandler {
     }
 
     public void handleResponse(final ChannelHandlerContext ctx, RequestRoutingResponse resp) {
-        ByteBuf content = null;
-        try {
-            content = Unpooled.copiedBuffer(resp.getBody() != null ? resp.getBody() : "", CharsetUtil.UTF_8);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        ByteBuf content = Unpooled.copiedBuffer(resp.getBody() != null ? resp.getBody() : "", CharsetUtil.UTF_8);
         HttpResponseStatus status = HttpResponseStatus.valueOf(resp.getStatus());
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, content);
         String contentType = resp.getContentType() != null ? resp.getContentType() : "application/json";
@@ -359,13 +381,8 @@ public class DefaultResponseHandler {
         });
     }
 
-    public void handleSuccess(final ChannelHandlerContext ctx,String message) {
-        ByteBuf content = null;
-        try {
-            content = Unpooled.copiedBuffer(message, CharsetUtil.UTF_8);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    public void handleSuccess(final ChannelHandlerContext ctx, String message) {
+        ByteBuf content = Unpooled.copiedBuffer(message, CharsetUtil.UTF_8);
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, content);
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
@@ -376,16 +393,11 @@ public class DefaultResponseHandler {
 
 
         ByteBuf finalContent = content;
-        ctx.writeAndFlush(response).addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture future) throws Exception {
-                //It is successful here, and does not represent the success of the customer, and brush out the data success default representative has completed
-                if (future.isSuccess()) {
-                    ctx.channel().read();
-                } else {
-                    future.channel().close();
-
-                }
+        ctx.writeAndFlush(response).addListener((ChannelFutureListener) future -> {
+            if (future.isSuccess()) {
+                ctx.channel().read();
+            } else {
+                future.channel().close();
             }
         });
     }
@@ -393,13 +405,8 @@ public class DefaultResponseHandler {
     public void handleFailure(final ChannelHandlerContext ctx, String message) {
         handleFailure(ctx,message,HttpResponseStatus.INTERNAL_SERVER_ERROR);
     }
-    public void handleFailure(final ChannelHandlerContext ctx, String message,HttpResponseStatus code) {
-        ByteBuf content = null;
-        try {
-            content = Unpooled.copiedBuffer("{\"message\":\"" + message + "\"}", CharsetUtil.UTF_8);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    public void handleFailure(final ChannelHandlerContext ctx, String message, HttpResponseStatus code) {
+        ByteBuf content = Unpooled.copiedBuffer("{\"message\":\"" + message + "\"}", CharsetUtil.UTF_8);
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, code, content);
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
@@ -424,7 +431,7 @@ public class DefaultResponseHandler {
                 content = Files.lines(Paths.get("version.json"))
                         .collect(Collectors.joining(System.lineSeparator()));
             } catch (IOException e) {
-                e.printStackTrace();
+                logger.warn("Could not read version.json, returning empty info: {}", e.getMessage());
             }
             version = content;
         }

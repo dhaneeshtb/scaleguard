@@ -103,8 +103,7 @@ public class AsyncEngines {
             LOGGER.info("loading entries from db");
             AsyncEngineEntriesDB.getInstance().readAll().forEach(r -> add(r.getName(), r.getDescription(), r.getType(), r.getPayload(),  r.getId(), false));
         } catch (Exception e) {
-            e.printStackTrace();
-            LOGGER.info("error loading entries from db", e);
+            LOGGER.error("Error loading async engine entries from DB", e);
         }
     }
 

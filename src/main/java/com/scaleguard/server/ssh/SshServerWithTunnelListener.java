@@ -13,9 +13,12 @@ import org.apache.sshd.server.shell.ProcessShellFactory;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class SshServerWithTunnelListener {
+    private static final Logger logger = LoggerFactory.getLogger(SshServerWithTunnelListener.class);
     private static int sshPort = 2222;
     public static void main(String[] args) throws IOException {
         startServer();
@@ -49,9 +52,9 @@ public class SshServerWithTunnelListener {
                                                       SshdSocketAddress remote, boolean localForwarding,
                                                       SshdSocketAddress boundAddress, Throwable reason) {
                     if (reason == null) {
-                        System.out.println("✅ Tunnel successfully created from " + local + " to " + remote);
+                        logger.info("Tunnel successfully created from {} to {}", local, remote);
                     } else {
-                        System.err.println("❌ Tunnel creation failed: " + reason.getMessage());
+                        logger.error("Tunnel creation failed: {}", reason.getMessage());
                     }
                 }
             });
@@ -62,7 +65,7 @@ public class SshServerWithTunnelListener {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-            System.out.println("🚀 SSH Server started on port 2222");
+            logger.info("SSH Server started on port 2222");
 
             // Keep the server running
             try {

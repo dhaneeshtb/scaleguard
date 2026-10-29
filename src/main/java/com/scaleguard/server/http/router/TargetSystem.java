@@ -39,6 +39,9 @@ public class TargetSystem {
 
   @JsonIgnore
   public HostGroup  getHostGroup() {
+    if (hostGroups == null || hostGroups.isEmpty()) {
+      return null;
+    }
     return BestHostSelector.getBestHost(hostGroups, BestHostSelector.parseStrategy(lbStrategy));
   }
 

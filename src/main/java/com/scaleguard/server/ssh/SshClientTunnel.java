@@ -6,8 +6,11 @@ import org.apache.sshd.client.session.forward.PortForwardingTracker;
 import org.apache.sshd.common.util.net.SshdSocketAddress;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SshClientTunnel {
+    private static final Logger logger = LoggerFactory.getLogger(SshClientTunnel.class);
 
     private static int sshPort = 2222;
 
@@ -99,7 +102,7 @@ public class SshClientTunnel {
                     PortForwardingTracker tracker = session.createRemotePortForwardingTracker(remoteAddress, localAddress);
 
                     tracker.getSession();
-                    System.out.println("✅ Tunnel established: localhost:" + portForard.getLocalPort() + " -> remote:" + portForard.getRemotePort());
+                    logger.info("Tunnel established: localhost:{} -> remote:{}", portForard.getLocalPort(), portForard.getRemotePort());
 
                     // Keep the session open
                     Thread.sleep(Long.MAX_VALUE);
@@ -107,8 +110,8 @@ public class SshClientTunnel {
                     Thread.sleep(Long.MAX_VALUE);
                 }
             } catch (IOException | InterruptedException e) {
-                e.printStackTrace();
-                System.out.println("✅ Tunnel removed: localhost:" + portForard.getLocalPort() + " -> remote:" + portForard.getRemotePort());
+                logger.error("SSH tunnel error for localhost:{} -> remote:{}", portForard.getLocalPort(), portForard.getRemotePort(), e);
+                logger.info("Tunnel removed: localhost:{} -> remote:{}", portForard.getLocalPort(), portForard.getRemotePort());
 
             }
         });

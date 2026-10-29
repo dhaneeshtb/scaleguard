@@ -57,8 +57,11 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 
 			pipeline.addLast(sslContext.newHandler(ch.alloc()));
 		}
+		// Match the inbound cap so large backend responses are also bounded.
+		// Default 10 MB; tune via -Dscaleguard.maxBodyBytes.
+		int maxBody = Integer.getInteger("scaleguard.maxBodyBytes", 10 * 1024 * 1024);
 		pipeline.addLast(new HttpClientCodec());
-		pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));
+		pipeline.addLast(new HttpObjectAggregator(maxBody));
 		pipeline.addLast(new ScaleGuardBackendHandler(rt,inbound,cacheKey));
 	}
 }

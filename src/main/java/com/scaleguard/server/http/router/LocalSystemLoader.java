@@ -9,8 +9,11 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class LocalSystemLoader implements SystemLoader {
+  private static final Logger logger = LoggerFactory.getLogger(LocalSystemLoader.class);
 
   public static ObjectMapper mapper = new ObjectMapper();
 
@@ -39,7 +42,7 @@ public class LocalSystemLoader implements SystemLoader {
         return ss;
       }).collect(Collectors.toList());
     } catch (Exception e) {
-      e.printStackTrace();
+      logger.error("Failed to load source systems from properties", e);
     }
     return null;
   }
@@ -60,13 +63,14 @@ public class LocalSystemLoader implements SystemLoader {
         ss.setGroupId(props.getProperty("target."+key+".groupId"));
         ss.setBasePath(props.getProperty("target."+key+".basePath"));
         ss.setEnableCache(Boolean.parseBoolean(props.getProperty("target."+key+".enableCache")));
+        ss.setLbStrategy(props.getProperty("target."+key+".lbStrategy"));
         String hgId=props.getProperty("target."+key+".hostgroup");
         String cachePatterns=props.getProperty("target."+key+".cache.patterns");
         if(cachePatterns!=null && !cachePatterns.isEmpty()) {
           try {
             ss.setCachedResources(mapper.readValue(cachePatterns, new TypeReference<List<CachedResource>>() {}));
           } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Failed to parse cache patterns", e);
           }
         }
         if(hgId!=null && hostGroups!=null){
@@ -76,7 +80,7 @@ public class LocalSystemLoader implements SystemLoader {
         return ss;
       }).collect(Collectors.toList());
     } catch (Exception e) {
-      e.printStackTrace();
+      logger.error("Failed to load target systems from properties", e);
     }
     return null;
   }
@@ -95,10 +99,22 @@ public class LocalSystemLoader implements SystemLoader {
         ss.setScheme(props.getProperty("hostgroup."+key+".scheme"));
         ss.setType(props.getProperty("hostgroup."+key+".type"));
         ss.setHealth(props.getProperty("hostgroup."+key+".health"));
+        String priorityStr = props.getProperty("hostgroup."+key+".priority");
+        if (priorityStr != null && !priorityStr.isEmpty()) {
+          try { ss.setPriority(Integer.parseInt(priorityStr.trim())); } catch (NumberFormatException ignored) {}
+        }
+        String weightStr = props.getProperty("hostgroup."+key+".weight");
+        if (weightStr != null && !weightStr.isEmpty()) {
+          try { ss.setWeight(Integer.parseInt(weightStr.trim())); } catch (NumberFormatException ignored) {}
+        }
+        String activeStr = props.getProperty("hostgroup."+key+".active");
+        if (activeStr != null && !activeStr.isEmpty()) {
+          ss.setActive(Boolean.parseBoolean(activeStr.trim()));
+        }
         return ss;
       }).collect(Collectors.toList());
     } catch (Exception e) {
-      e.printStackTrace();
+      logger.error("Failed to load host groups from properties", e);
     }
     return null;
   }

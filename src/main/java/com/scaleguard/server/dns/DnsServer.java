@@ -102,7 +102,7 @@ public final class DnsServer {
             return bootstrap.bind(DNS_SERVER_PORT).channel();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to start UDP DNS server", e);
         }
         return null;
 

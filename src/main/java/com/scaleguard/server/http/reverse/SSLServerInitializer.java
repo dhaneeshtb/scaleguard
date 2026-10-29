@@ -20,6 +20,10 @@ public class SSLServerInitializer extends ChannelInitializer<Channel> {
     protected void initChannel(Channel ch) {
 //        CorsConfig corsConfig = CorsConfigBuilder.forAnyOrigin().allowNullOrigin().allowCredentials().build();
 
+        // Default 10 MB request body cap — prevents a single large upload from exhausting heap.
+        // Tune via -Dscaleguard.maxBodyBytes (e.g. 104857600 for 100 MB).
+        int maxBody = Integer.getInteger("scaleguard.maxBodyBytes", 10 * 1024 * 1024);
+
         ChannelPipeline pipeline = ch.pipeline();
         SSLEngine engine = ScaleGuardSSLContext.get().createSSLEngine();
         engine.setUseClientMode(false);
@@ -27,7 +31,7 @@ public class SSLServerInitializer extends ChannelInitializer<Channel> {
                 new SslHandler(engine)
         );
         pipeline.addLast(new HttpServerCodec());
-        pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));
+        pipeline.addLast(new HttpObjectAggregator(maxBody));
        // pipeline.addLast(new CorsHandler(corsConfig));
 
         pipeline.addLast(new ScaleGuardFrontendHandler(port));

@@ -95,8 +95,7 @@ public class Application {
             ApplicationEntriesDB.getInstance().readAll().forEach(r -> add(r.getName(), r.getDescription(), r.getId(), false));
             loadClients();
         }catch (Exception e){
-            e.printStackTrace();
-            LOGGER.info("error loading entries from db",e);
+            LOGGER.error("error loading entries from db", e);
         }
     }
 
@@ -110,8 +109,7 @@ public class Application {
                 ar.getClients().add(c);
             });
         }catch (Exception e){
-            e.printStackTrace();
-            LOGGER.info("error loading entries from db",e);
+            LOGGER.error("error loading client entries from db", e);
         }
     }
 

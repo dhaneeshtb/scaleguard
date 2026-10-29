@@ -30,7 +30,7 @@ public class CertificateManager {
         try {
             context = AcmeUtils.getContext();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Failed to initialise ACME context — certificate operations will fail until context is available: {}", e.getMessage(), e);
         }
     }
 

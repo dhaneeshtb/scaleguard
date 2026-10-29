@@ -43,7 +43,7 @@ public class InboundMessageHandler {
   }
 
   static  RouteTable routeTable = RouteTable.getInstance();
-  static CacheManager cacheManager=InMemoryCacheLooker.getInstance();
+  static CacheManager cacheManager=CacheManagers.get();
 
   static volatile Class tokenParser;
   static volatile Method authGetter;
@@ -162,6 +162,27 @@ public class InboundMessageHandler {
     }
   }
 
+  /**
+   * Thread-safe host-rewrite: sets the Host header to {@code targetHost} without
+   * touching the shared {@link #host} field.
+   *
+   * <p>The original {@link #reset(Object, Map)} method mutates an instance field on a
+   * <em>static</em> shared handler, creating a data race when two Netty I/O threads
+   * process different client connections concurrently. This overload receives the
+   * target host as a parameter and writes it directly to the request — no shared state.</p>
+   */
+  public void reset(Object msg, String targetHost, Map<String, String> includeHeaders) {
+    if (msg instanceof HttpRequest) {
+      HttpRequest request = (HttpRequest) msg;
+      if (targetHost != null && !targetHost.isEmpty()) {
+        request.headers().set(HttpHeaderNames.HOST, targetHost);
+      }
+      if (includeHeaders != null) {
+        includeHeaders.forEach((k, v) -> request.headers().set(k, v));
+      }
+    }
+  }
+
 
 
   public void handle(ChannelHandlerContext ctx, Object msg,RouteTarget ts, Consumer<CachedResponse> consumer){
@@ -231,11 +252,19 @@ public class InboundMessageHandler {
     Map<String,String> headerMap=new HashMap<>();
     if (msg instanceof HttpRequest) {
       HttpRequest request =  (HttpRequest) msg;
-      pr.setPort(ts.getHostGroup().getPort());
-      pr.setHostGrpId(ts.getHostGroup().getGroupId());
+      HostGroup hg = ts.getHostGroup();
+      if (hg != null) {
+        pr.setPort(hg.getPort());
+        pr.setHostGrpId(hg.getGroupId());
+        pr.setHost(hg.getHost());
+      } else {
+        // Fallback when all cluster hosts are unreachable
+        pr.setPort(ts.getPort());
+        pr.setHostGrpId(ts.getGroupId());
+        pr.setHost(ts.getHost());
+      }
       pr.setScheme(ts.getScheme());
-      pr.setHost(ts.getHostGroup().getHost());
-      pr.setUri((ts.getBasePath().trim().equals("/")?"":ts.getBasePath().trim())+request.uri());
+      pr.setUri((ts.getBasePath() != null && !ts.getBasePath().trim().equals("/") ? ts.getBasePath().trim() : "")+request.uri());
       request.headers().forEach((k)->headerMap.put(k.getKey(),k.getValue()));
       pr.setMethod(request.method().name().toString());
       pr.setId(UUID.randomUUID().toString());

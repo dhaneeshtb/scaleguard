@@ -17,6 +17,9 @@ public class ServerInitializer extends ChannelInitializer<Channel> {
     }
     @Override  
     protected void initChannel(Channel ch) {
+        // Default 10 MB request body cap — prevents a single large upload from exhausting heap.
+        // Tune via -Dscaleguard.maxBodyBytes (e.g. 104857600 for 100 MB).
+        int maxBody = Integer.getInteger("scaleguard.maxBodyBytes", 10 * 1024 * 1024);
         CorsConfig corsConfig = CorsConfigBuilder.forAnyOrigin()
                 .allowNullOrigin()
                 .allowCredentials()
@@ -25,7 +28,7 @@ public class ServerInitializer extends ChannelInitializer<Channel> {
                 .build();
         ChannelPipeline pipeline = ch.pipeline();
         pipeline.addLast(new HttpServerCodec());
-        pipeline.addLast(new HttpObjectAggregator(Integer.MAX_VALUE));
+        pipeline.addLast(new HttpObjectAggregator(maxBody));
         pipeline.addLast(new CorsHandler(corsConfig));
         pipeline.addLast(new ScaleGuardFrontendHandler(port));
 

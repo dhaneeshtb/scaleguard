@@ -16,7 +16,8 @@
 package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.cache.CacheManager;
-import com.scaleguard.server.http.cache.InMemoryCacheLooker;
+import com.scaleguard.server.http.cache.CacheManagers;
+import com.scaleguard.server.http.cache.CachedResource;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.RouteLogger;
 import com.scaleguard.server.http.router.RouteTarget;
@@ -25,13 +26,16 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
+    private static final Logger logger = LoggerFactory.getLogger(ScaleGuardBackendHandler.class);
 
     private final Channel inboundChannel;
     private  TargetSystem cacheInfo;
     private String cacheKey;
-    private CacheManager cacheManager = InMemoryCacheLooker.getInstance();
+    private CacheManager cacheManager = CacheManagers.get();
 
     private RouteTarget rt;
     public ScaleGuardBackendHandler(RouteTarget rt, Channel inboundChannel, String cacheKey) {
@@ -77,7 +81,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
                             }
                             String cLocation = location.replace(tfqdn, sfqdn);
                             response.headers().set(HttpHeaderNames.LOCATION, cLocation);
-                            System.out.println("Redirecting to: " + location);
+                            logger.debug("Redirecting to: {}", location);
                         }
                     }
                 }
@@ -104,8 +108,13 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
                 if (future.isSuccess()) {
                     ctx.channel().read();
                     if(cacheKey!=null && cachedObject!=null && statusCode>=200 && statusCode<300) {
-
-                        cacheManager.saveFresh(cacheInfo, cacheKey, cachedObject);
+                        // Use per-route TTL from the first matching CachedResource if available
+                        int ttl = 300;
+                        if (cacheInfo != null && cacheInfo.getCachedResources() != null
+                                && !cacheInfo.getCachedResources().isEmpty()) {
+                            ttl = cacheInfo.getCachedResources().get(0).getTtl();
+                        }
+                        cacheManager.saveFresh(cacheInfo, cacheKey, cachedObject, ttl);
                     }
                     RouteLogger.log(rt);
                 } else {
@@ -124,7 +133,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        cause.printStackTrace();
+        logger.error("Channel exception caught", cause);
         ScaleGuardFrontendHandler.closeOnFlush(ctx.channel());
     }
 

@@ -14,11 +14,16 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class HostGroupWatcher {
 
     private static final Logger logger
             = LoggerFactory.getLogger(HostGroupWatcher.class);
+
+    /** Health-check poll interval; override with {@code -Dhost.health.interval.seconds=N}. */
+    private static final long HEALTH_CHECK_INTERVAL_MS =
+            Long.parseLong(System.getProperty("host.health.interval.seconds", "20")) * 1000L;
 
     private final List<HostGroup> allHosts;
 
@@ -26,7 +31,7 @@ public class HostGroupWatcher {
         this.allHosts=allHosts;
     }
     public void start(){
-        // Virtual thread: sleeps for 20s between polls — no OS thread wasted while sleeping
+        // Virtual thread: sleeps for HEALTH_CHECK_INTERVAL_MS between polls — no OS thread wasted while sleeping
         VirtualThreads.submit("host-group-watcher", () -> {
             while(true) {
                 try {
@@ -45,14 +50,14 @@ public class HostGroupWatcher {
                             }
                         } catch (Exception e) {
                             hg.setReachable(false);
-                            logger.error("Error while reaching {}",hg.getHealth());
+                            logger.error("Error while reaching {}", hg.getHealth());
                         }
                     });
                 } catch (Exception e) {
-                    logger.error("Error ",e);
+                    logger.error("Error ", e);
                 }
                 try {
-                    Thread.sleep(20000);
+                    Thread.sleep(HEALTH_CHECK_INTERVAL_MS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -66,6 +71,7 @@ public class HostGroupWatcher {
         URL url = new URL(urlToRead);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         try {
+            conn.setConnectTimeout(5000);
             conn.setReadTimeout(15000);
             conn.setRequestMethod("GET");
             try (BufferedReader reader = new BufferedReader(
@@ -90,7 +96,7 @@ public class HostGroupWatcher {
         try {
             return getResponseDataOrThrow(urlToRead);
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.warn("HTTP GET failed for '{}': {}", urlToRead, e.getMessage());
             return "";
         }
     }
@@ -109,6 +115,7 @@ public class HostGroupWatcher {
         URL url = new URL(urlToRead);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         try {
+            conn.setConnectTimeout(5000);
             conn.setReadTimeout(15000);
             conn.setRequestMethod("GET");
             try (BufferedReader reader = new BufferedReader(
@@ -123,39 +130,41 @@ public class HostGroupWatcher {
         return result.toString();
     }
 
+    /** Simple load-test harness — run from CLI only; not used by the server. */
     public static void main(String[] args) {
         AtomicInteger ai = new AtomicInteger(0);
         AtomicInteger aiSuccess = new AtomicInteger(0);
-       ExecutorService es =  Executors.newFixedThreadPool(200);
-       long start = System.currentTimeMillis();
-       for(int i=0;i<1000;i++){
-           es.submit(()->{
-               for(int j=0;j<100;j++){
-                   try {
-                       int rs = getResponse("http://localhost:8080/hckeck");
-                       if (rs != 200) {
-                           ai.incrementAndGet();
-                           System.out.println(rs);
-
-                       }else {
-                           aiSuccess.incrementAndGet();
-                       }
-                   } catch (Exception e) {
-                       ai.incrementAndGet();
-                       e.printStackTrace();
-
-                   }
-               }
-           });
-       }
-       es.shutdown();
+        AtomicLong elapsedMs = new AtomicLong(0);
+        ExecutorService es = Executors.newFixedThreadPool(200);
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < 1000; i++) {
+            es.submit(() -> {
+                for (int j = 0; j < 100; j++) {
+                    try {
+                        int rs = getResponse("http://localhost:8080/hckeck");
+                        if (rs != 200) {
+                            ai.incrementAndGet();
+                            logger.warn("Unexpected response code: {}", rs);
+                        } else {
+                            aiSuccess.incrementAndGet();
+                        }
+                    } catch (Exception e) {
+                        ai.incrementAndGet();
+                        logger.warn("Request failed: {}", e.getMessage());
+                    }
+                }
+            });
+        }
+        es.shutdown();
         try {
             es.awaitTermination(10, TimeUnit.MINUTES);
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
-        System.out.println("Failure count -> "+ai.get());
-        System.out.println("Success count -> "+aiSuccess.get());
-        System.out.println("Time taken  -> "+(System.currentTimeMillis()-start));
+        elapsedMs.set(System.currentTimeMillis() - start);
+        logger.info("Failure count -> {}", ai.get());
+        logger.info("Success count -> {}", aiSuccess.get());
+        logger.info("Time taken    -> {} ms", elapsedMs.get());
     }
 }

@@ -18,8 +18,11 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class QuickSystemMapper {
+    private static final Logger logger = LoggerFactory.getLogger(QuickSystemMapper.class);
 
     private static String getDigest(String original) throws NoSuchAlgorithmException {
         MessageDigest md = MessageDigest.getInstance("MD5");
@@ -171,7 +174,7 @@ public class QuickSystemMapper {
         targets.add("http://localhost:8099");
         request.put("targets", targets);
         try {
-            System.out.println(request);
+            logger.info("{}", request);
             //mapSystem(request);
         } catch (Exception e) {
             throw new RuntimeException(e);

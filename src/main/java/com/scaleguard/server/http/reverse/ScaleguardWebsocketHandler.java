@@ -13,8 +13,11 @@ import io.netty.handler.ssl.SslContextBuilder;
 
 import java.net.URI;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ScaleguardWebsocketHandler {
+    private static final Logger logger = LoggerFactory.getLogger(ScaleguardWebsocketHandler.class);
 
     private Channel remoteChannel;
 
@@ -71,7 +74,7 @@ public class ScaleguardWebsocketHandler {
                                         SslContext sslContext = SslContextBuilder.forClient().build();
                                         ch.pipeline().addLast(sslContext.newHandler(ch.alloc(), uri.getHost(), uri.getPort()));
                                     } catch (Exception e) {
-                                        e.printStackTrace();
+                                        logger.error("Failed to build SSL context for WebSocket backend", e);
                                     }
                                 }
                                 ch.pipeline()
@@ -89,7 +92,7 @@ public class ScaleguardWebsocketHandler {
                     }
                 });
             } else {
-                System.err.println("WebSocket handshake failed");
+                logger.error("WebSocket handshake failed");
             }
         });
 

@@ -9,86 +9,72 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 public class RouteLogger {
     private static final Logger logger
             = LoggerFactory.getLogger(RouteLogger.class);
 
-    static public class RouteStats{
+    static public class RouteStats {
 
-        private String key;
+        private final String key;
 
-        RouteStats(String key){
-            this.key=key;
+        RouteStats(String key) {
+            this.key = key;
         }
 
-        private AtomicLong total=new AtomicLong(0);
+        /**
+         * LongAdder gives lower contention than AtomicLong under high concurrency:
+         * each thread increments its own cell; the sum is computed lazily on read.
+         */
+        private final LongAdder total = new LongAdder();
+        private final LongAdder count = new LongAdder();
 
-        public AtomicLong getTotal() {
-            return total;
+        // Min / max are updated via a CAS loop — no lock needed.
+        private final AtomicLong minTime = new AtomicLong(Long.MAX_VALUE);
+        private final AtomicLong maxTime = new AtomicLong(0L);
+
+        public long getTotal() {
+            return total.sum();
         }
 
-        public void setTotal(AtomicLong total) {
-            this.total = total;
-        }
-
-        private AtomicLong count=new AtomicLong(0);
-
-        private double averageRT;
-
-        private long minTime=Long.MAX_VALUE;
-
-        private long maxTime;
-
-        public AtomicLong getCount() {
-            return count;
-        }
-
-        public void setCount(AtomicLong count) {
-            this.count = count;
+        public long getCount() {
+            return count.sum();
         }
 
         public double getAverageRT() {
-            return averageRT;
+            long c = count.sum();
+            return c == 0 ? 0.0 : (double) total.sum() / c;
         }
 
         public String getKey() {
             return key;
         }
 
-        public void setKey(String key) {
-            this.key = key;
-        }
-
-        public void setAverageRT(double averageRT) {
-            this.averageRT = averageRT;
-        }
-
         public long getMinTime() {
-            return minTime;
-        }
-
-        public void setMinTime(long minTime) {
-            this.minTime = minTime;
+            return minTime.get();
         }
 
         public long getMaxTime() {
-            return maxTime;
+            return maxTime.get();
         }
 
-        public void setMaxTime(long maxTime) {
-            this.maxTime = maxTime;
-        }
-        public synchronized void addRT(long repTime){
-            long totalRequests =getCount().incrementAndGet();
-            long ct = getTotal().addAndGet(repTime);
-            setAverageRT(ct/totalRequests);
-            if(minTime>repTime){
-                minTime=repTime;
-            }
-            if(maxTime<repTime){
-                maxTime=repTime;
-            }
+        /**
+         * Lock-free response-time recording.
+         * Safe to call from multiple Netty I/O threads simultaneously.
+         */
+        public void addRT(long repTime) {
+            count.increment();
+            total.add(repTime);
+            // CAS-loop for min
+            long prev;
+            do {
+                prev = minTime.get();
+            } while (repTime < prev && !minTime.compareAndSet(prev, repTime));
+            // CAS-loop for max
+            do {
+                prev = maxTime.get();
+            } while (repTime > prev && !maxTime.compareAndSet(prev, repTime));
         }
     }
 
@@ -110,7 +96,7 @@ public class RouteLogger {
         routeStatsMap.values().stream().forEach(r->{
             ObjectNode on =LocalSystemLoader.mapper.createObjectNode();
             on.put("key",r.getKey());
-            on.put("total",r.getCount().get());
+            on.put("total",r.getCount());
             on.put("max",r.getMaxTime());
             on.put("min",r.getMinTime());
             on.put("avg",r.getAverageRT());

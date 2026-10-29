@@ -7,8 +7,11 @@ import javax.naming.directory.Attributes;
 import javax.naming.directory.DirContext;
 import javax.naming.directory.InitialDirContext;
 import java.util.Hashtable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DnsTxtLookup {
+    private static final Logger logger = LoggerFactory.getLogger(DnsTxtLookup.class);
 
     public static final String getTXTDNSRecord(String name,String domain){
 
@@ -28,14 +31,14 @@ public class DnsTxtLookup {
                 NamingEnumeration<?> enumeration = attr.getAll();
                 while (enumeration.hasMore()) {
                     String recordTxt=enumeration.next().toString();
-                    System.out.println("TXT Record: " + recordTxt);
+                    logger.info("TXT Record: {}", recordTxt);
                     return recordTxt;
                 }
             } else {
                 return null;
             }
         } catch (Exception e) {
-            System.err.println("Error retrieving TXT records: " + e.getMessage());
+            logger.error("Error retrieving TXT records: {}", e.getMessage());
             return null;
         }
         return null;
@@ -44,7 +47,7 @@ public class DnsTxtLookup {
     public static void main(String[] args){
         String domain = "sivasgems.com";
         String name="_acme-challenge";
-        System.out.println(getTXTDNSRecord(name,domain));
+        logger.info("{}", getTXTDNSRecord(name,domain));
 
     }
 }

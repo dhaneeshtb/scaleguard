@@ -68,6 +68,22 @@ public class HostGroup {
 
     private String groupId;
 
+    /**
+     * Optional cluster label for multi-datacenter / disaster-recovery topologies.
+     * Operators can set this to a logical name such as {@code "primary-dc"} or
+     * {@code "dr-dc"}.  The load-balancer can use it to prefer hosts within the
+     * same cluster before crossing cluster boundaries.
+     */
+    private String cluster;
+
+    public String getCluster() {
+        return cluster;
+    }
+
+    public void setCluster(String cluster) {
+        this.cluster = cluster;
+    }
+
     public String getHost() {
         return host;
     }
@@ -100,10 +116,12 @@ public class HostGroup {
         this.loadFactor = loadFactor;
     }
 
+    @JsonIgnore
     public boolean isReachable() {
         return isReachable;
     }
 
+    @JsonIgnore
     public void setReachable(boolean reachable) {
         isReachable = reachable;
     }
@@ -130,6 +148,7 @@ public class HostGroup {
     }
 
     private float loadFactor;
+    @JsonIgnore
     private boolean isReachable=true;
     private int weight = 1;
     @JsonIgnore

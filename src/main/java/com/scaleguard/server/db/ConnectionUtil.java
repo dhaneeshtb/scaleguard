@@ -47,9 +47,9 @@ public class ConnectionUtil {
         Path destination = Paths.get(targetPath); // Destination folder
         try {
             Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
-            System.out.println("File copied successfully!");
+            LOGGER.info("Postgres properties file copied successfully from '{}' to '{}'", sourcePath, targetPath);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Failed to copy postgres properties from '{}' to '{}'", sourcePath, targetPath, e);
         }
     }
 
@@ -66,7 +66,7 @@ public class ConnectionUtil {
 
                 return DriverManager.getConnection(properties.getProperty("url"), properties.getProperty("username"),properties.getProperty("password"));
             }catch (Exception e){
-                e.printStackTrace();
+                LOGGER.error("Failed to establish Postgres connection, falling back to SQLite", e);
             }
         }
         String connectionURL = "jdbc:sqlite:"+LicenceUtil.dataDir()+"/" + devId+".db";

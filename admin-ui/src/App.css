@@ -42,7 +42,7 @@
 ::view-transition-old(root),
 ::view-transition-new(root) {
   mix-blend-mode: normal;
-  animation-duration: 500;
+  animation-duration: 320ms;
 
 }
 

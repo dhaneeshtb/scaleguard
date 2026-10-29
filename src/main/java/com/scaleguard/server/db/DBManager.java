@@ -113,7 +113,7 @@ public abstract class DBManager<T extends DBObject> {
                 try {
                     c.createStatement().executeUpdate(insertString);
                 } catch (SQLException e) {
-                    e.printStackTrace();
+                    LOG.error("Failed to insert record into '{}': {}", tableName, insertString, e);
                     throw new RuntimeException(e);
                 }
             });
@@ -177,7 +177,7 @@ public abstract class DBManager<T extends DBObject> {
         try {
             return readItems(null, (List<String>) null);
         }catch (Exception e){
-            e.printStackTrace();
+            LOG.error("Failed to read all records from '{}'", tableName, e);
             throw new GenericServerProcessingException(e);
         }
     }

@@ -126,7 +126,15 @@ public class ConfigManager {
         }
         RouteTable.getInstance().getTargetSystems().values().forEach(ss -> {
             if (ss.getHostGroupId() != null && ss.getHostGroupId().equalsIgnoreCase(fHg.getGroupId())) {
-                ss.getHostGroups().add(fHg);
+                if (ss.getHostGroups() == null) {
+                    ss.setHostGroups(new java.util.ArrayList<>());
+                }
+                // Avoid adding the same host entry twice on repeated updates
+                boolean alreadyPresent = ss.getHostGroups().stream()
+                        .anyMatch(h -> h.getId() != null && h.getId().equalsIgnoreCase(fHg.getId()));
+                if (!alreadyPresent) {
+                    ss.getHostGroups().add(fHg);
+                }
             }
         });
         RouteTable.getInstance().remapSourceSystems();

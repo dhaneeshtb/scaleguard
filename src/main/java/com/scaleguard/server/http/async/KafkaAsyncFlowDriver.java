@@ -46,9 +46,9 @@ public class KafkaAsyncFlowDriver implements AsyncFlowDrivers.AsyncFlowDriver {
                             String value = event.value();
                             try {
                                 ProxyResponse proxyResponse= OutboundDispatchUtil.sendRequest(SystemManager.getMapper().readValue(value,ProxyRequest.class));
-                                System.out.println(proxyResponse.getResponseBody());
+                                LOGGER.debug("Outbound response body: {}", proxyResponse.getResponseBody());
                             } catch (Exception e) {
-                                e.printStackTrace();
+                                LOGGER.error("Failed to dispatch outbound request", e);
                             }
                             LOGGER.info("Record value {}", value);
                             LOGGER.info("Record offset {}", event.offset());

@@ -8,7 +8,10 @@ import Systems from './components/Systems';
 import Stats from './components/Stats';
 import Modal from './components/Modal';
 import RootComponents from './components/RootComponents';
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
+
+// Hash routing is only used for the self-contained offline design preview build.
+const Router = process.env.REACT_APP_HASH_ROUTER === "true" ? HashRouter : BrowserRouter;
 import Home from './pages/Home';
 import Layout from './Layout';
 import HostGroups from './components/HostGroups';
@@ -24,7 +27,7 @@ import AsyncEngines from './pages/asyncengines/AsyncEngines';
 
 function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
         <Route path="/sign-in" element={<SignIn />} />
         <Route path="/" element={<Landing />} />
@@ -54,7 +57,7 @@ function App() {
           }
         />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
 

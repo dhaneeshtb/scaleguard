@@ -2,6 +2,8 @@ package com.scaleguard.server.db;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scaleguard.utils.JSON;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -12,6 +14,8 @@ import java.sql.Statement;
  * Ensures table creation, indexing, and default entries.
  */
 public class AsyncEngineEntriesDB extends DBManager<AsyncEngineEntry> {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AsyncEngineEntriesDB.class);
 
     private static final AsyncEngineEntriesDB INSTANCE = new AsyncEngineEntriesDB();
     private boolean isInitialized = false;
@@ -78,13 +82,13 @@ public class AsyncEngineEntriesDB extends DBManager<AsyncEngineEntry> {
             try {
                 statement.executeUpdate(createIndexesSQL);
             } catch (SQLException e) {
-                System.err.println("Index creation failed: " + e.getMessage());
+                LOG.warn("Index creation failed (may already exist): {}", e.getMessage());
             }
 
             try {
                 statement.executeUpdate(createDefaultEntry());
             } catch (SQLException e) {
-                System.err.println("Default entry insertion failed: " + e.getMessage());
+                LOG.warn("Default entry insertion failed (may already exist): {}", e.getMessage());
             }
 
             isInitialized = true;

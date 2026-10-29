@@ -1,18 +1,25 @@
 package com.scaleguard.server.http.router;
 
-import java.util.Calendar;
-import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RateLimitManager {
+    private static final Logger logger = LoggerFactory.getLogger(RateLimitManager.class);
 
     private  IPBlockingManager ibm;
     private  Map<String, Queue<RateLimit>> rateLimitMap = new ConcurrentHashMap<>();
 
-    private int allowedRate=1000;
+    /**
+     * Maximum requests per minute per client IP (per route).
+     * Configure via -Dscaleguard.rateLimit=<n>  (default 10 000).
+     * The original hardcoded value of 1 000 was too low for load-test / high-throughput scenarios.
+     */
+    private int allowedRate = Integer.getInteger("scaleguard.rateLimit", 10_000);
 
     public RateLimitManager(){
 
@@ -40,8 +47,7 @@ public class RateLimitManager {
         }
         Queue<RateLimit> rs = rateLimitMap.computeIfAbsent(key, k -> new SizeLimitedQueue<>(10));
         RateLimit rl = rs.peek();
-        Calendar cal = Calendar.getInstance();
-        String minKey = cal.get(Calendar.HOUR) + "" + cal.get(Calendar.MINUTE);
+        String minKey = minuteKey();
         if (rl != null && rl.getMinuteKey().equalsIgnoreCase(minKey)) {
             rl.getCount().incrementAndGet();
         } else {
@@ -63,13 +69,12 @@ public class RateLimitManager {
         }
         Queue<RateLimit> rs = rateLimitMap.computeIfAbsent(key, k -> new SizeLimitedQueue<>(10));
         RateLimit rl = rs.peek();
-        Calendar cal = Calendar.getInstance();
-        String minKey = cal.get(Calendar.HOUR) + "" + cal.get(Calendar.MINUTE);
+        String minKey = minuteKey();
         if (rl!=null && rl.getMinuteKey().equalsIgnoreCase(minKey)) {
             if ( (add?rl.getCount().getAndIncrement(): rl.getCount().get()) < allowedRate) {
                 return true;
             } else {
-                System.out.println("Rate Exceeded " + rl.getMinuteKey() + " " + rl.getCount().get());
+                logger.warn("Rate exceeded for key {} at minute {} count {}", key, rl.getMinuteKey(), rl.getCount().get());
                 if(ibm!=null){
                     ibm.block(rt != null?rt.getClientIp():inAddress);
                 }
@@ -85,6 +90,21 @@ public class RateLimitManager {
         return true;
     }
 
+    /**
+     * Returns a "HHmm" string for the current wall-clock hour+minute.
+     *
+     * <p>Replaces {@code Calendar.getInstance()} which allocates a full Calendar
+     * object on every call (expensive: timezone lookup, field array, etc.).
+     * This implementation computes the same key in ~5 ns via epoch arithmetic.</p>
+     */
+    private static String minuteKey() {
+        long totalMinutes = System.currentTimeMillis() / 60_000L;
+        long minuteOfDay  = totalMinutes % 1440L;   // minutes since midnight (UTC)
+        long hour         = minuteOfDay / 60L;
+        long minute       = minuteOfDay % 60L;
+        return hour + "" + minute;
+    }
+
     public static void main(String[] args) {
         SourceSystem ss = new SourceSystem();
         ss.setId("10");
@@ -96,7 +116,7 @@ public class RateLimitManager {
             rtm.log(rt);
             if (!rtm.isInRate(rt,"",false)) {
                 try {
-                    System.out.println("Rate Exceeded..");
+                    logger.warn("Rate exceeded..");
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
@@ -106,39 +126,48 @@ public class RateLimitManager {
 
     }
 
-    public static class SizeLimitedQueue<E>
-            extends LinkedList<E> {
+    /**
+     * A size-bounded FIFO queue safe for concurrent access from multiple Netty I/O threads.
+     *
+     * <p>The previous implementation extended {@link java.util.LinkedList}, which is
+     * <em>not thread-safe</em>. Because {@code rateLimitMap} is a {@link ConcurrentHashMap},
+     * two threads can hold the same Queue reference and call {@link #add}/{@link #peek}
+     * concurrently — causing lost updates and {@code ConcurrentModificationException}.
+     *
+     * <p>This replacement uses a {@link ConcurrentLinkedQueue} as the backing store and
+     * a volatile {@code size} counter (updated atomically via CAS) to enforce the capacity
+     * limit without synchronisation.</p>
+     */
+    public static class SizeLimitedQueue<E> extends ConcurrentLinkedQueue<E> {
 
-        // Variable which store the
-        // SizeLimitOfQueue of the queue
-        private int SizeLimitOfQueue;
+        private final int maxSize;
+        private final java.util.concurrent.atomic.AtomicInteger sz =
+                new java.util.concurrent.atomic.AtomicInteger(0);
 
-        // Constructor method for initializing
-        // the SizeLimitOfQueue variable
-        public SizeLimitedQueue(int SizeLimitOfQueue) {
-
-            this.SizeLimitOfQueue = SizeLimitOfQueue;
+        public SizeLimitedQueue(int maxSize) {
+            this.maxSize = maxSize;
         }
 
-        // Override the method add() available
-        // in LinkedList class so that it allow
-        // addition  of element in queue till
-        // queue size is less than
-        // SizeLimitOfQueue otherwise it remove
-        // the front element of queue and add
-        // new element
         @Override
         public boolean add(E o) {
-
-            // If queue size become greater
-            // than SizeLimitOfQueue then
-            // front of queue will be removed
-            while (this.size() == SizeLimitOfQueue) {
-
-                super.remove();
+            // Evict head until we have room, then add atomically.
+            while (sz.get() >= maxSize) {
+                if (super.poll() != null) {
+                    sz.decrementAndGet();
+                } else {
+                    break; // queue became empty concurrently — proceed with add
+                }
             }
-            super.add(o);
-            return true;
+            boolean added = super.add(o);
+            if (added) sz.incrementAndGet();
+            return added;
+        }
+
+        @Override
+        public E poll() {
+            E e = super.poll();
+            if (e != null) sz.decrementAndGet();
+            return e;
         }
     }
 

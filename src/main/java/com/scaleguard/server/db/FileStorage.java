@@ -1,10 +1,15 @@
 package com.scaleguard.server.db;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 
 public class FileStorage {
+
+    private static final Logger LOG = LoggerFactory.getLogger(FileStorage.class);
 
     static {
         try {
@@ -33,7 +38,7 @@ public class FileStorage {
             }
             stmt.execute(sql);
         } catch (SQLException e) {
-            e.printStackTrace();
+            LOG.error("Failed to create cert_files table", e);
         }
     }
 
@@ -53,13 +58,13 @@ public class FileStorage {
                 insStmt.setString(3, content);
                 insStmt.executeUpdate();
             }
-            System.out.println("File stored successfully as String in db");
+            LOG.info("Cert file '{}' stored successfully for certificate '{}'", filename, certificateId);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Failed to store cert file '{}' for certificate '{}'", filename, certificateId, e);
         }
     }
 
-    public static String retrieveFileAsString(String certificateId,String filename) {
+    public static String retrieveFileAsString(String certificateId, String filename) {
         String sql = "SELECT data FROM cert_files WHERE certificate_id = ? and filename=? ORDER BY id DESC LIMIT 1";
         try (Connection conn = ConnectionUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -70,7 +75,7 @@ public class FileStorage {
                 return rs.getString("data");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Failed to retrieve cert file '{}' for certificate '{}'", filename, certificateId, e);
         }
         return null;
     }
@@ -81,9 +86,9 @@ public class FileStorage {
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, certificateId);
             int deleted = pstmt.executeUpdate();
-            System.out.println("Deleted " + deleted + " cert file(s) for " + certificateId);
+            LOG.info("Deleted {} cert file(s) for certificate '{}'", deleted, certificateId);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Failed to delete cert files for certificate '{}'", certificateId, e);
         }
     }
 
@@ -147,11 +152,11 @@ public class FileStorage {
                 "6FlWkWYtbt4pgdamlwVeZEW+LM7qZEJEsMNPrfC03APKmZsJgpWCDWOKZvkZcvjV\n" +
                 "uYkQ4omYCTX5ohy+knMjdOmdH9c7SpqEWBDC86fiNex+O0XOMEZSa8DA\n" +
                 "-----END CERTIFICATE-----\n");
-        String fileContent = retrieveFileAsString( "4c5a0c7e-0313-4113-9d3c-ade234f96106","server.crt");
+        String fileContent = retrieveFileAsString("4c5a0c7e-0313-4113-9d3c-ade234f96106", "server.crt");
         if (fileContent != null) {
-            System.out.println("Retrieved File Content:\n" + fileContent);
+            LOG.info("Retrieved cert file content (length={})", fileContent.length());
         } else {
-            System.out.println("File not found.");
+            LOG.warn("Cert file not found.");
         }
     }
 }

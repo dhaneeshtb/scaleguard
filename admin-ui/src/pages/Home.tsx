@@ -1,38 +1,44 @@
-import React, { useEffect, useState } from 'react';
-import Stats from '../components/Stats';
+import React, { useEffect, useMemo, useState } from 'react';
 import RootComponents from '../components/RootComponents';
 import QuickMapping from '../components/QuickMapping';
 import useSystemContext from '../contexts/SystemContext';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
-import { FaShieldAlt, FaServer, FaNetworkWired, FaCertificate, FaPlug, FaCheckCircle } from 'react-icons/fa';
-import { motion, AnimatePresence } from 'framer-motion';
+import { FiCpu, FiGitBranch, FiLayers, FiLock, FiServer } from 'react-icons/fi';
+import { motion } from 'framer-motion';
+import TrafficFlow from '../components/TrafficFlow';
+import Insights, { deriveInsights, StatEntry } from '../components/Insights';
+import { RouteTable, StatsKPIs } from '../components/Stats';
+
+function greeting() {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
 
 function Home() {
     const { properties } = useSystemContext() as any;
     const { auth } = useAuth() as any;
     const [counts, setCounts] = useState({ sources: 0, targets: 0, certs: 0, hostGroups: 0 });
     const [initialData, setInitialData] = useState<any>({ sourcesystems: null, targetsystems: null, hostgroups: null });
+    const [stats, setStats] = useState<StatEntry[] | null>(null);
     const [loading, setLoading] = useState(true);
-    const [loadPhase, setLoadPhase] = useState(0);
     const fetchedRef = React.useRef(false);
 
     useEffect(() => {
         if (!auth.data || fetchedRef.current) return;
         fetchedRef.current = true;
 
-        const loadCounts = async () => {
+        const load = async () => {
             setLoading(true);
-            setLoadPhase(0);
             try {
                 const headers = { Authorization: auth.data.token };
                 const host = auth.data.host;
-
-                const [srcRes, tgtRes, certRes, hgRes] = await Promise.allSettled([
+                const [srcRes, tgtRes, certRes, hgRes, statRes] = await Promise.allSettled([
                     axios.get(`${host}/config/sourcesystems?scaleguard=true`, { headers }),
                     axios.get(`${host}/config/targetsystems?scaleguard=true`, { headers }),
                     axios.get(`${host}/certificates?scaleguard=true`, { headers }),
                     axios.get(`${host}/config/hostgroups?scaleguard=true`, { headers }),
+                    axios.get(`${host}/stats?scaleguard=true`, { headers }),
                 ]);
 
                 const srcData = srcRes.status === 'fulfilled' ? srcRes.value.data.sourcesystems || [] : [];
@@ -46,180 +52,132 @@ function Home() {
                     hostGroups: hgData.length,
                 });
                 setInitialData({ sourcesystems: srcData, targetsystems: tgtData, hostgroups: hgData });
-                setLoadPhase(1);
-
-                await new Promise(r => setTimeout(r, 300));
-                setLoadPhase(2);
-
-                await new Promise(r => setTimeout(r, 200));
-                setLoadPhase(3);
+                setStats(statRes.status === 'fulfilled' && Array.isArray(statRes.value.data) ? statRes.value.data : []);
             } catch (e) {
-                console.error('Failed to load counts:', e);
-                setLoadPhase(3);
+                console.error('Failed to load overview:', e);
+                setStats([]);
             }
             setLoading(false);
         };
-        loadCounts();
+        load();
     }, [auth.data]);
 
-    const hostname = properties?.hostName?.value || 'Scaleguard';
-    const isFullyLoaded = loadPhase >= 3;
+    const hostname = properties?.hostName?.value || 'ScaleGuard';
+    const insights = useMemo(() => deriveInsights(stats, counts), [stats, counts]);
+    const warnings = insights.filter(i => i.level === 'warn').length;
+
+    const infra = [
+        { icon: FiServer, label: 'Sources', count: counts.sources, tint: 'text-cyan-500 dark:text-cyan-300' },
+        { icon: FiLayers, label: 'Upstreams', count: counts.targets, tint: 'text-violet-500 dark:text-violet-300' },
+        { icon: FiGitBranch, label: 'Host groups', count: counts.hostGroups, tint: 'text-amber-500 dark:text-amber-300' },
+        { icon: FiLock, label: 'Certificates', count: counts.certs, tint: 'text-emerald-500 dark:text-emerald-300' },
+    ];
 
     return (
-        <div className='min-h-screen'>
-            {/* Hero Section */}
-            <div className="relative overflow-hidden rounded-2xl mx-2 mt-2 mb-6">
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"></div>
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-teal-500/10 via-transparent to-blue-500/10"></div>
+        <div className="space-y-6">
+            {/* Hero */}
+            <section className="sg-card sg-ring-gradient overflow-hidden">
+                <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-teal-400/20 blur-3xl dark:bg-teal-400/10" />
+                <div className="pointer-events-none absolute -bottom-32 right-10 h-80 w-80 rounded-full bg-violet-500/20 blur-3xl dark:bg-violet-500/10" />
 
-                {/* Grid pattern overlay */}
-                <div className="absolute inset-0 opacity-[0.03]" style={{
-                    backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)',
-                    backgroundSize: '32px 32px'
-                }}></div>
-
-                <div className="relative px-6 py-8 sm:px-8 sm:py-10">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-teal-500/10 rounded-lg border border-teal-500/20">
-                                    <FaShieldAlt className="text-teal-400 text-lg" />
-                                </div>
-                                <div>
-                                    <p className="text-xs font-medium text-teal-400 uppercase tracking-widest">Load Balancer & Reverse Proxy</p>
-                                    <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">{hostname}</h1>
-                                </div>
-                            </div>
-                            <p className="text-slate-400 text-sm max-w-lg">
-                                Manage source routing, target upstreams, SSL certificates, and DNS records from a unified control plane.
-                            </p>
-                        </div>
-                        <div className="flex gap-2 items-center">
-                            {loading && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.8 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.8 }}
-                                    className="flex items-center gap-2 px-3 py-1.5 bg-teal-500/10 border border-teal-500/20 rounded-full"
-                                >
-                                    <div className="relative w-3.5 h-3.5">
-                                        <div className="absolute inset-0 rounded-full border-2 border-teal-500/30"></div>
-                                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-teal-400 animate-spin"></div>
-                                    </div>
-                                    <span className="text-[11px] font-medium text-teal-300">
-                                        {loadPhase === 0 ? 'Loading infrastructure…' : loadPhase === 1 ? 'Loading metrics…' : 'Initializing…'}
+                <div className="relative grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+                    <div className="flex flex-col justify-between p-6 sm:p-8">
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 py-1 text-[11px] font-semibold text-teal-700 dark:text-teal-300">
+                                    <FiCpu className="text-[11px]" /> Intelligent load balancer
+                                </span>
+                                {loading ? (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300/60 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:border-white/10">
+                                        <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-slate-400/40 border-t-teal-400" /> Syncing
                                     </span>
-                                </motion.div>
-                            )}
-                            {isFullyLoaded && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.8 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full"
-                                >
-                                    <FaCheckCircle className="text-emerald-400 text-[10px]" />
-                                    <span className="text-[11px] font-medium text-emerald-300">All systems operational</span>
-                                </motion.div>
-                            )}
-                            <QuickMapping onMappingComplete={() => { window.location.reload() }} />
+                                ) : warnings === 0 ? (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> All systems nominal
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> {warnings} item{warnings > 1 ? 's' : ''} need attention
+                                    </span>
+                                )}
+                            </div>
+
+                            <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">{greeting()}, {auth?.data?.username || 'admin'}</p>
+                            <h1 className="mt-1 break-words text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-[40px] sm:leading-[1.1]">
+                                <span className="inline-block pr-1 pb-1 dark:bg-gradient-to-r dark:from-white dark:via-teal-100 dark:to-cyan-300 dark:bg-clip-text dark:text-transparent">{hostname}</span>
+                            </h1>
+                            <p className="mt-3 max-w-md text-[14px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                One control plane for routing, upstream balancing, TLS and DNS — watching every route in real time.
+                            </p>
+
+                            <div className="mt-6">
+                                <QuickMapping onMappingComplete={() => { window.location.reload(); }} />
+                            </div>
+                        </div>
+
+                        <div className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200/80 bg-slate-200/80 dark:border-white/[0.06] dark:bg-white/[0.06] sm:grid-cols-4">
+                            {infra.map((c, i) => {
+                                const Icon = c.icon;
+                                return (
+                                    <motion.div
+                                        key={c.label}
+                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.06 * i }}
+                                        className="bg-white/80 px-4 py-3.5 dark:bg-slate-900/70"
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <Icon className={`text-[12px] ${c.tint}`} />
+                                            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{c.label}</span>
+                                        </div>
+                                        {loading
+                                            ? <div className="mt-2 h-6 w-10 animate-pulse rounded bg-slate-200 dark:bg-white/[0.06]" />
+                                            : <AnimatedNumber value={c.count} />}
+                                    </motion.div>
+                                );
+                            })}
                         </div>
                     </div>
 
-                    {/* Infrastructure Counter Cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-                        {[
-                            { icon: <FaServer />, label: "Source Systems", count: counts.sources, color: "blue", delay: 0 },
-                            { icon: <FaPlug />, label: "Target Upstreams", count: counts.targets, color: "violet", delay: 0.08 },
-                            { icon: <FaCertificate />, label: "SSL Certificates", count: counts.certs, color: "emerald", delay: 0.16 },
-                            { icon: <FaNetworkWired />, label: "Host Groups", count: counts.hostGroups, color: "amber", delay: 0.24 },
-                        ].map((card, i) => (
-                            <motion.div
-                                key={card.label}
-                                initial={{ opacity: 0, y: 12 }}
-                                animate={{ opacity: loadPhase >= 1 ? 1 : 0.4, y: 0 }}
-                                transition={{ delay: card.delay, duration: 0.4, ease: "easeOut" }}
-                            >
-                                <InfraCard
-                                    icon={card.icon}
-                                    label={card.label}
-                                    count={card.count}
-                                    color={card.color}
-                                    loading={loadPhase < 1}
-                                />
-                            </motion.div>
-                        ))}
+                    <div className="relative min-h-[300px] border-t border-slate-200/70 p-4 dark:border-white/[0.05] lg:border-l lg:border-t-0 sm:p-6">
+                        <div className="absolute left-6 top-5 flex items-center gap-2 sm:left-8">
+                            <span className="relative flex h-2 w-2">
+                                <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-teal-400" />
+                                <span className="relative inline-flex h-2 w-2 rounded-full bg-teal-400" />
+                            </span>
+                            <span className="sg-eyebrow">Live topology</span>
+                        </div>
+                        <div className="h-full pt-6">
+                            <TrafficFlow sources={initialData.sourcesystems} targets={initialData.targetsystems} loading={loading} />
+                        </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            {/* Performance Section */}
-            <motion.div
-                className="px-2 mb-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: loadPhase >= 2 ? 1 : 0, y: loadPhase >= 2 ? 0 : 20 }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-                <div className="flex items-center gap-2 mb-4 px-2">
-                    <div className="h-1 w-6 bg-gradient-to-r from-teal-400 to-cyan-400 rounded-full"></div>
-                    <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">Performance Overview</h2>
+            {/* Performance */}
+            <section className="space-y-4">
+                <SectionHeader title="Performance" subtitle="Aggregated across every route since the last restart" />
+                <StatsKPIs stats={stats || []} loading={loading} />
+                <div className="grid gap-4 xl:grid-cols-3">
+                    <div className="xl:col-span-2"><RouteTable stats={stats || []} loading={loading} /></div>
+                    <Insights insights={insights} loading={loading} />
                 </div>
-                <Stats />
-            </motion.div>
+            </section>
 
-            {/* Systems Management */}
-            <motion.div
-                className="px-2"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: loadPhase >= 3 ? 1 : 0, y: loadPhase >= 3 ? 0 : 20 }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-                <div className="flex items-center gap-2 mb-2 px-2">
-                    <div className="h-1 w-6 bg-gradient-to-r from-violet-400 to-purple-400 rounded-full"></div>
-                    <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">System Management</h2>
-                </div>
-                {loadPhase >= 1 && <RootComponents initialData={initialData} />}
-            </motion.div>
+            {/* Systems */}
+            <section className="space-y-4">
+                <SectionHeader title="Routing configuration" subtitle="Sources, upstream targets and host groups" />
+                {!loading && <RootComponents initialData={initialData} />}
+                {loading && <div className="sg-card h-64 animate-pulse" />}
+            </section>
         </div>
     );
 }
 
-function InfraCard({ icon, label, count, color, loading }: { icon: React.ReactNode; label: string; count: number; color: string; loading?: boolean }) {
-    const colorMap: Record<string, { bg: string; text: string; border: string; shimmer: string }> = {
-        blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', shimmer: 'from-blue-500/20' },
-        violet: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20', shimmer: 'from-violet-500/20' },
-        emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20', shimmer: 'from-emerald-500/20' },
-        amber: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20', shimmer: 'from-amber-500/20' },
-    };
-    const c = colorMap[color] || colorMap.blue;
-
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
     return (
-        <div className={`${c.bg} border ${c.border} rounded-xl p-4 backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] relative overflow-hidden`}>
-            {/* Shimmer overlay when loading */}
-            {loading && (
-                <div className="absolute inset-0 overflow-hidden">
-                    <div
-                        className={`absolute inset-0 -translate-x-full animate-[shimmer_1.5s_ease-in-out_infinite] bg-gradient-to-r from-transparent ${c.shimmer} to-transparent`}
-                    ></div>
-                </div>
-            )}
-
-            <div className="flex items-center gap-2 mb-2 relative">
-                <span className={`${c.text} text-sm`}>{icon}</span>
-                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{label}</span>
-            </div>
-
-            <div className="relative">
-                {loading ? (
-                    <div className="h-8 flex items-center">
-                        <div className="flex gap-1 items-end">
-                            <div className="w-1.5 h-4 bg-slate-600 rounded-full animate-pulse"></div>
-                            <div className="w-1.5 h-6 bg-slate-500 rounded-full animate-pulse" style={{ animationDelay: '0.15s' }}></div>
-                            <div className="w-1.5 h-3 bg-slate-600 rounded-full animate-pulse" style={{ animationDelay: '0.3s' }}></div>
-                        </div>
-                    </div>
-                ) : (
-                    <AnimatedNumber value={count} />
-                )}
+        <div className="flex items-end justify-between gap-4 px-1">
+            <div>
+                <h2 className="text-[17px] font-semibold tracking-tight text-slate-900 dark:text-white">{title}</h2>
+                {subtitle && <p className="mt-0.5 text-[12.5px] text-slate-500 dark:text-slate-400">{subtitle}</p>}
             </div>
         </div>
     );
@@ -230,32 +188,20 @@ function AnimatedNumber({ value }: { value: number }) {
 
     useEffect(() => {
         if (value === 0) { setDisplayed(0); return; }
-        const duration = 600;
-        const steps = 20;
-        const increment = value / steps;
-        let current = 0;
-        const timer = setInterval(() => {
-            current += increment;
-            if (current >= value) {
-                setDisplayed(value);
-                clearInterval(timer);
-            } else {
-                setDisplayed(Math.floor(current));
-            }
-        }, duration / steps);
-        return () => clearInterval(timer);
+        const duration = 700;
+        const start = performance.now();
+        let raf = 0;
+        const tick = (t: number) => {
+            const p = Math.min(1, (t - start) / duration);
+            const eased = 1 - Math.pow(1 - p, 3);
+            setDisplayed(Math.round(value * eased));
+            if (p < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
     }, [value]);
 
-    return (
-        <motion.p
-            className="text-2xl font-bold text-white"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
-        >
-            {displayed.toLocaleString()}
-        </motion.p>
-    );
+    return <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 tabular-nums dark:text-white">{displayed.toLocaleString()}</p>;
 }
 
 export default Home;

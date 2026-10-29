@@ -9,6 +9,15 @@ public interface CacheManager {
           void save(TargetSystem info,String key, Object msg);
      void saveFresh(TargetSystem info,String key, Object msg);
 
+     /**
+      * Store a fresh response with an explicit TTL in seconds.
+      * Implementations that do not support per-entry TTL may ignore {@code ttlSeconds}
+      * and fall back to their configured default.
+      */
+     default void saveFresh(TargetSystem info, String key, Object msg, int ttlSeconds) {
+         saveFresh(info, key, msg);
+     }
+
      class TimedCacheElement implements Serializable{
 
           private long cacheTime;

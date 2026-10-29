@@ -6,8 +6,11 @@ import com.scaleguard.server.http.router.TargetSystem;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TCPChannelFrontendHandler extends ChannelInboundHandlerAdapter {
+    private static final Logger logger = LoggerFactory.getLogger(TCPChannelFrontendHandler.class);
 
     private final String sourceId;
     private final int remotePort;
@@ -25,7 +28,7 @@ public class TCPChannelFrontendHandler extends ChannelInboundHandlerAdapter {
     public void channelActive(ChannelHandlerContext ctx) {
         final Channel inboundChannel = ctx.channel();
 
-        System.out.println(inboundChannel.remoteAddress()+":"+remotePort);
+        logger.debug("Inbound channel remote address: {}:{}", inboundChannel.remoteAddress(), remotePort);
 
         TargetSystem ts = RouteTable.getInstance().findTarget(sourceId).getTargetSystem();
 
@@ -78,7 +81,7 @@ public class TCPChannelFrontendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        cause.printStackTrace();
+        logger.error("Channel exception caught", cause);
         closeOnFlush(ctx.channel());
     }
 

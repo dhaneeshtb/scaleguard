@@ -3,13 +3,16 @@ package com.scaleguard.server.http.reverse;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 public class ScaleGuardSSLContext {
+    private static final Logger logger = LoggerFactory.getLogger(ScaleGuardSSLContext.class);
     public static SSLContext  get(){
         SSLContext context=null;
         try {
             context = create();
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to create SSL context", e);
         }
         return context;
     }

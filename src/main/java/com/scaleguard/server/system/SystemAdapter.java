@@ -5,6 +5,8 @@ import com.scaleguard.server.certificates.CertificatesRoute;
 import com.scaleguard.server.db.SystemProperty;
 import com.scaleguard.server.db.SystemPropertyDB;
 import io.netty.handler.ssl.CertificateStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.util.List;
@@ -12,6 +14,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class SystemAdapter {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SystemAdapter.class);
     public static SystemProperty configure(JsonNode node,boolean failOnError) throws Exception {
         String d = node.get("hostName").asText();
         String id = node.has("id")?node.get("id").asText():null;
@@ -26,15 +30,15 @@ public class SystemAdapter {
     public static boolean checkConfiguration(String hostName) throws Exception {
        CertificateStore.CertificateInfo certInfo =  CertificateStore.get(hostName);
        if(certInfo==null){
-           System.out.println("Certificate not found for :"+hostName);
+           LOG.warn("Certificate not found for: {}", hostName);
            return false;
        }
-       System.out.println("Certificate found for :"+certInfo.getId());
+       LOG.debug("Certificate found for: {}", certInfo.getId());
        SystemProperty sp = getHostNameProperty();
        if(certInfo!=null && sp!=null){
-           System.out.println("System Property Configuration found for  hostName :"+sp.getValue());
+           LOG.debug("System Property Configuration found for hostName: {}", sp.getValue());
            if(!sp.getValue().equalsIgnoreCase(hostName)){
-               System.out.println("Reconfiguration needed :"+hostName);
+               LOG.info("Reconfiguration needed for: {}", hostName);
                return false;
            }else{
                return true;
@@ -59,7 +63,7 @@ public class SystemAdapter {
         String hostName = address.getHostName();
         String ip = address.getHostAddress();
         if (!hostName.equalsIgnoreCase(ip) && SystemManager.readNetworks().contains(ip)) {
-            System.out.println("System matched with the host ip");
+            LOG.info("System matched with the host ip for: {}", d);
             if (!"localhost".equalsIgnoreCase(hostName)) {
                 String certificateId = UUID.randomUUID().toString();
                 CertificatesRoute.getCm().orderCertificate(List.of(hostName), certificateId);
@@ -78,7 +82,7 @@ public class SystemAdapter {
                     SystemPropertyDB.getInstance().create(sp);
             }
         } else {
-            System.out.println("couldnt identify the system configuration for " + d);
+            LOG.warn("Could not identify system configuration for: {}", d);
             if(failOnError){
                 throw new RuntimeException("hostName "+hostName+ "  is not mapped to scaleguard");
             }

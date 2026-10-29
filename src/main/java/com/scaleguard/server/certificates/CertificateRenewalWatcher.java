@@ -305,24 +305,25 @@ public class CertificateRenewalWatcher {
 
                 if (timeUntilExpiry <= renewThresholdMs) {
                     long daysRemaining = TimeUnit.MILLISECONDS.toDays(timeUntilExpiry);
+                    // Check status BEFORE deciding to renew — only renew "valid" certs
+                    // that are near expiry; skip pending/invalid orders.
+                    if (payload.has("json")) {
+                        JsonNode inner = payload.get("json");
+                        if (inner.isTextual()) {
+                            inner = mapper.readTree(inner.asText());
+                        }
+                        if (inner.has("status")) {
+                            String status = inner.get("status").asText();
+                            if (!"valid".equalsIgnoreCase(status)) {
+                                LOG.info("Certificate {} expires in {} days but has status '{}' — skipping renewal",
+                                        certRecord.getId(), daysRemaining, status);
+                                return false;
+                            }
+                        }
+                    }
                     LOG.info("Certificate {} expires in {} days (threshold: {} days) — eligible for renewal",
                             certRecord.getId(), daysRemaining, RENEW_BEFORE_DAYS);
                     return true;
-                }
-            }
-
-            // For non-expired certificates, only renew those with a VALID ACME order status.
-            // Don't renew pending/invalid orders that haven't expired yet.
-            if (payload.has("json")) {
-                JsonNode inner = payload.get("json");
-                if (inner.isTextual()) {
-                    inner = mapper.readTree(inner.asText());
-                }
-                if (inner.has("status")) {
-                    String status = inner.get("status").asText();
-                    if (!"valid".equalsIgnoreCase(status)) {
-                        return false; // Not expired and not valid — skip
-                    }
                 }
             }
 

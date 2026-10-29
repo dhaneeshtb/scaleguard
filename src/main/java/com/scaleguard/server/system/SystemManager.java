@@ -38,8 +38,7 @@ public class SystemManager {
             LOGGER.info("hostname {} resolved address {}", hostName, host);
             return readNetworks().contains(host);
         }catch (Exception e){
-            e.printStackTrace();
-            LOGGER.info("hostname failed to resolve {}", hostName);
+            LOGGER.error("Failed to resolve hostname '{}'", hostName, e);
             return false;
         }
     }
@@ -82,7 +81,7 @@ public class SystemManager {
             }
             return publicIps;
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Failed to read network interfaces", e);
         }
         return List.of();
     }

@@ -13,8 +13,11 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TunnelBook {
+    private static final Logger logger = LoggerFactory.getLogger(TunnelBook.class);
 
     public static void removeSession(String name) {
          sessionMap.remove(name);
@@ -152,7 +155,7 @@ public class TunnelBook {
             try {
                 s.close();
             } catch (IOException e) {
-               e.printStackTrace();
+               logger.error("Failed to close SSH session for tunnel", e);
             }
         }
     }

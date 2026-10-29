@@ -115,6 +115,33 @@
     </dependency>
 
     <dependency>
+      <groupId>org.duckdb</groupId>
+      <artifactId>duckdb_jdbc</artifactId>
+      <version>1.1.3</version>
+    </dependency>
+
+    <!--
+      Native transports — unlocks OS-level I/O optimisations:
+        * Linux:  Epoll + SO_REUSEPORT (one acceptor per CPU core, no accept-lock contention)
+        * macOS:  KQueue (replaces NIO selector with BSD kernel event queue)
+      Each JAR ships with the matching .so / .dylib as a classpath resource;
+      Netty extracts it to a tmp dir and loads it at startup.
+      classifier "linux-x86_64" / "osx-x86_64" are fat JARs that include the native lib.
+    -->
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-epoll</artifactId>
+      <version>4.1.105.Final</version>
+      <classifier>linux-x86_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-kqueue</artifactId>
+      <version>4.1.105.Final</version>
+      <classifier>osx-x86_64</classifier>
+    </dependency>
+
+    <dependency>
       <groupId>org.apache.kafka</groupId>
       <artifactId>kafka-clients</artifactId>
       <version>3.7.1</version>
@@ -253,6 +280,7 @@
                 <buildArg>--initialize-at-build-time=io.netty.util.internal.logging.Slf4JLoggerFactory$NopInstanceHolder</buildArg>
                 <buildArg>--initialize-at-run-time=com.fasterxml.jackson</buildArg>
                 <buildArg>--initialize-at-run-time=org.sqlite</buildArg>
+                <buildArg>--initialize-at-run-time=org.duckdb</buildArg>
                 <buildArg>--initialize-at-run-time=org.postgresql</buildArg>
                 <buildArg>--initialize-at-run-time=java.sql.DriverManager</buildArg>
                 <buildArg>-H:ReflectionConfigurationFiles=${project.basedir}/native-config/reflect-config.json</buildArg>

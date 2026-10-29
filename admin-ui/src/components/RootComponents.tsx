@@ -21,16 +21,20 @@ export default function RootComponents({ initialData }: { initialData?: { source
     ];
 
     return (
-        <div className="bg-white/5 dark:bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-200/60 dark:border-slate-700/50 overflow-hidden">
+        <div className="sg-card overflow-hidden">
             <Tabs
                 index={tabIndex}
                 onChange={(index) => onChangeTabIndex(index)}
-                colorScheme='teal'
-                className='dark:text-gray-400'
+                variant='unstyled'
+                isLazy
             >
-                <TabList className="px-4 pt-3 border-b border-slate-200/40 dark:border-slate-700/40">
+                <TabList className="flex gap-1 overflow-x-auto border-b border-slate-200/70 px-3 py-2.5 dark:border-white/[0.06]">
                     {tabs.map((tab, i) => (
-                        <Tab key={i} className="flex items-center gap-2 !text-xs !font-medium !uppercase !tracking-wider">
+                        <Tab
+                            key={i}
+                            className="flex shrink-0 items-center gap-2 !rounded-lg !px-3 !py-1.5 !text-[13px] !font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                            _selected={{ bg: 'rgba(45,212,191,0.12)', color: 'var(--sg-text)', boxShadow: 'inset 0 0 0 1px rgba(45,212,191,0.28)' }}
+                        >
                             {tab.icon}
                             {tab.label}
                         </Tab>

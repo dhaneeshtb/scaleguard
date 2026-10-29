@@ -5,6 +5,8 @@ import com.scaleguard.server.db.DBModelSystem;
 import com.scaleguard.server.db.HostGroupsDB;
 import com.scaleguard.server.db.SourceSystemDB;
 import com.scaleguard.server.db.TargetSystemDB;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
@@ -12,6 +14,7 @@ import java.util.stream.Collectors;
 
 public class DBSystemLoader implements SystemLoader {
 
+  private static final Logger LOG = LoggerFactory.getLogger(DBSystemLoader.class);
   public static ObjectMapper mapper = new ObjectMapper();
 
   public static void main(String[] args) {
@@ -34,7 +37,7 @@ public class DBSystemLoader implements SystemLoader {
 
       List<HostGroup> hgs= dbl.loadHostGroups();
 
-      System.out.println(hgs.toString());
+      LOG.info("Loaded host groups: {}", hgs);
 
 
     } catch (Exception e) {
@@ -53,7 +56,7 @@ public class DBSystemLoader implements SystemLoader {
        }
      }).collect(Collectors.toList());
     } catch (Exception e) {
-      e.printStackTrace();
+      LOG.error("Failed to load source systems", e);
     }
     return null;
   }
@@ -97,7 +100,7 @@ public class DBSystemLoader implements SystemLoader {
         }
       }).collect(Collectors.toList());
     } catch (Exception e) {
-      e.printStackTrace();
+      LOG.error("Failed to load host groups", e);
     }
     return null;
   }

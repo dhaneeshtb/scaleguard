@@ -20,8 +20,11 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.LastHttpContent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HttpClientHandler extends SimpleChannelInboundHandler<HttpObject> {
+    private static final Logger logger = LoggerFactory.getLogger(HttpClientHandler.class);
 
     @Override
     public void channelRead0(ChannelHandlerContext ctx, HttpObject msg) {
@@ -36,7 +39,7 @@ public class HttpClientHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        cause.printStackTrace();
+        logger.error("Exception in HTTP client handler", cause);
         ctx.close();
     }
 }

@@ -1,11 +1,15 @@
 package com.scaleguard.server.db;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 
 public class ClientInfoEntriesDB extends DBManager<ClientInfoEntry> {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ClientInfoEntriesDB.class);
     private static ClientInfoEntriesDB _db = new ClientInfoEntriesDB();
     private boolean isInited = false;
 
@@ -30,29 +34,29 @@ public class ClientInfoEntriesDB extends DBManager<ClientInfoEntry> {
             return;
         }
         String sql = ConnectionUtil.isPostgres() ? "CREATE TABLE IF NOT EXISTS clientinfos (\n"
-                + "	id text PRIMARY KEY,\n"
-                + "	name text NOT NULL,\n"
-                + "	description text,\n"
-                + "	appid text NOT NULL,\n"
-                + "	clientid text NOT NULL,\n"
-                + "	clientsecret text NOT NULL,\n"
-                + "	payload text,\n"
-                + "	expiry bigint,\n"
-                + "	uts bigint,\n"
-                + "	mts bigint\n"
+                + "\tid text PRIMARY KEY,\n"
+                + "\tname text NOT NULL,\n"
+                + "\tdescription text,\n"
+                + "\tappid text NOT NULL,\n"
+                + "\tclientid text NOT NULL,\n"
+                + "\tclientsecret text NOT NULL,\n"
+                + "\tpayload text,\n"
+                + "\texpiry bigint,\n"
+                + "\tuts bigint,\n"
+                + "\tmts bigint\n"
                 + ");" :
 
                 "CREATE TABLE IF NOT EXISTS clientinfos (\n"
-                        + "	id text PRIMARY KEY,\n"
-                        + "	name text NOT NULL,\n"
-                        + "	description text,\n"
-                        + "	appid text NOT NULL,\n"
-                        + "	clientid text NOT NULL,\n"
-                        + "	clientsecret text NOT NULL,\n"
-                        + "	payload text,\n"
-                        + "	expiry integer,\n"
-                        + "	uts integer,\n"
-                        + "	mts integer\n"
+                        + "\tid text PRIMARY KEY,\n"
+                        + "\tname text NOT NULL,\n"
+                        + "\tdescription text,\n"
+                        + "\tappid text NOT NULL,\n"
+                        + "\tclientid text NOT NULL,\n"
+                        + "\tclientsecret text NOT NULL,\n"
+                        + "\tpayload text,\n"
+                        + "\texpiry integer,\n"
+                        + "\tuts integer,\n"
+                        + "\tmts integer\n"
                         + ");";
 
         String indexs = "CREATE INDEX IF NOT EXISTS client_name_idx ON clientinfos (name);\n" +
@@ -68,8 +72,7 @@ public class ClientInfoEntriesDB extends DBManager<ClientInfoEntry> {
             isInited = true;
 
         } catch (SQLException e) {
-            e.printStackTrace();
-            System.out.println(e.getMessage());
+            LOG.error("Failed to initialise clientinfos table: {}", e.getMessage(), e);
         }
     }
 }

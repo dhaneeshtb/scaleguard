@@ -122,8 +122,7 @@ public class ClientInfo {
             LOGGER.info("loading entries from db");
             ClientInfoEntriesDB.getInstance().readAll().forEach(r -> add(r.getName(), r.getDescription(), r.getAppid(), r.getClientid(), r.getClientsecret(), r.getExpiry(), r.getId(), false));
         } catch (Exception e) {
-            e.printStackTrace();
-            LOGGER.info("error loading entries from db", e);
+            LOGGER.error("error loading client info entries from db", e);
         }
     }
 

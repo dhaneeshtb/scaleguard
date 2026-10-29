@@ -13,7 +13,11 @@ import io.netty.handler.stream.ChunkedWriteHandler;
 
 import java.net.URI;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class NettyHttpWSProxy {
+    private static final Logger logger = LoggerFactory.getLogger(NettyHttpWSProxy.class);
     private final int port;
     private final String wsBackendUrl;
 
@@ -41,7 +45,7 @@ public class NettyHttpWSProxy {
                     });
 
             Channel channel = bootstrap.bind(port).sync().channel();
-            System.out.println("Proxy server started on port " + port);
+            logger.info("Proxy server started on port {}", port);
             channel.closeFuture().sync();
         } finally {
             bossGroup.shutdownGracefully();
@@ -53,6 +57,7 @@ public class NettyHttpWSProxy {
 }
 
 class HttpProxyServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+    private static final Logger logger = LoggerFactory.getLogger(HttpProxyServerHandler.class);
     private final String wsBackendUrl;
     Channel remoteChannel;
 
@@ -112,7 +117,7 @@ class HttpProxyServerHandler extends SimpleChannelInboundHandler<FullHttpRequest
                     }
                 });
             } else {
-                System.err.println("WebSocket handshake failed");
+                logger.error("WebSocket handshake failed");
             }
         });
 
@@ -166,6 +171,7 @@ class HttpProxyServerHandler extends SimpleChannelInboundHandler<FullHttpRequest
 }
 
 class HttpWebSocketProxyBackendHandler extends SimpleChannelInboundHandler<Object> {
+    private static final Logger logger = LoggerFactory.getLogger(HttpWebSocketProxyBackendHandler.class);
     private final Channel clientChannel;
     private final WebSocketClientHandshaker handshaker;
 
@@ -190,7 +196,7 @@ class HttpWebSocketProxyBackendHandler extends SimpleChannelInboundHandler<Objec
         if (msg instanceof WebSocketFrame) {
             clientChannel.writeAndFlush(((WebSocketFrame) msg).retain()).addListener(future -> {
                 if (!future.isSuccess()) {
-                    future.cause().printStackTrace();
+                    logger.error("Failed to forward WebSocket frame to client", future.cause());
                 }
             });
         }
@@ -198,7 +204,7 @@ class HttpWebSocketProxyBackendHandler extends SimpleChannelInboundHandler<Objec
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        cause.printStackTrace();
+        logger.error("Unexpected exception in WebSocket proxy backend", cause);
         ctx.close();
     }
 }

@@ -70,19 +70,19 @@ public class RouteLoggerTest {
         RouteLogger.RouteStats rs = new RouteLogger.RouteStats("test-key");
 
         rs.addRT(100);
-        assertEquals(1, rs.getCount().get());
+        assertEquals(1, rs.getCount());
         assertEquals(100, rs.getMinTime());
         assertEquals(100, rs.getMaxTime());
         assertEquals(100.0, rs.getAverageRT(), 0.01);
 
         rs.addRT(200);
-        assertEquals(2, rs.getCount().get());
+        assertEquals(2, rs.getCount());
         assertEquals(100, rs.getMinTime());
         assertEquals(200, rs.getMaxTime());
         assertEquals(150.0, rs.getAverageRT(), 0.01);
 
         rs.addRT(50);
-        assertEquals(3, rs.getCount().get());
+        assertEquals(3, rs.getCount());
         assertEquals(50, rs.getMinTime());
         assertEquals(200, rs.getMaxTime());
     }

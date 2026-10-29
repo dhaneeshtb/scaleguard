@@ -36,8 +36,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class HttpClient {
+    private static final Logger logger = LoggerFactory.getLogger(HttpClient.class);
 
     private final SourceSystem sourceSystem;
     private Bootstrap b;
@@ -69,7 +72,7 @@ public final class HttpClient {
                     .channel(NioSocketChannel.class)
                     .handler(new HttpClientInitializer(sslCtx));
         }catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Failed to initialise HTTP client bootstrap", e);
         }
     }
 
@@ -80,7 +83,7 @@ public final class HttpClient {
         Channel ch = b.connect(ts.getHost(),Integer.parseInt(ts.getPort())).sync().channel();
 
 
-        System.out.println(ch.id());
+        logger.debug("HTTP client channel id: {}", ch.id());
         // Prepare the HTTP request.
         ByteBuf bbuf = Unpooled.copiedBuffer(message, StandardCharsets.UTF_8);
 
@@ -107,7 +110,7 @@ public final class HttpClient {
         ch.closeFuture().addListener(new GenericFutureListener<Future<? super Void>>() {
             @Override
             public void operationComplete(Future<? super Void> future) throws Exception {
-                System.out.println("Channel closed ....");
+                logger.debug("HTTP client channel closed");
             }
         });
     }

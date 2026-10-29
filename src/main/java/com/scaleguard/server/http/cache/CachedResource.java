@@ -4,6 +4,9 @@ public class CachedResource {
     private String pattern;
     private String method;
 
+    /** Cache TTL in seconds. Defaults to 300 (5 minutes) if not configured. */
+    private int ttl = 300;
+
     public boolean isCached() {
         return cached;
     }
@@ -68,4 +71,12 @@ public class CachedResource {
     }
 
     private String keyLookupClass;
+
+    public int getTtl() {
+        return ttl > 0 ? ttl : 300;
+    }
+
+    public void setTtl(int ttl) {
+        this.ttl = ttl;
+    }
 }

@@ -22,9 +22,10 @@ public class AsyncEngineRoute implements RequestRoute {
         if(method.equalsIgnoreCase("delete")){
 
             String[] tuples = uri.split("/");
-            String id =!tuples[tuples.length-1].equalsIgnoreCase("dns")?tuples[tuples.length-1]:null;
+            // (previously removed a DNS record with this id instead of the async engine)
+            String id =!tuples[tuples.length-1].equalsIgnoreCase("asyncengines")?tuples[tuples.length-1]:null;
             if(id!=null){
-                DNSAddressBook.remove(id);
+                AsyncEngines.remove(id);
             }
             return RequestRoutingResponse.succes("{}");
         }else if(method.equalsIgnoreCase("post")){

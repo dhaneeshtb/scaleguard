@@ -303,6 +303,9 @@ public class ConfigManager {
     private static void copy(Object source,Object target){
         Field[] fields = source.getClass().getDeclaredFields();
         for(Field f:fields){
+            int mod = f.getModifiers();
+            // runtime state (transient, e.g. a host's passive-health record) and constants are never copied
+            if (java.lang.reflect.Modifier.isStatic(mod) || java.lang.reflect.Modifier.isTransient(mod)) continue;
             f.setAccessible(true);
             try {
                 Object o=f.get(source);

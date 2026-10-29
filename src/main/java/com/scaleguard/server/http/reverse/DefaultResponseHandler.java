@@ -115,9 +115,10 @@ public class DefaultResponseHandler {
                     type = "quickmapping";
                 }
 
+                com.fasterxml.jackson.databind.JsonNode saved = null;
                 if (request.method().name().equalsIgnoreCase("post")||request.method().name().equalsIgnoreCase("delete")) {
                     try {
-                        ConfigManager.update(type,request.method().name(),params, body);
+                        saved = ConfigManager.update(type,request.method().name(),params, body);
                     } catch (Exception e) {
                         handleFailure(ctx, e.getMessage());
                         return;
@@ -127,7 +128,8 @@ public class DefaultResponseHandler {
                     handleConfig(ctx,type,params);
                     return;
                 }
-                handleSuccess(ctx,"{}");
+                // Return the saved record (with its generated id) so API clients don't have to re-list to find it.
+                handleSuccess(ctx, saved != null ? saved.toString() : "{}");
                 return;
             }else {
 

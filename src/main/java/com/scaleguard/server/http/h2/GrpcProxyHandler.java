@@ -3,6 +3,7 @@ package com.scaleguard.server.http.h2;
 import com.scaleguard.server.http.reverse.InboundMessageHandler;
 import com.scaleguard.server.http.reverse.ScaleguardClientAuthHandler;
 import com.scaleguard.server.http.router.HostGroup;
+import com.scaleguard.server.http.router.PassiveHealthManager;
 import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.http.router.TargetSystem;
@@ -61,6 +62,8 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
     private boolean refused;      // answered locally; discard the rest of the request
     private boolean responseStarted;
     private boolean responseEnded;
+    private HostGroup backendHost;
+    private boolean healthRecorded;
 
     GrpcProxyHandler(int port) {
         this.port = port;
@@ -137,6 +140,8 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
 
         TargetSystem ts = rt.getTargetSystem();
         HostGroup hg = ts.getHostGroup();
+        backendHost = hg;
+        rt.setSelectedHost(hg);
         String host = hg != null ? hg.getHost() : ts.getHost();
         String portStr = hg != null ? hg.getPort() : ts.getPort();
         int backendPort;
@@ -167,6 +172,7 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
                     if (f.isSuccess()) {
                         onOutboundOpen((Http2StreamChannel) f.getNow());
                     } else {
+                        health(false, "connect failed");
                         LOG.warn("gRPC backend {}:{} unreachable: {}", host, backendPort,
                                 f.cause() == null ? "unknown" : f.cause().getMessage());
                         inbound.eventLoop().execute(() -> {
@@ -269,10 +275,23 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
             Http2StreamFrame out;
             if (msg instanceof Http2HeadersFrame h) {
                 out = new DefaultHttp2HeadersFrame(h.headers(), h.isEndStream());
-                if (h.isEndStream()) responseEnded = true;
+                CharSequence st = h.headers().status();
+                if (st != null) {
+                    int code = parse(st);
+                    if (PassiveHealthManager.getInstance().getSettings().failureStatuses().contains(code)) health(false, "HTTP " + code);
+                }
+                if (h.isEndStream()) {
+                    responseEnded = true;
+                    CharSequence gs = h.headers().get("grpc-status");
+                    if (gs != null && "14".contentEquals(gs)) health(false, "grpc-status 14 UNAVAILABLE");
+                    else health(true, null);
+                }
             } else if (msg instanceof Http2DataFrame d) {
                 out = new DefaultHttp2DataFrame(d.content(), d.isEndStream(), d.padding());
-                if (d.isEndStream()) responseEnded = true;
+                if (d.isEndStream()) {
+                    responseEnded = true;
+                    health(true, null);
+                }
             } else {
                 if (msg instanceof Http2ResetFrame) inbound.close();
                 ReferenceCountUtil.release(msg);
@@ -294,6 +313,7 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
             // Backend stream closed before its trailers: tell the client (RST or UNAVAILABLE status).
             if (!responseEnded) {
+                if (!refused && inbound.isActive()) health(false, "backend reset the stream");
                 inbound.eventLoop().execute(() -> {
                     if (responseStarted) inbound.close();
                     else refuseLater(UNAVAILABLE, "backend closed the stream");
@@ -307,6 +327,18 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
             LOG.debug("gRPC backend stream error: {}", cause.getMessage());
             ctx.close();
         }
+    }
+
+    /** One passive-health signal per call. */
+    private void health(boolean ok, String reason) {
+        if (healthRecorded || backendHost == null) return;
+        healthRecorded = true;
+        if (ok) PassiveHealthManager.getInstance().recordSuccess(backendHost);
+        else PassiveHealthManager.getInstance().recordFailure(backendHost, reason);
+    }
+
+    private static int parse(CharSequence s) {
+        try { return Integer.parseInt(s.toString()); } catch (NumberFormatException e) { return 0; }
     }
 
     private void refuseLater(int status, String message) {

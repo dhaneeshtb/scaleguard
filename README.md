@@ -1,359 +1,319 @@
 <div align="center">
 
-# 🛡️ ScaleGuard
+# ScaleGuard
 
-### The all-in-one service exposure platform
+### The open-source application gateway
 
-**Load Balancing · Reverse Proxy · Auto-SSL · SSH Tunneling · DNS · Admin UI**\
-*All in a single JAR. No Kubernetes required.*
+**Load balancer · Reverse proxy · WAF · Rate limiting · Auto-TLS · HTTP/2 & gRPC · DNS · Tunnels**\
+One process replaces the five or six tools you put in front of your services today.
 
 [![Build Status](https://github.com/dhaneeshtb/scaleguard/actions/workflows/ci.yml/badge.svg)](https://github.com/dhaneeshtb/scaleguard/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Java 11+](https://img.shields.io/badge/Java-11%2B-blue.svg)](https://openjdk.org/)
+[![Java 21+](https://img.shields.io/badge/Java-21%2B-blue.svg)](https://openjdk.org/)
+[![Netty 4.2](https://img.shields.io/badge/Netty-4.2%20·%20io__uring-0aa.svg)](https://netty.io/)
+[![OpenAPI](https://img.shields.io/badge/API-OpenAPI%203-6ba539.svg)](docs/openapi.yaml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![GitHub Issues](https://img.shields.io/github/issues/dhaneeshtb/scaleguard)](https://github.com/dhaneeshtb/scaleguard/issues)
 [![GitHub Stars](https://img.shields.io/github/stars/dhaneeshtb/scaleguard?style=social)](https://github.com/dhaneeshtb/scaleguard)
 
-[**Quick Start**](#-quick-start-2-minutes) · [**Why ScaleGuard?**](#-why-scaleguard) · [**Documentation**](#-documentation) · [**Contributing**](#-contributing) · [**Roadmap**](#-roadmap)
+[**Quick start**](#-quick-start) · [**Features**](#-what-you-get) · [**Performance**](#-performance) · [**Comparison**](#-how-it-compares) · [**API docs**](docs/API.md) · [**Roadmap**](#%EF%B8%8F-roadmap)
 
 </div>
 
 ---
 
-## ⚡ Quick Start (2 minutes)
+## Why an application gateway?
+
+Putting a service on the internet usually means stitching together a load balancer, a reverse proxy, a certificate
+client, a WAF, a rate limiter, a DNS provider and a dashboard, then keeping their configs in sync.
+
+**ScaleGuard is all of that in one process**, configured live from a web UI or a REST API, with no reloads and no
+config files. It runs as a single JAR on a laptop, a VM or a container.
+
+```mermaid
+flowchart LR
+    C([Clients<br/>browsers · apps · gRPC]) --> T
+    subgraph SG [ScaleGuard]
+        direction LR
+        T[TLS + ALPN<br/>HTTP/1.1 · HTTP/2 · h2c] --> R[Rate limiter<br/>per client · per route]
+        R --> W[WAF<br/>per-route policy]
+        W --> M[Router<br/>host · path · header · JWT]
+        M --> L[Load balancer<br/>4 strategies<br/>active + passive health]
+    end
+    L --> B1[(Service A)]
+    L --> B2[(Service B)]
+    L --> B3[(gRPC service)]
+    SG -.-> A[ACME<br/>auto certificates]
+    SG -.-> D[Authoritative DNS]
+    SG -.-> S[SSH tunnels<br/>SafeExpose]
+```
+
+---
+
+## ⚡ Quick start
+
+Requires **Java 21+**.
 
 ```bash
-# Clone and build
-git clone https://github.com/dhaneeshtb/scaleguard.git
-cd scaleguard
+git clone https://github.com/dhaneeshtb/scaleguard.git && cd scaleguard
 mvn clean install -DskipTests
 
-# Run
 export SCALEGUARD_ADMIN_USER=admin
-export SCALEGUARD_ADMIN_PASSWORD=your-secure-password-here
-
-java -DadminUser=$SCALEGUARD_ADMIN_USER \
-     -DadminPassword=$SCALEGUARD_ADMIN_PASSWORD \
+export SCALEGUARD_ADMIN_PASSWORD='choose-a-strong-password'
+java -DadminUser=$SCALEGUARD_ADMIN_USER -DadminPassword=$SCALEGUARD_ADMIN_PASSWORD \
      -jar target/scaleguard-1.0-SNAPSHOT.jar
 ```
 
-**That's it.** ScaleGuard is now running on port 80 with auto-SSL, load balancing, and an admin API ready to go.
+Open **http://localhost/adminui/** and sign in. Add a route, point it at your backends, and you're serving.
 
-### 🐳 Docker
+<details>
+<summary><b>Docker</b></summary>
 
 ```bash
 docker build -f docker/Dockerfile -t scaleguard .
 docker run -p 80:80 -p 443:443 \
-  -e SCALEGUARD_ADMIN_USER=admin \
-  -e SCALEGUARD_ADMIN_PASSWORD=your-secure-password \
+  -e SCALEGUARD_ADMIN_USER=admin -e SCALEGUARD_ADMIN_PASSWORD='choose-a-strong-password' \
   scaleguard
 ```
+</details>
 
-### Try it out
+<details>
+<summary><b>One API call instead of the UI</b></summary>
 
 ```bash
-# Health check
-curl http://localhost/healthz
+TOKEN=$(curl -s -X POST "http://localhost/signin?scaleguard=true" \
+  -d "{\"username\":\"$SCALEGUARD_ADMIN_USER\",\"password\":\"$SCALEGUARD_ADMIN_PASSWORD\"}" | jq -r .token)
 
-# Detailed metrics (Prometheus-compatible)
-curl http://localhost/metrics
-
-# View route stats
-curl http://localhost/stats
+# app.example.com → two backends, certificate ordered automatically
+curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Authorization: $TOKEN" \
+  -d '{"name":"app","sourceURL":"https://app.example.com","targets":["http://10.0.0.5:3000","http://10.0.0.6:3000"]}'
 ```
+</details>
 
 ---
 
-## 🤔 Why ScaleGuard?
+## ✨ What you get
 
-Most teams cobble together **4-5 separate tools** to expose services:
+### Traffic
+| | |
+|---|---|
+| **Layer-7 load balancing** | Round-robin, least-connections, weighted and active/standby (multi-cluster disaster recovery), per target |
+| **Routing** | By host name, port, path prefix, header value or JWT claim |
+| **HTTP/2 and gRPC** | ALPN `h2` on TLS, h2c on plain HTTP. gRPC unary, client-, server- and bidirectional streaming proxied message by message, trailers intact, over pooled HTTP/2 backend connections |
+| **WebSockets and TCP** | WebSocket upgrade proxying and raw TCP routes |
+| **Caching** | Per-route response cache with TTLs |
+| **Async delivery** | Hand requests to Kafka or an embedded durable queue, with retries and an event audit API |
 
-| What you need | Traditional approach | With ScaleGuard |
-|---|---|---|
-| Reverse proxy | NGINX / Caddy | ✅ Built-in |
-| SSL certificates | Certbot / Let's Encrypt client | ✅ Auto-provisioned |
-| Tunnel to expose local services | ngrok / Cloudflare Tunnel | ✅ SafeExpose (SSH tunnels) |
-| DNS management | CoreDNS / Route53 | ✅ Built-in DNS server |
-| Load balancing | HAProxy / ALB | ✅ 4 algorithms (RR, LC, Weighted, Active-Standby) |
-| Admin dashboard | Custom / Grafana | ✅ [Admin UI](https://scaleguard.vercel.app) |
-| Monitoring | Prometheus + exporters | ✅ `/metrics` endpoint |
+### Protection
+| | |
+|---|---|
+| **Web application firewall** | 21 built-in rules (SQL injection, XSS, path traversal, command injection, SSRF, Log4Shell, scanners and more) plus your own regex rules. Enable per route, block or detect-only, tune each rule, dry-run any request. Inputs are normalised (multi-pass URL decoding, HTML entities, SQL comments) and patterns are ReDoS-safe |
+| **Rate limiting** | Token bucket per client per route, smooth across minute boundaries, `429` + `Retry-After`. Per-route overrides; trusted-proxy aware, so spoofed `X-Forwarded-For` can't dodge it |
+| **Client credentials** | Protect routes with per-application client IDs and secrets |
+| **Admin API safety** | Token auth, separate admin rate limit so a strict setting can't lock you out |
 
-**ScaleGuard replaces all of them with a single JAR.**
+### Resilience
+| | |
+|---|---|
+| **Active health checks** | Every backend's health URL polled in parallel, every 10 s by default |
+| **Passive health checks** | Watches real requests. A backend that fails 5 in a row is ejected within seconds, then probed back with real traffic and exponential back-off. If a whole service is ejected it keeps serving rather than failing everything |
+| **Connect retries** | A request whose backend refuses the connection is retried on another backend before the client sees an error |
+| **gRPC-native errors** | When the gateway refuses a call, gRPC clients get a proper status (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`, `PERMISSION_DENIED`, `UNIMPLEMENTED`), not an HTML error page |
 
-### Key differentiators
+### Edge services
+| | |
+|---|---|
+| **Automatic TLS** | Let's Encrypt certificates ordered and renewed for every route (HTTP-01 or DNS-01 challenges), picked per connection by SNI |
+| **Authoritative DNS** | Host your zones on the gateway itself: A, AAAA, CNAME, TXT, MX, NS, with EDNS0, TCP fallback, response rate limiting, and caching forwarders for allowed networks |
+| **SafeExpose tunnels** | Self-hosted ngrok alternative: publish a service from a laptop or private network over SSH with automatic TLS |
 
-- **🏗️ Single JAR deployment** — No Docker, no Kubernetes, no sidecar. Download → run → done.
-- **🔒 SafeExpose** — Expose local apps to the internet securely via SSH tunnels. Like ngrok, but self-hosted and integrated with your load balancer.
-- **🔄 Dynamic configuration** — Add routes, targets, and host groups via API. No config files. No restarts.
-- **📜 Auto-SSL** — Let's Encrypt certificates provisioned and renewed automatically.
-- **⚖️ Smart load balancing** — Round-robin, least-connections, weighted, and active-standby strategies. Configurable per target.
-- **☕ Java-native** — Built on Netty for high performance. Perfect for JVM shops that want infrastructure in their stack language.
-
----
-
-## 📐 Architecture
-
-![ScaleGuard Architecture](scaleguard.svg)
-
-ScaleGuard is built on **Netty 4.1** for non-blocking, high-performance I/O. Core components:
-
-```
-┌──────────────────────────────────────────────────────┐
-│                   ScaleGuard Server                   │
-│                                                       │
-│  ┌─────────┐  ┌──────────┐  ┌─────────────────────┐ │
-│  │  DNS     │  │  SSL/TLS │  │  Admin API          │ │
-│  │  Server  │  │  (ACME)  │  │  /config /healthz   │ │
-│  └────┬─────┘  └────┬─────┘  └─────────┬───────────┘ │
-│       │              │                  │             │
-│  ┌────▼──────────────▼──────────────────▼───────────┐ │
-│  │              Route Table                          │ │
-│  │  SourceSystem → TargetSystem → HostGroup(s)       │ │
-│  └─────────────────────┬────────────────────────────┘ │
-│                        │                              │
-│  ┌─────────────────────▼────────────────────────────┐ │
-│  │          Best Host Selector                       │ │
-│  │  Round-Robin │ Least-Conn │ Weighted │ Standby    │ │
-│  └─────────────────────┬────────────────────────────┘ │
-│                        │                              │
-│  ┌──────────┐  ┌───────▼──────┐  ┌─────────────────┐ │
-│  │  Cache    │  │  Proxy       │  │  SSH Tunnel      │ │
-│  │  Manager  │  │  (HTTP/WS)   │  │  (SafeExpose)    │ │
-│  └──────────┘  └──────────────┘  └─────────────────┘ │
-└──────────────────────────────────────────────────────┘
-```
+### Operations
+| | |
+|---|---|
+| **Admin UI** | Live traffic, routes, backend health, firewall, rate limits, certificates and DNS, all editable |
+| **REST API** | Everything in the UI is scriptable. [Reference](docs/API.md) and [OpenAPI 3 spec](docs/openapi.yaml) |
+| **Observability** | Prometheus `/metrics`, `/healthz` (503 when no backend is reachable), per-route `/stats`, firewall and rate-limit event feeds |
+| **Zero-reload config** | Every change applies instantly; settings persist to SQLite or Postgres |
+| **Fast I/O** | Netty 4.2 with io_uring, epoll or kqueue picked automatically, SO_REUSEPORT multi-acceptor listeners |
 
 ---
 
-## 📖 Documentation
+## 🚀 Performance
 
-### Configuration API
+Measured with the harnesses in [`dev-tools/`](dev-tools/README.md) on a **2-vCPU** cloud VM, with the gateway, the
+backend and the load generator sharing those two cores, so dedicated hardware will do considerably better.
 
-ScaleGuard is fully configurable via REST API. No config files needed.
+| Workload | Result |
+|---|---|
+| HTTP/1.1 reverse proxy, 50 concurrent clients | **~12,000 req/s**, p99 ≈ 13 ms |
+| io_uring vs epoll transport | **+45%** throughput with io_uring |
+| WAF enabled on the route | −20–25% throughput |
+| gRPC unary through the gateway (h2c / TLS) | **~7,100 / ~5,800 calls/s** on a single client connection |
+| DNS (UDP, authoritative answers) | **80,000–110,000 answers/s** |
+| WAF test suite | 44/44 attacks blocked, 37/37 legitimate requests allowed |
 
-#### Add a target system
-```bash
-curl -X POST http://localhost/config/targetsystems \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "groupId": "my-backend",
-    "scheme": "http",
-    "host": "192.168.1.10",
-    "port": "8080",
-    "lbStrategy": "ROUND_ROBIN"
-  }'
+Reproduce: `dev-tools/go/load.go`, `dev-tools/go/h2check.go … bench=50:8`, `dev-tools/java/LoadGen.java`.
+
+---
+
+## 📊 How it compares
+
+What you get **out of the box**, without extra modules, plugins or paid tiers. Checked October 2026; corrections welcome.
+
+| | ScaleGuard | NGINX (OSS) | HAProxy (Community) | Traefik Proxy | Caddy | AWS ALB |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| L7 load balancing & reverse proxy | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| HTTP/2 + gRPC proxying | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Automatic TLS certificates | ✅ | ✅ module | ✅ 3.2+ | ✅ | ✅ | ✅ ACM |
+| Web application firewall | ✅ built-in, per route | module | ❌ (Enterprise) | plugin | plugin | paid add-on (AWS WAF) |
+| Per-client rate limiting | ✅ | ✅ | ✅ | ✅ | plugin | via AWS WAF |
+| Authoritative DNS server | ✅ | ❌ | ❌ | ❌ | ❌ | separate (Route 53) |
+| Self-hosted tunnels (ngrok-style) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Web UI that edits configuration | ✅ | ❌ | ❌ | read-only dashboard | ❌ | AWS console |
+| Live config changes via API, no reload | ✅ | ❌ (NGINX Plus) | partial (Runtime API) | ✅ | ✅ | ✅ |
+| Prometheus metrics | ✅ | exporter | ✅ | ✅ | ✅ | CloudWatch |
+| Runs anywhere, open source | ✅ MIT | ✅ | ✅ | ✅ | ✅ | ❌ AWS only |
+
+**Where others are ahead today:** NGINX and HAProxy have decades of production hardening and lower per-request
+overhead; Envoy and Traefik integrate deeply with Kubernetes service discovery; AWS ALB is fully managed and
+scales without you running anything. ScaleGuard's edge is breadth: a complete, UI-driven gateway with security and
+edge services built in, in one process you own.
+
+---
+
+## 🧭 Configuration model
+
+```
+Source system (route)          Target system                    Host groups (backends)
+host + port + path   ───────▶  load-balancing strategy ───────▶ 10.0.0.5:3000  (health URL, weight)
+TLS, WAF, rate limit           cache, headers, scheme           10.0.0.6:3000
 ```
 
-#### Add a source system (route)
 ```bash
-curl -X POST http://localhost/config/sourcesystems \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "host": "myapp.example.com",
-    "port": "443",
-    "scheme": "https",
-    "target": "my-backend",
-    "autoProcure": true
-  }'
+# Backends
+curl -X POST "http://localhost/config/hostgroups?scaleguard=true" -H "Authorization: $TOKEN" \
+  -d '{"groupId":"orders-hosts","scheme":"http","host":"10.0.0.11","port":"8080","health":"http://10.0.0.11:8080/health"}'
+# Load-balancing policy
+curl -X POST "http://localhost/config/targetsystems?scaleguard=true" -H "Authorization: $TOKEN" \
+  -d '{"groupId":"orders","scheme":"http","hostGroupId":"orders-hosts","lbStrategy":"LEAST_CONNECTIONS"}'
+# Public route with an automatic certificate
+curl -X POST "http://localhost/config/sourcesystems?scaleguard=true" -H "Authorization: $TOKEN" \
+  -d '{"name":"orders","host":"orders.example.com","port":"443","scheme":"https","target":"orders","autoProcure":true}'
 ```
 
-#### Add host groups (backends)
-```bash
-curl -X POST http://localhost/config/hostgroups \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "groupId": "my-backend",
-    "host": "192.168.1.10",
-    "port": "8080",
-    "scheme": "http",
-    "weight": 3,
-    "health": "http://192.168.1.10:8080/health"
-  }'
-```
-
-### Load Balancing Strategies
-
-| Strategy | Config Value | Description |
+| Strategy | `lbStrategy` | Behaviour |
 |---|---|---|
-| **Round Robin** | `ROUND_ROBIN` | Distributes requests evenly across all healthy hosts (default) |
-| **Least Connections** | `LEAST_CONNECTIONS` | Routes to the host with the fewest active connections |
-| **Weighted** | `WEIGHTED` | Distributes proportionally based on the `weight` field on each host |
-| **Active-Standby** | `ACTIVE_STANDBY` | Always routes to the primary; failover to standby on failure |
+| Round robin | `ROUND_ROBIN` | Even spread across healthy backends (default) |
+| Least connections | `LEAST_CONNECTIONS` | Backend with the fewest in-flight connections |
+| Weighted | `WEIGHTED` | Proportional to each backend's `weight` |
+| Active / standby | `ACTIVE_STANDBY` | Primary cluster first; standby takes over only when every active backend is down |
 
-Set per target system via the `lbStrategy` field.
+📘 **Full API reference: [docs/API.md](docs/API.md)** · OpenAPI spec: [docs/openapi.yaml](docs/openapi.yaml)
 
-### Built-in Endpoints
+### Public endpoints
 
-| Endpoint | Auth | Description |
-|---|---|---|
-| `GET /health` | No | Simple health check: `{"status":"healthy"}` |
-| `GET /healthz` | No | Detailed health: uptime, routes, hosts, memory. Returns 503 if unhealthy |
-| `GET /metrics` | No | Prometheus text format — scrape with your monitoring stack |
-| `GET /stats` | No | Per-route request counts, avg/min/max response times |
-| `GET /info` | No | Server version info |
-| `GET /config` | Yes | View current configuration |
-| `POST /config/*` | Yes | Update configuration (source/target systems, host groups) |
+| Endpoint | Description |
+|---|---|
+| `GET /health` | Liveness: `{"status":"healthy"}` |
+| `GET /healthz` | Uptime, routes, backend reachability, memory. `503` if no backend is reachable |
+| `GET /metrics` | Prometheus exposition format |
+| `GET /stats` | Per-route request counts and response times |
+| `GET /adminui/` | Admin UI |
 
-### SafeExpose: Self-hosted ngrok alternative
+---
 
-Expose local services to the internet securely through SSH tunnels:
+## 🖥️ Admin UI
+
+![ScaleGuard Admin UI](screen1.png)
+
+Use it at `/adminui/` on your gateway, or the hosted build at [scaleguard.vercel.app](https://scaleguard.vercel.app/sign-in)
+pointed at your server. To develop it: `cd admin-ui && npm install && npm start`.
+
+## 🔌 SafeExpose: self-hosted tunnels
 
 ```bash
-# Install the SafeExpose client
 git clone https://github.com/dhaneeshtb/scalegurad-safeexpose.git
-
-# Expose your local app running on port 3000
 ./safeexpose --host your-scaleguard-server.com --port 3000
 ```
 
-Your local app is now accessible at `https://your-scaleguard-server.com` with auto-SSL. No port forwarding, no firewall changes.
-
-📖 [SafeExpose Documentation →](https://github.com/dhaneeshtb/scalegurad-safeexpose)
-
-### Admin UI
-
-Manage your ScaleGuard instance through a web dashboard:
-
-🔗 **Hosted**: [scaleguard.vercel.app](https://scaleguard.vercel.app/sign-in)
-
-**Run locally**:
-```bash
-cd admin-ui && npm install && npm start
-```
-
-![ScaleGuard Admin UI](screen1.png)
+Your local app is live at `https://your-scaleguard-server.com` with a real certificate. No port forwarding, no
+firewall changes. [SafeExpose docs →](https://github.com/dhaneeshtb/scalegurad-safeexpose)
 
 ---
 
 ## 🔒 Security
 
-- **Never hardcode credentials** — Use environment variables: `SCALEGUARD_ADMIN_USER`, `SCALEGUARD_ADMIN_PASSWORD`
-- **Auto-SSL** — Let's Encrypt certificates are auto-provisioned and renewed
-- **Rate limiting** — Built-in per-client rate limiting with automatic IP blocking
-- **JWT authentication** — Admin API protected with token-based auth
-- See [SECURITY.md](SECURITY.md) for our security policy and vulnerability reporting
+- Admin credentials come from `SCALEGUARD_ADMIN_USER` / `SCALEGUARD_ADMIN_PASSWORD`; never hard-code them.
+- Admin API tokens expire (7 days by default, `scaleguard.tokenTtlHours`).
+- `X-Forwarded-For` is only trusted from proxies you list, so client IPs used by the WAF and rate limiter can't be spoofed.
+- Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ---
 
 ## 🗺️ Roadmap
 
-We're building ScaleGuard in the open. Here's what's coming:
+**Shipped**
+- [x] HTTP/HTTPS reverse proxy and 4 load-balancing strategies
+- [x] Automatic TLS (Let's Encrypt, HTTP-01 and DNS-01)
+- [x] HTTP/2, h2c and gRPC proxying (all streaming modes)
+- [x] Per-route web application firewall
+- [x] Per-client, per-route rate limiting
+- [x] Active and passive health checks, connect retries
+- [x] Authoritative DNS server
+- [x] SafeExpose SSH tunnels
+- [x] Admin UI and OpenAPI-documented admin API
+- [x] Prometheus metrics, response caching, Kafka/embedded async delivery
+- [x] Netty 4.2 with io_uring
 
-### 🟢 Done
-- [x] HTTP/HTTPS reverse proxy
-- [x] Auto-SSL via Let's Encrypt
-- [x] SSH tunnel-based service exposure (SafeExpose)
-- [x] Built-in DNS server
-- [x] Admin UI
-- [x] Prometheus metrics endpoint
-- [x] 4 load balancing algorithms
-- [x] Rate limiting & IP blocking
-- [x] Request caching
-- [x] Kafka async integration
-- [x] GitHub Actions CI/CD
+**Next**
+- [ ] Bot defences: proof-of-work challenge and CAPTCHA, per route
+- [ ] Request analytics and access logs in built-in DuckDB, queryable from the UI
+- [ ] Deeper WAF: OWASP Core Rule Set import and anomaly scoring
+- [ ] High availability: multi-node clusters with shared config and cluster-wide rate limits
+- [ ] HTTP/3 (QUIC)
+- [ ] Helm chart, canary and A/B routing, OAuth2/OIDC, WebAssembly plugins
 
-### 🟡 In Progress
-- [ ] OpenAPI/Swagger documentation for admin API
-- [ ] Helm chart for Kubernetes deployment
-- [ ] Structured JSON access logs
-
-### 🔵 Planned
-- [ ] gRPC proxy support
-- [ ] WebAssembly plugin system
-- [ ] Geographic routing
-- [ ] A/B testing & canary deployments
-- [ ] OAuth2/OIDC integration
-- [ ] Distributed config backend (etcd/Consul)
-- [ ] Web-based terminal for SafeExpose
-
-**Want to work on any of these?** Check out our [good first issues](https://github.com/dhaneeshtb/scaleguard/labels/good%20first%20issue) or [propose a new feature](https://github.com/dhaneeshtb/scaleguard/issues/new?template=feature_request.md).
+Want to help? See [good first issues](https://github.com/dhaneeshtb/scaleguard/labels/good%20first%20issue) or
+[propose a feature](https://github.com/dhaneeshtb/scaleguard/issues/new?template=feature_request.md).
 
 ---
 
 ## 🤝 Contributing
 
-We love contributions! ScaleGuard is built by the community, for the community.
-
-### Ways to contribute
-
-| Type | Description |
+| Type | How |
 |---|---|
-| 🐛 **Bug Reports** | [Open an issue](https://github.com/dhaneeshtb/scaleguard/issues/new?template=bug_report.md) with reproduction steps |
-| 💡 **Feature Requests** | [Suggest ideas](https://github.com/dhaneeshtb/scaleguard/issues/new?template=feature_request.md) for new features |
-| 📖 **Documentation** | Fix typos, add examples, improve guides |
-| 🧪 **Tests** | Add test coverage for untested components |
-| 🔧 **Code** | Pick up an issue and submit a PR |
-
-### Quick contribution guide
+| 🐛 Bug reports | [Open an issue](https://github.com/dhaneeshtb/scaleguard/issues/new?template=bug_report.md) with steps to reproduce |
+| 💡 Feature ideas | [Suggest one](https://github.com/dhaneeshtb/scaleguard/issues/new?template=feature_request.md) |
+| 📖 Docs | Fix, clarify, add examples |
+| 🧪 Tests & code | Pick an issue and open a PR |
 
 ```bash
-# Fork and clone
-git clone https://github.com/YOUR-USERNAME/scaleguard.git
-cd scaleguard
-
-# Create a branch
+git clone https://github.com/YOUR-USERNAME/scaleguard.git && cd scaleguard
 git checkout -b feat/your-feature
-
-# Build and test
 mvn clean test
-
-# Commit and push
-git commit -m "feat: add your feature"
-git push origin feat/your-feature
 ```
 
-Then [open a PR](https://github.com/dhaneeshtb/scaleguard/compare) — we'll review it promptly!
-
-📖 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
----
-
-## 📊 Compared to alternatives
-
-| Feature | ScaleGuard | NGINX | Traefik | Caddy | ngrok |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Reverse proxy | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Load balancing | ✅ 4 algorithms | ✅ | ✅ | ✅ | ❌ |
-| Auto-SSL | ✅ | ❌ (needs Certbot) | ✅ | ✅ | N/A |
-| SSH tunneling | ✅ SafeExpose | ❌ | ❌ | ❌ | ✅ |
-| Built-in DNS | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Admin UI | ✅ | ❌ (NGINX Plus only) | ✅ (paid) | ❌ | ✅ (paid) |
-| Dynamic config API | ✅ | ❌ (needs reload) | ✅ | ✅ | ✅ |
-| Single binary/JAR | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Self-hosted | ✅ | ✅ | ✅ | ✅ | ❌ (paid) |
-| Prometheus metrics | ✅ | ❌ (needs exporter) | ✅ | ❌ | ❌ |
-| Free & open source | ✅ MIT | ✅ (basic) | ✅ (basic) | ✅ | ❌ |
-| Java/JVM native | ✅ | ❌ C | ❌ Go | ❌ Go | ❌ Go |
+Test harnesses for the proxy, WAF, HTTP/2/gRPC and DNS are in [`dev-tools/`](dev-tools/README.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-## 🌟 Star History
+## 🌟 Star history
 
-If ScaleGuard is useful to you, please consider giving it a ⭐ — it helps others discover the project!
+If ScaleGuard is useful to you, a ⭐ helps others find it.
 
 [![Star History Chart](https://api.star-history.com/svg?repos=dhaneeshtb/scaleguard&type=Date)](https://star-history.com/#dhaneeshtb/scaleguard&Date)
 
----
-
 ## 📜 License
 
-ScaleGuard is released under the [MIT License](LICENSE). Use it freely in personal and commercial projects.
+[MIT](LICENSE). Use it freely in personal and commercial projects.
 
-## 💬 Contact & Community
+## 💬 Contact
 
-- 📧 Email: dhaneeshtnair@gmail.com
-- 🐛 Issues: [github.com/dhaneeshtb/scaleguard/issues](https://github.com/dhaneeshtb/scaleguard/issues)
-- 💡 Discussions: [github.com/dhaneeshtb/scaleguard/discussions](https://github.com/dhaneeshtb/scaleguard/discussions)
-
----
+- 📧 dhaneeshtnair@gmail.com
+- 🐛 [Issues](https://github.com/dhaneeshtb/scaleguard/issues) · 💡 [Discussions](https://github.com/dhaneeshtb/scaleguard/discussions)
 
 <div align="center">
 
-**Built with ❤️ and ☕ Java**
-
-*If ScaleGuard saves you time, [give it a star](https://github.com/dhaneeshtb/scaleguard) ⭐*
+**One gateway. Every service. Fully yours.**
 
 </div>

@@ -19,6 +19,7 @@ import com.scaleguard.server.http.cache.CacheManager;
 import com.scaleguard.server.http.cache.CacheManagers;
 import com.scaleguard.server.http.cache.CachedResource;
 import com.scaleguard.server.http.router.HostGroup;
+import com.scaleguard.server.http.router.PassiveHealthManager;
 import com.scaleguard.server.http.router.RouteLogger;
 import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.http.router.TargetSystem;
@@ -38,9 +39,13 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     private CacheManager cacheManager = CacheManagers.get();
 
     private RouteTarget rt;
+    /** The backend this connection goes to (fixed for the connection's lifetime). */
+    private final HostGroup host;
+
     public ScaleGuardBackendHandler(RouteTarget rt, Channel inboundChannel, String cacheKey) {
         this.inboundChannel = inboundChannel;
         this.rt=rt;
+        this.host = rt != null ? rt.getSelectedHost() : null;
         this.cacheKey=cacheKey;
 
     }
@@ -48,6 +53,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
         this.inboundChannel = inboundChannel;
         this.cacheInfo=cacheInfo;
         this.cacheKey=cacheKey;
+        this.host = null;
     }
 
     @Override
@@ -62,6 +68,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
         if(msg instanceof FullHttpResponse) {
             FullHttpResponse response= (FullHttpResponse) msg;
+            PassiveHealthManager.getInstance().recordStatus(host, response.status().code());
             if (response.status().code() >= 300 && response.status().code() < 400) {
                 // Handle Redirect
                 String location = response.headers().get(HttpHeaderNames.LOCATION);
@@ -72,7 +79,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
                        if(port!=80 && port!=443){
                            sfqdn=sfqdn+":"+port;
                        }
-                        HostGroup hg = rt.getTargetSystem().getHostGroup();
+                        HostGroup hg = host != null ? host : rt.getTargetSystem().getHostGroup();
                         if(hg!=null) {
                             String tfqdn = hg.getScheme() + "://" + hg.getHost();
                             int dport = Integer.valueOf(hg.getPort());
@@ -133,7 +140,8 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        logger.error("Channel exception caught", cause);
+        PassiveHealthManager.getInstance().recordFailure(host, "connection error: " + cause.getMessage());
+        logger.debug("Backend connection error: {}", cause.toString());
         ScaleGuardFrontendHandler.closeOnFlush(ctx.channel());
     }
 

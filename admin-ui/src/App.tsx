@@ -26,6 +26,7 @@ import ManageSource from './pages/ManageSource';
 import AsyncEngines from './pages/asyncengines/AsyncEngines';
 import RateLimiting from './pages/protection/RateLimiting';
 import Firewall from './pages/protection/Firewall';
+import BackendHealth from './pages/traffic/BackendHealth';
 
 function App() {
   return (
@@ -54,6 +55,7 @@ function App() {
                     <Route path="/dns" element={<DNS />} />
                     <Route path="/ratelimit" element={<RateLimiting />} />
                     <Route path="/firewall" element={<Firewall />} />
+                    <Route path="/backends" element={<BackendHealth />} />
                   </Routes>
                 </Layout>
               }

@@ -22,7 +22,9 @@ import java.util.stream.Collectors;
  *   <li><b>WEIGHTED</b> — distribute proportionally to each host's {@code weight} field.</li>
  * </ul>
  *
- * <p>All strategies silently skip unreachable hosts (as marked by {@link HostGroupWatcher}).
+ * <p>All strategies silently skip unreachable hosts (active checks by {@link HostGroupWatcher}, passive
+ * ejection by {@link PassiveHealthManager}). If every host is out only through passive ejection, the
+ * actively-healthy hosts are used anyway (panic mode).
  * If <em>all</em> hosts are unreachable, {@code null} is returned and the caller must
  * surface a 502 to the client.</p>
  */
@@ -44,6 +46,7 @@ public class BestHostSelector {
     // with the plain ROUND_ROBIN counter on routes that mix both strategies.
     private static final AtomicLong activeCounter      = new AtomicLong(0);
     private static final AtomicLong standbyCounter     = new AtomicLong(0);
+    private static volatile long lastAllDownLog = System.nanoTime() - 60_000_000_000L;
 
     /** Select the best host using the default ROUND_ROBIN strategy. */
     public static HostGroup getBestHost(List<HostGroup> hostGroups) {
@@ -67,7 +70,15 @@ public class BestHostSelector {
                 .collect(Collectors.toList());
 
         if (reachable.isEmpty()) {
-            // All hosts are down — log once so operators can act
+            // Panic mode: if hosts are out only because passive health checking ejected them, keep using the
+            // actively-healthy ones rather than failing every request (outlier detection must never black out a service).
+            reachable = hostGroups.stream().filter(HostGroup::isActivelyHealthy).collect(Collectors.toList());
+        }
+        if (reachable.isEmpty()) {
+            // All hosts are down — log (at most every 30 s, this runs per request) so operators can act
+            long now = System.nanoTime();
+            if (now - lastAllDownLog < 30_000_000_000L) return null;
+            lastAllDownLog = now;
             LOG.error("ALL hosts in group are unreachable — cannot route request. Hosts: {}",
                     hostGroups.stream()
                             .map(h -> h.getHost() + ":" + h.getPort())

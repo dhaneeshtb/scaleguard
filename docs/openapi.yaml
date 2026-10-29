@@ -1,0 +1,537 @@
+openapi: 3.0.3
+info:
+  title: ScaleGuard Admin API
+  version: "1.0"
+  description: |
+    Admin API of the ScaleGuard load balancer. See docs/API.md for the narrative guide.
+
+    Append `?scaleguard=true` to every call. It makes sure the request reaches the admin API even when the
+    Host header matches a proxied route. Get a token from `POST /signin` and send it as
+    `Authorization: <token>` (a `Bearer ` prefix is also accepted).
+servers:
+  - url: http://localhost:8081
+    description: Local
+security:
+  - token: []
+components:
+  securitySchemes:
+    token:
+      type: apiKey
+      in: header
+      name: Authorization
+  parameters:
+    scaleguard:
+      name: scaleguard
+      in: query
+      required: false
+      schema: { type: boolean, default: true }
+      description: Force the request to the admin API.
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    configType:
+      name: type
+      in: path
+      required: true
+      schema: { type: string, enum: [sourcesystems, targetsystems, hostgroups] }
+  responses:
+    Forbidden:
+      description: Missing or invalid token
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    BadRequest:
+      description: Invalid input
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    TooMany:
+      description: Admin rate limit exceeded (see Retry-After)
+  schemas:
+    Error:
+      type: object
+      properties: { message: { type: string } }
+    SourceSystem:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        host: { type: string, example: api.example.com }
+        port: { type: string, example: "443" }
+        scheme: { type: string, enum: [http, https] }
+        basePath: { type: string, example: / }
+        target: { type: string, description: groupId of the target system }
+        autoProcure: { type: boolean }
+        certificateId: { type: string }
+        async: { type: boolean }
+        asyncEngine: { type: string }
+        secappid: { type: string, description: Require client credentials of this application }
+        jwtKeylookup: { type: string }
+        headerLookup: { type: string }
+        keyLookupMap: { type: object, additionalProperties: { type: array, items: { type: string } } }
+        tunnel: { type: boolean }
+        rateLimit: { type: integer, description: "Requests/min per client. -1 or absent = default, 0 = unlimited" }
+    TargetSystem:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        groupId: { type: string }
+        hostGroupId: { type: string }
+        scheme: { type: string, enum: [http, https, tcp] }
+        basePath: { type: string }
+        lbStrategy: { type: string, enum: [ROUND_ROBIN, LEAST_CONNECTIONS, WEIGHTED, ACTIVE_STANDBY] }
+        enableCache: { type: boolean }
+        cachedResources: { type: array, items: { type: object, properties: { ttl: { type: integer } } } }
+        includeHeaders: { type: object, additionalProperties: { type: string } }
+        excludeHeaders: { type: object, additionalProperties: { type: string } }
+    HostGroup:
+      type: object
+      properties:
+        id: { type: string }
+        groupId: { type: string }
+        scheme: { type: string, enum: [http, https] }
+        host: { type: string }
+        port: { type: string }
+        health: { type: string, description: Health-check URL (2xx = healthy) }
+        weight: { type: integer, default: 1 }
+        type: { type: string, enum: [Active, Standby] }
+        priority: { type: integer }
+    QuickMapping:
+      type: object
+      required: [sourceURL, targets]
+      properties:
+        sourceURL: { type: string, example: https://app.example.com }
+        targets: { type: array, items: { type: string }, example: ["http://10.0.0.5:3000"] }
+        name: { type: string }
+        tunnel: { type: boolean }
+    HealthSettings:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        consecutiveFailures: { type: integer, minimum: 1, maximum: 1000, default: 5 }
+        baseEjectionSeconds: { type: integer, minimum: 1, maximum: 3600, default: 10 }
+        maxEjectionSeconds: { type: integer, maximum: 86400, default: 300 }
+        failureStatuses: { type: string, example: "502,503,504" }
+        activeIntervalSeconds: { type: integer, readOnly: true }
+    BackendState:
+      type: object
+      properties:
+        id: { type: string }
+        groupId: { type: string }
+        address: { type: string }
+        healthUrl: { type: string, nullable: true }
+        targets: { type: array, items: { type: string } }
+        state: { type: string, enum: [healthy, probing, ejected, down] }
+        activeCheck: { type: string, enum: [none, passing, failing] }
+        ejectedForSeconds: { type: integer }
+        ejections: { type: integer }
+        totalEjections: { type: integer }
+        consecutiveFailures: { type: integer }
+        requests: { type: integer }
+        failures: { type: integer }
+        lastFailure: { type: string, nullable: true }
+        lastFailureAt: { type: integer, format: int64, nullable: true }
+        activeConnections: { type: integer }
+    BackendsView:
+      type: object
+      properties:
+        settings: { $ref: '#/components/schemas/HealthSettings' }
+        summary: { type: object, properties: { hosts: { type: integer }, ejected: { type: integer }, down: { type: integer } } }
+        hosts: { type: array, items: { $ref: '#/components/schemas/BackendState' } }
+    RateLimitSettings:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        perMinute: { type: integer, minimum: 1, maximum: 10000000 }
+        burstSeconds: { type: integer, minimum: 1, maximum: 3600 }
+        trustedProxies: { type: string, example: "127.0.0.0/8,::1/128" }
+    RateLimitView:
+      type: object
+      properties:
+        settings: { $ref: '#/components/schemas/RateLimitSettings' }
+        stats:
+          type: object
+          properties:
+            allowed: { type: integer }
+            rejected: { type: integer }
+            trackedClients: { type: integer }
+            limitedClients:
+              type: array
+              items:
+                type: object
+                properties:
+                  client: { type: string }
+                  route: { type: string }
+                  rejected: { type: integer }
+                  limitPerMinute: { type: integer }
+                  lastRejectedSecondsAgo: { type: integer }
+        routes:
+          type: array
+          items: { type: object, properties: { id: { type: string }, name: { type: string }, host: { type: string }, rateLimit: { type: integer, nullable: true } } }
+    WafPolicy:
+      type: object
+      properties:
+        enabled: { type: boolean, default: false }
+        mode: { type: string, enum: [block, detect] }
+        inspectBody: { type: boolean, default: true }
+        maxBodyBytes: { type: integer, default: 65536 }
+        rules:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              enabled: { type: boolean }
+              action: { type: string, enum: [block, log], nullable: true }
+    WafRule:
+      type: object
+      required: [name, pattern, targets]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        pattern: { type: string, description: Java regex }
+        targets: { type: array, items: { type: string, enum: [PATH, QUERY, HEADERS, USER_AGENT, BODY] } }
+        action: { type: string, enum: [BLOCK, LOG] }
+    WafTest:
+      type: object
+      properties:
+        sourceId: { type: string }
+        policy: { $ref: '#/components/schemas/WafPolicy' }
+        uri: { type: string }
+        headers: { type: object, additionalProperties: { type: string } }
+        body: { type: string, nullable: true }
+    DnsRecord:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, example: api.example.com }
+        type: { type: string, enum: [base, a, aaaa, txt, cname, mx, ns, record] }
+        ip: { type: string, description: Record value }
+        ttl: { type: integer, minimum: 1, maximum: 604800 }
+paths:
+  /signin:
+    post:
+      tags: [Auth]
+      summary: Get an admin token
+      security: []
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string } } } } }
+      responses:
+        '200': { description: Token, content: { application/json: { schema: { type: object, properties: { token: { type: string } } } } } }
+        '500': { description: Wrong user name or password }
+  /config:
+    get:
+      tags: [Routing]
+      summary: All source systems
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { sourcesystems: { type: array, items: { $ref: '#/components/schemas/SourceSystem' } } } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /config/{type}:
+    parameters: [{ $ref: '#/components/parameters/configType' }, { $ref: '#/components/parameters/scaleguard' }]
+    get:
+      tags: [Routing]
+      summary: List records of a type
+      description: 'Response is `{"<type>": [...]}`.'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, additionalProperties: { type: array, items: { type: object } } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Routing]
+      summary: Create (no id) or update (with id); updates are partial
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf: [{ $ref: '#/components/schemas/SourceSystem' }, { $ref: '#/components/schemas/TargetSystem' }, { $ref: '#/components/schemas/HostGroup' }]
+      responses:
+        '200': { description: The saved record with its id, content: { application/json: { schema: { type: object } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { description: Validation or storage error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /config/{type}/{id}:
+    parameters: [{ $ref: '#/components/parameters/configType' }, { $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+    get:
+      tags: [Routing]
+      summary: One record (same envelope as the list)
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+    delete:
+      tags: [Routing]
+      summary: Delete a record
+      responses: { '200': { description: Deleted }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /config/renewcert/{id}:
+    post:
+      tags: [Routing]
+      summary: Re-issue a route's certificate
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: The source system }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /config/quickmapping:
+    post:
+      tags: [Routing]
+      summary: Create source, target and host groups in one call
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/QuickMapping' } } } }
+      responses: { '200': { description: Created records }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /backends:
+    get:
+      tags: [Backend health]
+      summary: Health settings and per-backend state
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BackendsView' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /backends/settings:
+    post:
+      tags: [Backend health]
+      summary: Update passive health settings (partial)
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/HealthSettings' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BackendsView' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /backends/{id}/reset:
+    post:
+      tags: [Backend health]
+      summary: Put an ejected backend back into rotation
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BackendsView' } } } }
+        '404': { description: No such host }
+  /ratelimit:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get:
+      tags: [Rate limiting]
+      summary: Settings, live stats and per-route overrides
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RateLimitView' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Rate limiting]
+      summary: Update settings (partial)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RateLimitSettings' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RateLimitView' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /waf:
+    get:
+      tags: [Firewall]
+      summary: Rules, route policies, stats and recent events
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /waf/policy/{id}:
+    post:
+      tags: [Firewall]
+      summary: Save a route's WAF policy
+      parameters: [{ name: id, in: path, required: true, description: Source system id, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WafPolicy' } } } }
+      responses: { '200': { description: OK }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /waf/rules:
+    post:
+      tags: [Firewall]
+      summary: Create or update a custom rule
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WafRule' } } } }
+      responses: { '200': { description: OK }, '400': { description: Invalid regular expression } }
+  /waf/rules/{id}:
+    delete:
+      tags: [Firewall]
+      summary: Delete a custom rule
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted } }
+  /waf/test:
+    post:
+      tags: [Firewall]
+      summary: Dry-run a request against a route policy or an unsaved policy
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WafTest' } } } }
+      responses:
+        '200': { description: Verdict, content: { application/json: { schema: { type: object, properties: { blocked: { type: boolean }, matches: { type: array, items: { type: object } } } } } } }
+  /dns:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get:
+      tags: [DNS]
+      summary: All records grouped by name
+      responses: { '200': { description: OK } }
+    post:
+      tags: [DNS]
+      summary: Add a record
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DnsRecord' } } } }
+      responses: { '200': { description: OK }, '400': { description: 'Invalid record ({"error": "..."})' } }
+  /dns/stats:
+    get:
+      tags: [DNS]
+      summary: DNS server counters
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /dns/cache:
+    delete:
+      tags: [DNS]
+      summary: Clear the forwarding cache
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Cleared } }
+  /dns/{id}:
+    delete:
+      tags: [DNS]
+      summary: Delete a record
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted } }
+  /tunnel:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get:
+      tags: [Tunnels]
+      summary: Tunnel DNS records
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Tunnels]
+      summary: Expose a service through an SSH tunnel
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, port: { type: integer }, host: { type: string }, baseDNS: { type: string } } } } } }
+      responses: { '200': { description: Tunnel record }, '500': { description: Could not configure } }
+  /tunnel/{id}:
+    delete:
+      tags: [Tunnels]
+      summary: Remove a tunnelled service
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted } }
+  /certificates:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get:
+      tags: [Certificates]
+      summary: All certificates and orders
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Certificates]
+      summary: Order a certificate
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [domainNames], properties: { domainNames: { type: array, items: { type: string } }, challengeType: { type: string, enum: [http, dns], default: http } } } } } }
+      responses: { '200': { description: Order } }
+  /certificates/{id}:
+    delete:
+      tags: [Certificates]
+      summary: Delete a certificate
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted } }
+  /certificates/{id}/verify:
+    parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+    get:
+      tags: [Certificates]
+      summary: Verify the order's challenge
+      responses: { '200': { description: 'Status ({"status": "..."})' } }
+    post:
+      tags: [Certificates]
+      summary: Verify the order's challenge
+      requestBody: { content: { application/json: { schema: { type: object, properties: { challengeType: { type: string, enum: [http, dns] } } } } } }
+      responses: { '200': { description: 'Status ({"status": "..."})' } }
+  /certificates/{id}/renew:
+    post:
+      tags: [Certificates]
+      summary: Renew now
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /certificates/{id}/download:
+    get:
+      tags: [Certificates]
+      summary: Certificate and key material
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /apps:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get: { tags: [Applications], summary: List applications, responses: { '200': { description: OK } } }
+    post:
+      tags: [Applications]
+      summary: Create an application
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, description: { type: string } } } } } }
+      responses: { '200': { description: Created } }
+  /apps/{id}:
+    delete:
+      tags: [Applications]
+      summary: Delete an application
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted } }
+  /clients:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get: { tags: [Applications], summary: List clients, responses: { '200': { description: OK } } }
+    post:
+      tags: [Applications]
+      summary: Create or update a client of an application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appid, expiry]
+              properties:
+                id: { type: string }
+                appid: { type: string }
+                name: { type: string }
+                description: { type: string }
+                clientid: { type: string }
+                clientsecret: { type: string }
+                expiry: { type: integer, format: int64 }
+      responses: { '200': { description: Saved }, '404': { description: App not found } }
+  /clients/{id}:
+    delete:
+      tags: [Applications]
+      summary: Delete a client
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted } }
+  /asyncengines:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get: { tags: [Async], summary: List async engines, responses: { '200': { description: OK } } }
+    post:
+      tags: [Async]
+      summary: Create or update an async engine
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { id: { type: string }, name: { type: string }, type: { type: string }, description: { type: string }, payload: { type: object } } } } } }
+      responses: { '200': { description: Saved } }
+  /asyncengines/{id}:
+    delete:
+      tags: [Async]
+      summary: Delete an async engine
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted } }
+  /queueevents:
+    get:
+      tags: [Async]
+      summary: Last 200 queue events, newest first
+      parameters:
+        - { $ref: '#/components/parameters/scaleguard' }
+        - { name: status, in: query, schema: { type: string, enum: [pending, dispatching, success, failed, dead] } }
+        - { name: engineId, in: query, schema: { type: string } }
+      responses: { '200': { description: '{"total", "events": [...]}' } }
+  /queueevents/{id}:
+    get:
+      tags: [Async]
+      summary: One queue event
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK }, '404': { description: Not found } }
+  /register/{targetGroupId}/{action}:
+    post:
+      tags: [Registration]
+      summary: Let a backend add (bind) or remove (unbind) itself
+      parameters:
+        - { name: targetGroupId, in: path, required: true, schema: { type: string } }
+        - { name: action, in: path, required: true, schema: { type: string, enum: [bind, unbind] } }
+        - { $ref: '#/components/parameters/scaleguard' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/HostGroup' } } } }
+      responses: { '200': { description: OK }, '405': { description: Unknown action } }
+  /systems:
+    parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+    get: { tags: [System], summary: Stored system properties, responses: { '200': { description: OK } } }
+  /systems/configure:
+    post:
+      tags: [System]
+      summary: Set the server's own host name (and its certificate)
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [hostName], properties: { hostName: { type: string }, id: { type: string } } } } } }
+      responses: { '200': { description: Saved property } }
+  /health:
+    get: { tags: [Public], summary: Liveness, security: [], responses: { '200': { description: '{"status":"healthy"}' } } }
+  /healthz:
+    get: { tags: [Public], summary: 'Detailed health (503 when no backend is reachable)', security: [], responses: { '200': { description: OK }, '503': { description: Unhealthy } } }
+  /metrics:
+    get: { tags: [Public], summary: Prometheus metrics, security: [], responses: { '200': { description: text/plain exposition format } } }
+  /stats:
+    get: { tags: [Public], summary: Per-route request counts and response times, security: [], responses: { '200': { description: OK } } }
+  /info:
+    get: { tags: [Public], summary: Version, security: [], responses: { '200': { description: OK } } }

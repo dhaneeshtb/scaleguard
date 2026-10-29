@@ -17,6 +17,7 @@ package com.scaleguard.server.http.reverse;
 
 import com.scaleguard.server.http.router.ClientIpResolver;
 import com.scaleguard.server.http.router.HostGroup;
+import com.scaleguard.server.http.router.PassiveHealthManager;
 import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.router.RouteTarget;
 import com.scaleguard.server.security.waf.WafEngine;
@@ -166,7 +167,9 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     boolean isWebsocket = ScaleguardWebsocketHandler.isWebSocketRequest((FullHttpRequest) msg);
     if (isWebsocket) {
       new ScaleguardWebsocketHandler().handleWebSocketProxy(ts, this, ctx, (FullHttpRequest) msg);
-    } else if (outboundChannel == null || !outboundChannel.isActive() || !isSameSourceAndTarget(ts)) {
+    } else if (outboundChannel == null || !outboundChannel.isActive() || !isSameSourceAndTarget(ts)
+            || (targetSystem.getSelectedHost() != null && !targetSystem.getSelectedHost().isReachable())) {
+      // (a kept-alive connection to a host that has since failed its health checks is not reused)
       handleNewOutboundChannel(ts, ctx, msg, messageKey);
     } else {
       targetSystem.setStartTime(System.currentTimeMillis());
@@ -175,6 +178,14 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   private void handleNewOutboundChannel(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey) {
+    handleNewOutboundChannel(ts, ctx, msg, messageKey, null);
+  }
+
+  /** Connect retries: nothing has been sent yet, so a failed connect is retried once on a different backend. */
+  private static final int CONNECT_RETRIES = Integer.getInteger("scaleguard.connectRetries", 1);
+
+  private void handleNewOutboundChannel(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey,
+                                        java.util.Set<HostGroup> failed) {
     final Channel inboundChannel = ctx.channel();
     Bootstrap b = new Bootstrap();
     b.group(inboundChannel.eventLoop())
@@ -184,6 +195,18 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         .option(ChannelOption.AUTO_READ, false);
 
     HostGroup hg = ts.getTargetSystem().getHostGroup();
+    if (failed != null) {
+      // retry: prefer a host we haven't just failed to reach
+      for (int i = 0; i < 4 && hg != null && failed.contains(hg); i++) hg = ts.getTargetSystem().getHostGroup();
+      if (hg == null || failed.contains(hg)) {   // no other backend to try
+        handleConnectionError(ts, ctx);
+        io.netty.util.ReferenceCountUtil.release(msg);
+        inboundChannel.close();
+        return;
+      }
+    }
+    ts.setSelectedHost(hg);
+    final HostGroup chosen = hg;
     ChannelFuture f;
     if (hg != null) {
       ts.setTargetHost(hg.getHost() + ":" + hg.getPort());
@@ -219,10 +242,17 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         // which Netty's DefaultPromise catches and logs as a noisy WARN per connection.
         // future.cause() returns the failure directly without throwing.
         Throwable cause = future.cause();
-        logger.warn("Failed to connect to backend [{}]: {}",
-                ts.getTargetSystem().getGroupId(),
-                cause != null ? cause.getMessage() : "unknown error");
+        PassiveHealthManager.getInstance().recordFailure(chosen, "connect failed: " + (cause != null ? cause.getMessage() : "unknown"));
+        logger.debug("Failed to connect to backend {} [{}]: {}", ts.getTargetHost(),
+                ts.getTargetSystem().getGroupId(), cause != null ? cause.getMessage() : "unknown error");
+        java.util.Set<HostGroup> tried = failed == null ? new java.util.HashSet<>() : failed;
+        if (chosen != null) tried.add(chosen);
+        if (chosen != null && tried.size() <= CONNECT_RETRIES && inboundChannel.isActive()) {
+          handleNewOutboundChannel(ts, ctx, msg, messageKey, tried);
+          return;
+        }
         handleConnectionError(ts, ctx);
+        io.netty.util.ReferenceCountUtil.release(msg);
         inboundChannel.close();
       }
     });
@@ -230,7 +260,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
   private void handleConnectionError(RouteTarget ts, final ChannelHandlerContext ctx) {
     String target;
-    HostGroup hg = ts.getTargetSystem().getHostGroup();
+    HostGroup hg = ts.getSelectedHost();   // the host that actually failed (selecting again could name another)
     if (hg != null) {
       target = hg.getHost() + ":" + hg.getPort();
     } else {
@@ -242,8 +272,9 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   public void handleExistingOutboundChannel(final ChannelHandlerContext ctx, Object msg, RouteTarget ts) {
-    // Thread-safe: pass host as parameter instead of setting the shared inboundHandler.host field
-    HostGroup hg = ts.getTargetSystem().getHostGroup();
+    // Same backend as the kept-alive connection (selecting again could pick a different host than we're connected to)
+    HostGroup hg = targetSystem.getSelectedHost() != null ? targetSystem.getSelectedHost() : ts.getTargetSystem().getHostGroup();
+    ts.setSelectedHost(hg);
     String targetHost = hg != null ? hg.getHost() : ts.getTargetSystem().getHost();
     inboundHandler.reset(msg, targetHost, ts.getTargetSystem().getIncludeHeaders());
     outboundChannel.writeAndFlush(msg).addListener((ChannelFutureListener) future -> {

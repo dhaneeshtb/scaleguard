@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Menu, MenuButton, MenuList, MenuItem, Tooltip, useColorMode } from '@chakra-ui/react';
 import axios from "axios";
 import {
-    FiActivity, FiChevronsLeft, FiChevronsRight, FiCommand, FiGlobe, FiLock, FiLogOut,
+    FiActivity, FiHeart, FiChevronsLeft, FiChevronsRight, FiCommand, FiGlobe, FiLock, FiLogOut,
     FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown, FiSliders, FiKey,
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
@@ -25,6 +25,7 @@ const navSections: { title: string; links: NavLink[] }[] = [
         title: "Traffic",
         links: [
             { to: "/home", label: "Overview", icon: FiActivity, match: ["/home", "/managehost", "/hostgroups"] },
+            { to: "/backends", label: "Backend health", icon: FiHeart },
             { to: "/asyncengines", label: "Async Engines", icon: FiZap },
         ],
     },

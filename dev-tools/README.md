@@ -46,6 +46,12 @@ go run go/h2check.go http://localhost:8080 x bench=50:8 # unary calls/s
 TLS to backends: `go run go/h2backend.go :9443 cert.pem key.pem` and start LbHarness with `-Dharness.backendScheme=https`.
 grpc-go can't be fetched in some sandboxes, so the gRPC framing (5-byte prefix, grpc-status trailers) is hand-written.
 
+### Passive health checks
+`go run go/flaky.go :9201 A /tmp/a.flag &` and `go run go/flaky.go :9202 B /tmp/b.flag &` answer their name, or 503 while
+the flag file exists. Start LbHarness with `127.0.0.1:9201,127.0.0.1:9202`, then `touch /tmp/b.flag` → after 5 × 503s B is
+ejected (`GET /backends`) and all traffic goes to A; `rm` it → B is back after 10 s. Killing a backend process causes no
+client errors (connect failures retry on the other host).
+
 ## 3. DNS server
 
 ```

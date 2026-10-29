@@ -14,7 +14,8 @@ src/main/java/com/scaleguard/server/
                     prior-knowledge vs HTTP/1.1), AlpnHandler (TLS: h2 vs http/1.1), StreamDispatcher (per stream: gRPC vs
                     plain), GrpcProxyHandler (frame-by-frame gRPC relay), Http2ClientPool (h2 backend connections)
   http/router/      RouteTable (in-memory routes), ConfigManager (CRUD for sources/targets/host groups),
-                    SourceSystem / TargetSystem / HostGroup, RateLimitManager, ClientIpResolver, HostGroupWatcher (health)
+                    SourceSystem / TargetSystem / HostGroup, RateLimitManager, ClientIpResolver, HostGroupWatcher (active
+                    health polls), PassiveHealthManager (ejects failing backends), BackendHealthRoute (/backends), BestHostSelector
   http/utils/       NettyTransport (io_uring/epoll/kqueue/NIO selection), CidrSet, AppProperties
   security/         RateLimitRoute (/ratelimit), waf/ (WafEngine, BuiltInRules, WafPolicy, WafRoute → /waf)
   dns/              DnsServer, DNSAddressBook (zones), UpstreamResolver, DnsWire, DnsCache, DnsRateLimiter, DnsConfig, DNSRoute
@@ -43,10 +44,12 @@ Frontend handler, **ScaleGuardFrontendHandler.channelRead**:
 5. internal → `DefaultResponseHandler.handle`; else proxy to host group (cache / async / tcp variants)
 
 ## Admin API conventions
+Full reference: `docs/API.md` + `docs/openapi.yaml` (OpenAPI 3.0). **Update both when you add or change an endpoint.**
 - Every admin call carries `?scaleguard=true`; first path segment selects the route:
   `RequestRoutingContexts.routesMap` (`/ratelimit`, `/waf`, `/dns`, `/apps`, `/systems`, …) or the
   `/config/{sourcesystems|targetsystems|hostgroups}` branch in DefaultResponseHandler.
-- Auth: `POST /signin?scaleguard=true {"username","password"}` → `{"token"}`; send it raw in `Authorization`.
+- Auth: `POST /signin?scaleguard=true {"username","password"}` → `{"token"}`; send it in `Authorization` (raw or `Bearer `).
+  Token lifetime `scaleguard.tokenTtlHours` (default 168).
 - Admin user/password: `-DadminUser` / `-DadminPassword` (or SCALEGUARD_ADMIN_USER / _PASSWORD).
 - New admin endpoint = implement `RequestRoute`, register in `RequestRoutingContexts`. Return JSON via
   `RequestRoutingResponse.succes(...)` / `.response(status, body)`.
@@ -82,6 +85,12 @@ Data (SQLite DB, certs, licence) lives in `~/.scaleguard` (LicenceUtil.dataDir()
 - HTTP/2 streams are child channels: don't use `ctx.channel().getClass()` for outbound bootstraps, check TLS with
   `ProtocolPipelines.isTls(ch)` (the SslHandler is on the parent), and don't write `FileRegion`s to them
   (HttpStaticFileServerHandler adds a ChunkedWriteHandler for TLS/HTTP/2).
+- Backend health: `HostGroup.isReachable()` = active check passing AND not passively ejected. `isActivelyHealthy()` is the
+  poll result only. `BestHostSelector` falls back to actively-healthy hosts when all are ejected (panic mode). Record request
+  outcomes with `PassiveHealthManager.recordStatus/recordFailure/recordSuccess(rt.getSelectedHost(), …)`. Use
+  `RouteTarget.getSelectedHost()` for the backend of a request; calling `getHostGroup()` again picks a *new* host.
+  Connect failures are retried once on another host (`scaleguard.connectRetries`).
+- `ConfigManager.copy()` skips static/transient fields, so runtime state on HostGroup (passive health) survives edits.
 - Logging: never log per request at INFO (throughput). Throttle (see RateLimitManager) or use DEBUG.
 
 ## Verify changes (see dev-tools/README.md for details)

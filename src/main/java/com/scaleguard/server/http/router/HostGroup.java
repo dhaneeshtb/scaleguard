@@ -116,15 +116,54 @@ public class HostGroup {
         this.loadFactor = loadFactor;
     }
 
+    /**
+     * True when the host may receive traffic: its active health check passes (or it has none)
+     * and passive health checking hasn't ejected it. See {@link PassiveHealthManager}.
+     */
     @JsonIgnore
     public boolean isReachable() {
+        return isReachable && !isEjected();
+    }
+
+    /** Result of the active (polling) health check only. */
+    @JsonIgnore
+    public boolean isActivelyHealthy() {
         return isReachable;
     }
 
+    /** Sets the active health-check result. */
     @JsonIgnore
     public void setReachable(boolean reachable) {
         isReachable = reachable;
     }
+
+    /** Ejected by passive health checking (recent request failures) and still inside its ejection window. */
+    @JsonIgnore
+    public boolean isEjected() {
+        long until = passive.ejectedUntilNanos;
+        return until != 0 && System.nanoTime() - until < 0;
+    }
+
+    @JsonIgnore
+    public PassiveState getPassive() {
+        return passive;
+    }
+
+    /** Passive health bookkeeping, updated by {@link PassiveHealthManager}. */
+    public static final class PassiveState {
+        public final AtomicInteger consecutiveFailures = new AtomicInteger();
+        public volatile long ejectedUntilNanos;     // 0 = not ejected
+        public volatile long ejectedAtMillis;
+        public volatile int ejections;              // consecutive ejections, drives the back-off
+        public volatile long lastFailureMillis;
+        public volatile String lastFailure;
+        public final java.util.concurrent.atomic.LongAdder requests = new java.util.concurrent.atomic.LongAdder();
+        public final java.util.concurrent.atomic.LongAdder failures = new java.util.concurrent.atomic.LongAdder();
+        public final java.util.concurrent.atomic.LongAdder totalEjections = new java.util.concurrent.atomic.LongAdder();
+    }
+
+    @JsonIgnore
+    private final transient PassiveState passive = new PassiveState();
 
     public int getWeight() {
         return weight;

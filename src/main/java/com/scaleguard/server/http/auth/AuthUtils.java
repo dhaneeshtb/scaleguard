@@ -69,9 +69,13 @@ public class AuthUtils{
     return builder.compact();
   }
 
+  /** Admin token lifetime in hours; -Dscaleguard.tokenTtlHours (default 168 = 7 days). */
+  static final long TOKEN_TTL_HOURS = Math.max(1, Long.getLong("scaleguard.tokenTtlHours", 168));
+
   public static String login(String userName,String password) {
     if(adminUser.equals(userName) && adminPassword.equals(password)){
-      return createJWT(24*60*60*1000*365);
+      // Was 24*60*60*1000*365 in int arithmetic, which overflowed to ~17 days. Now explicit and configurable.
+      return createJWT(TOKEN_TTL_HOURS * 3_600_000L);
     }else{
       throw new RuntimeException("invalid user name or password");
     }

@@ -10,6 +10,17 @@ public class RouteTarget {
 
     private String targetHost;
 
+    /** Backend host chosen for this request's connection (for passive health accounting). */
+    private HostGroup selectedHost;
+
+    public HostGroup getSelectedHost() {
+        return selectedHost;
+    }
+
+    public void setSelectedHost(HostGroup selectedHost) {
+        this.selectedHost = selectedHost;
+    }
+
     private String uri;
 
     public String getUri() {

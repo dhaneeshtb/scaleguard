@@ -38,6 +38,7 @@ public class RequestRoutingContexts {
         routesMap.put(".well-known",new AcmeChannelgeRoute());
         routesMap.put("ratelimit",new RateLimitRoute());
         routesMap.put("waf",new WafRoute());
+        routesMap.put("backends",new com.scaleguard.server.http.router.BackendHealthRoute());
 
 
 

@@ -21,40 +21,35 @@ public class HostGroupWatcher {
     private static final Logger logger
             = LoggerFactory.getLogger(HostGroupWatcher.class);
 
-    /** Health-check poll interval; override with {@code -Dhost.health.interval.seconds=N}. */
+    /** Active health-check poll interval; override with {@code -Dhost.health.interval.seconds=N} (default 10). */
     private static final long HEALTH_CHECK_INTERVAL_MS =
-            Long.parseLong(System.getProperty("host.health.interval.seconds", "20")) * 1000L;
+            Long.parseLong(System.getProperty("host.health.interval.seconds", "10")) * 1000L;
 
     private final List<HostGroup> allHosts;
 
     public HostGroupWatcher(List<HostGroup> allHosts){
         this.allHosts=allHosts;
     }
+
+    /**
+     * Polls every host's health URL concurrently (one virtual thread per probe, 2 s connect / 5 s read timeout),
+     * so one slow backend doesn't delay the others' results. Logs only on state changes.
+     * Passive health checking ({@link PassiveHealthManager}) reacts to real request failures between polls.
+     */
     public void start(){
-        // Virtual thread: sleeps for HEALTH_CHECK_INTERVAL_MS between polls — no OS thread wasted while sleeping
         VirtualThreads.submit("host-group-watcher", () -> {
             while(true) {
                 try {
-                    allHosts.forEach(hg -> {
-                        try {
-                            if(hg.getHealth()!=null && !hg.getHealth().isEmpty()) {
-                                int resp = getResponse(hg.getHealth());
-                                if (resp != 200) {
-                                    hg.setReachable(false);
-                                    logger.error("Lost connection {}", hg.getHealth());
-                                } else {
-                                    hg.setReachable(true);
-                                }
-                            }else{
-                                hg.setReachable(true);
-                            }
-                        } catch (Exception e) {
-                            hg.setReachable(false);
-                            logger.error("Error while reaching {}", hg.getHealth());
-                        }
-                    });
+                    List<HostGroup> hosts = List.copyOf(allHosts);
+                    java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(hosts.size());
+                    for (HostGroup hg : hosts) {
+                        Thread.ofVirtual().name("health-probe").start(() -> {
+                            try { probe(hg); } finally { done.countDown(); }
+                        });
+                    }
+                    done.await(10, TimeUnit.SECONDS);
                 } catch (Exception e) {
-                    logger.error("Error ", e);
+                    logger.error("Health check round failed", e);
                 }
                 try {
                     Thread.sleep(HEALTH_CHECK_INTERVAL_MS);
@@ -64,6 +59,46 @@ public class HostGroupWatcher {
                 }
             }
         });
+    }
+
+    private static void probe(HostGroup hg) {
+        String url = hg.getHealth();
+        boolean ok;
+        String why = null;
+        if (url == null || url.isEmpty()) {
+            ok = true;
+        } else {
+            try {
+                int code = statusOf(url);
+                ok = code >= 200 && code < 300;
+                if (!ok) why = "HTTP " + code;
+            } catch (Exception e) {
+                ok = false;
+                why = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
+            }
+        }
+        boolean was = hg.isActivelyHealthy();
+        hg.setReachable(ok);
+        if (was && !ok) logger.error("Health check failed for {} ({}) — host taken out of rotation", url, why);
+        else if (!was && ok) logger.info("Health check passing again for {} — host back in rotation", url);
+    }
+
+    /** Status code of a GET, reading at most a little of the body; short timeouts for health probes. */
+    static int statusOf(String urlToRead) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(urlToRead).openConnection();
+        try {
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(5000);
+            conn.setRequestMethod("GET");
+            conn.setInstanceFollowRedirects(false);
+            int code = conn.getResponseCode();
+            try (java.io.InputStream in = code >= 400 ? conn.getErrorStream() : conn.getInputStream()) {
+                if (in != null) in.readNBytes(4096);
+            }
+            return code;
+        } finally {
+            conn.disconnect();
+        }
     }
 
     public static int getResponse(String urlToRead) throws Exception {

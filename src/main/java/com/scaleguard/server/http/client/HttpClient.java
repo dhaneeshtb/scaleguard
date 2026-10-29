@@ -18,12 +18,12 @@ package com.scaleguard.server.http.client;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.http.router.TargetSystem;
+import com.scaleguard.server.http.reverse.OutboundConnectionPool;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.handler.ssl.SslContext;
@@ -62,7 +62,8 @@ public final class HttpClient {
             } else {
                 sslCtx = null;
             }
-            EventLoopGroup group = new NioEventLoopGroup();
+            // Use the shared event-loop group — NOT a new group per client (was a thread leak)
+            EventLoopGroup group = OutboundConnectionPool.SHARED_WORKER;
             b = new Bootstrap();
             b.group(group)
                     .channel(NioSocketChannel.class)

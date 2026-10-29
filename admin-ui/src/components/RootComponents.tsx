@@ -39,13 +39,13 @@ export default function RootComponents({ initialData }: { initialData?: { source
 
                 <TabPanels>
                     <TabPanel>
-                        <Systems initialData={initialData?.sourcesystems} />
+                        <Systems initialData={initialData?.sourcesystems} targets={initialData?.targetsystems} hostGroups={initialData?.hostgroups} />
                     </TabPanel>
                     <TabPanel>
-                        <Targets initialData={initialData?.targetsystems} />
+                        <Targets initialData={initialData?.targetsystems} sources={initialData?.sourcesystems} hostGroups={initialData?.hostgroups} />
                     </TabPanel>
                     <TabPanel>
-                        <HostGroups initialData={initialData?.hostgroups} />
+                        <HostGroups initialData={initialData?.hostgroups} targets={initialData?.targetsystems} sources={initialData?.sourcesystems} />
                     </TabPanel>
                 </TabPanels>
             </Tabs>

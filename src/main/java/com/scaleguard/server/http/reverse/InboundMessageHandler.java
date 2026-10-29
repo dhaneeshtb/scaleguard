@@ -45,20 +45,28 @@ public class InboundMessageHandler {
   static  RouteTable routeTable = RouteTable.getInstance();
   static CacheManager cacheManager=InMemoryCacheLooker.getInstance();
 
-  static Class tokenParser;
+  static volatile Class tokenParser;
+  static volatile Method authGetter;
 
-  static Method authGetter;
-
-  static {
-    try {
-      tokenParser = Class.forName(AppProperties.get("TokenParser"));
-      authGetter =  tokenParser.getMethod("getAuthInfo", String.class);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
+  private static void ensureAuthInitialized() {
+    if (authGetter == null) {
+      synchronized (InboundMessageHandler.class) {
+        if (authGetter == null) {
+          try {
+            Class<?> tp = Class.forName(AppProperties.get("TokenParser"));
+            Method ag = tp.getMethod("getAuthInfo", String.class);
+            tokenParser = tp;
+            authGetter = ag; // publish last — volatile write
+          } catch (Exception e) {
+            throw new RuntimeException("Failed to load TokenParser: " + e.getMessage(), e);
+          }
+        }
+      }
     }
   }
 
   private AuthInfo getAuthInfo(String token){
+    ensureAuthInitialized();
     try {
       return (AuthInfo) authGetter.invoke(null,new Object[]{token});
     } catch (IllegalAccessException e) {

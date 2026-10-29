@@ -1,12 +1,14 @@
 import { Button, IconButton, Link, Badge, Tooltip } from '@chakra-ui/react';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
-import { FaEdit, FaPlug, FaPlusCircle } from "react-icons/fa";
+import { FaEdit, FaPlug, FaPlusCircle, FaProjectDiagram } from "react-icons/fa";
 import { useAuth } from '../contexts/AuthContext';
 import DeleteSystem from './DeleteSystem';
+import InlineTopology from './Topology';
 
-export default function Targets({ initialData }: { initialData?: any[] }) {
+export default function Targets({ initialData, sources: initialSources, hostGroups: initialHostGroups }: { initialData?: any[]; sources?: any[]; hostGroups?: any[] }) {
     const [systems, setSystems] = useState<any>(initialData || []);
+    const [expandedFlow, setExpandedFlow] = useState<string | null>(null);
     const { auth } = useAuth() as any;
 
     const onLoad = () => {
@@ -49,8 +51,8 @@ export default function Targets({ initialData }: { initialData?: any[] }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
                         {systems && systems.map((system: any) => (
-                            <tr key={system.id}
-                                className="text-slate-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors group">
+                            <React.Fragment key={system.id}>
+                            <tr className="text-slate-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors group">
                                 {/* Target ID */}
                                 <td className="px-5 py-3">
                                     <div className="flex items-center gap-2">
@@ -112,6 +114,16 @@ export default function Targets({ initialData }: { initialData?: any[] }) {
                                 {/* Actions */}
                                 <td className="px-5 py-3">
                                     <div className='flex gap-1 justify-end'>
+                                        <Tooltip label="Route Flow" hasArrow>
+                                            <IconButton
+                                                aria-label='Route flow'
+                                                icon={<FaProjectDiagram />}
+                                                variant={expandedFlow === system.id ? 'solid' : 'ghost'}
+                                                size="xs"
+                                                colorScheme='teal'
+                                                onClick={() => setExpandedFlow(expandedFlow === system.id ? null : system.id)}
+                                            />
+                                        </Tooltip>
                                         <Link href={`/managehost/targetsystems/${system.id}`}>
                                             <Tooltip label="Edit" hasArrow>
                                                 <IconButton aria-label='Edit' icon={<FaEdit />} variant={"ghost"} size={"xs"} colorScheme='blue' />
@@ -121,6 +133,19 @@ export default function Targets({ initialData }: { initialData?: any[] }) {
                                     </div>
                                 </td>
                             </tr>
+                            {expandedFlow === system.id && (
+                                <tr>
+                                    <td colSpan={8} className="px-3 py-2">
+                                        <InlineTopology
+                                            context={{ type: 'target', target: system }}
+                                            sources={initialSources || []}
+                                            targets={systems}
+                                            hostGroups={initialHostGroups || []}
+                                        />
+                                    </td>
+                                </tr>
+                            )}
+                            </React.Fragment>
                         ))}
                     </tbody>
                 </table>

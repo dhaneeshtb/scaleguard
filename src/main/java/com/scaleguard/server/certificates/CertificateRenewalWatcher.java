@@ -2,6 +2,7 @@ package com.scaleguard.server.certificates;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.scaleguard.server.concurrent.VirtualThreads;
 import com.scaleguard.server.db.CertificateOrdersDB;
 import com.scaleguard.server.db.DBModelSystem;
 import com.scaleguard.server.db.SourceSystemDB;
@@ -67,12 +68,9 @@ public class CertificateRenewalWatcher {
             return;
         }
         running = true;
-
-        Thread watcherThread = new Thread(this::watchLoop, "cert-renewal-watcher");
-        watcherThread.setDaemon(true);
-        watcherThread.start();
-
-        LOG.info("🔐 Certificate auto-renewal watcher started " +
+        // Virtual thread: no OS thread held during the 12h sleep interval
+        VirtualThreads.submit("cert-renewal-watcher", this::watchLoop);
+        LOG.info("\uD83D\uDD10 Certificate auto-renewal watcher started " +
                 "(check interval: {}h, renew before: {} days)",
                 CHECK_INTERVAL_MS / (60 * 60 * 1000), RENEW_BEFORE_DAYS);
     }

@@ -8,11 +8,11 @@
     <artifactId>scaleguard</artifactId>
     <version>1.0-SNAPSHOT</version>
   <properties>
-    <maven.compiler.source>11</maven.compiler.source>
-    <maven.compiler.target>11</maven.compiler.target>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <io.jsonwebtoken.jjwt.version>0.2</io.jsonwebtoken.jjwt.version>
-
+    <graalvm.version>0.10.2</graalvm.version>
   </properties>
 
 
@@ -147,12 +147,18 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.5.1</version>
+        <version>3.13.0</version>
         <configuration>
-          <source>11</source>
-          <target>11</target>
+          <source>21</source>
+          <target>21</target>
+          <!-- Enforce no raw-thread new Thread() via custom warnings -->
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+          </compilerArgs>
         </configuration>
       </plugin>
+
+
 <!--      <plugin>-->
 <!--        <groupId>org.apache.maven.plugins</groupId>-->
 <!--        <artifactId>maven-pmd-plugin</artifactId>-->
@@ -201,5 +207,74 @@
       </plugin>
     </plugins>
   </build>
+
+  <!-- Run native image build with: mvn -Pnative package -DskipTests -->
+  <!-- Or simply use: ./build-native.sh (no Maven plugin needed) -->
+  <profiles>
+    <profile>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>${graalvm.version}</version>
+            <extensions>true</extensions>
+            <configuration>
+              <mainClass>com.scaleguard.server.http.reverse.AppServer</mainClass>
+              <imageName>scaleguard</imageName>
+              <buildArgs>
+                <!-- Defer entire ScaleGuard app: stops static blocks (Class.forName, RouteTable, DB) at build time -->
+                <buildArg>--initialize-at-run-time=com.scaleguard</buildArg>
+                <!-- Custom source files in non-com.scaleguard packages -->
+                <buildArg>--initialize-at-run-time=io.netty.handler.ssl.CertificateStore</buildArg>
+                <!-- Netty BouncyCastle ALPN: bcjsse not in classpath, defer to avoid Class.forName crash -->
+                <buildArg>--initialize-at-run-time=io.netty.handler.ssl.BouncyCastleAlpnSslUtils</buildArg>
+                <buildArg>--initialize-at-run-time=org.shredzone.acme4j</buildArg>
+                <!-- jose4j JWT library registers crypto providers at static init -->
+                <buildArg>--initialize-at-run-time=org.bitbucket.b_c.jose4j</buildArg>
+                <!-- Libraries with static initializers that do I/O or JCA registration -->
+                <!-- NOTE: ch.qos.logback and org.slf4j are intentionally NOT listed here -->
+                <!-- GraalVM reachability metadata controls logback init correctly -->
+                <!-- initialize-at-run-time=com.scaleguard already defers all Logger fields -->
+                <buildArg>--initialize-at-run-time=org.bouncycastle</buildArg>
+                <!-- Specific logback/slf4j classes GraalVM requires at build time -->
+                <!-- Do NOT use package-wide ch.qos.logback at build-time: cannot mix with class-level run-time overrides -->
+                <buildArg>--initialize-at-build-time=ch.qos.logback.core.CoreConstants</buildArg>
+                <buildArg>--initialize-at-build-time=ch.qos.logback.classic.Level</buildArg>
+                <buildArg>--initialize-at-build-time=ch.qos.logback.classic.Logger</buildArg>
+                <buildArg>--initialize-at-build-time=ch.qos.logback.core.status.InfoStatus</buildArg>
+                <buildArg>--initialize-at-build-time=ch.qos.logback.core.status.StatusBase</buildArg>
+                <buildArg>--initialize-at-build-time=ch.qos.logback.core.util.Loader</buildArg>
+                <buildArg>--initialize-at-build-time=ch.qos.logback.core.util.StatusPrinter</buildArg>
+                <buildArg>--initialize-at-build-time=ch.qos.logback.core.util.StatusPrinter2</buildArg>
+                <buildArg>--initialize-at-build-time=org.slf4j.LoggerFactory</buildArg>
+                <buildArg>--initialize-at-build-time=io.netty.util.internal.logging.LocationAwareSlf4JLogger</buildArg>
+                <buildArg>--initialize-at-build-time=io.netty.util.internal.logging.Slf4JLoggerFactory$NopInstanceHolder</buildArg>
+                <buildArg>--initialize-at-run-time=com.fasterxml.jackson</buildArg>
+                <buildArg>--initialize-at-run-time=org.sqlite</buildArg>
+                <buildArg>--initialize-at-run-time=org.postgresql</buildArg>
+                <buildArg>--initialize-at-run-time=java.sql.DriverManager</buildArg>
+                <buildArg>-H:ReflectionConfigurationFiles=${project.basedir}/native-config/reflect-config.json</buildArg>
+                <buildArg>-H:ResourceConfigurationFiles=${project.basedir}/native-config/resource-config.json</buildArg>
+                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                <buildArg>--no-fallback</buildArg>
+                <buildArg>-J-Xmx6g</buildArg>
+              </buildArgs>
+            </configuration>
+            <executions>
+              <execution>
+                <id>build-native</id>
+                <goals>
+                  <goal>compile-no-fork</goal>
+                </goals>
+                <phase>package</phase>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>

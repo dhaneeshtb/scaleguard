@@ -3,6 +3,7 @@ package com.scaleguard.server.kafka;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.scaleguard.server.concurrent.VirtualThreads;
 import com.scaleguard.server.http.client.HttpClient;
 import com.scaleguard.server.http.router.SourceSystem;
 import com.scaleguard.server.kafka.models.StreamingRawData;
@@ -53,7 +54,7 @@ public class KafkaEventsConsumer {
     }
 
     public void runConsumer() {
-        new Thread(() -> {
+        VirtualThreads.submit("kafka-consumer-" + appId, () -> {
             Consumer<String, String> consumer = ConsumerCreator.createRawDataConsumer(broker,appId,pollCount);
             consumer.subscribe(topicNames);
 
@@ -61,13 +62,10 @@ public class KafkaEventsConsumer {
                 final ConsumerRecords<String, String> consumerRecords = consumer.poll(Duration.ofMillis(1000));
                 consumerRecords.forEach(event -> {
                     try {
-
                        String value =  event.value();
-
                        StreamingRawData srd = new StreamingRawData();
                        srd.setAppId(appId);
                        srd.setOffset(event.offset());
-
                        JsonNode node = mapper.readTree(value);
                        ArrayNode arr = null;
                        if(node.isArray()){
@@ -83,10 +81,9 @@ public class KafkaEventsConsumer {
                         LOGGER.error("Discarded due to unsupported message " + event.offset(), e);
                     }
                 });
-
                 consumer.commitAsync();
             }
-        }).start();
+        });
         LOGGER.info("Kafka Event Consumptions Started");
     }
 

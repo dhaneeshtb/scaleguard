@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.reverse;
 import com.scaleguard.server.certificates.CertificateRenewalWatcher;
+import com.scaleguard.server.concurrent.VirtualThreads;
 import com.scaleguard.server.db.ConnectionUtil;
 import com.scaleguard.server.dns.DnsServer;
 import com.scaleguard.server.http.router.ConfigManager;
@@ -32,11 +33,15 @@ public class AppServer implements Server{
             = LoggerFactory.getLogger(AppServer.class);
     HashSet<String> ports = new HashSet<>();
 
-    EventLoopGroup bossGroup = new NioEventLoopGroup(20);
-    EventLoopGroup workerGroup = new NioEventLoopGroup(20);
+    // 1 boss thread is optimal — it only accepts connections.
+    // Workers: 2 × CPU cores handles hundreds of thousands of concurrent channels.
+    private static final int CPU = Runtime.getRuntime().availableProcessors();
 
-    EventLoopGroup tcpbossGroup = new NioEventLoopGroup(20);
-    EventLoopGroup tcpworkerGroup = new NioEventLoopGroup(20);
+    EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+    EventLoopGroup workerGroup = new NioEventLoopGroup(CPU * 2);
+
+    EventLoopGroup tcpbossGroup = new NioEventLoopGroup(1);
+    EventLoopGroup tcpworkerGroup = new NioEventLoopGroup(CPU * 2);
     ArrayList<ChannelFuture> futureChannels = new ArrayList<>();
 
     public static void main(String[] args) throws Exception {
@@ -78,7 +83,8 @@ public class AppServer implements Server{
         EventSubscriber subscriber = new EventSubscriber(server);
         ConfigManager.getPublisher().subscribe(subscriber);
         AcmeUtils.getContext();
-        new Thread(()->{
+        // Use a virtual thread for blocking hostname/DNS probing at startup
+        VirtualThreads.submit("sg-hostname-probe", () -> {
             if(parameters.containsKey("hostname")){
                 String hostname= parameters.get("hostname");
                 while (true) {
@@ -91,12 +97,13 @@ public class AppServer implements Server{
                         try {
                             Thread.sleep(10000);
                         } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
                             throw new RuntimeException(ex);
                         }
                     }
                 }
             }
-        }).start();
+        });
         server.start();
         server.listen();
     }
@@ -110,8 +117,9 @@ public class AppServer implements Server{
             ServerBootstrap httpBootstrap = new ServerBootstrap();
             return httpBootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
-                    .option(ChannelOption.SO_BACKLOG, 2048)
+                    .option(ChannelOption.SO_BACKLOG, 65535)     // OS max — supports 1M+ queued accepts
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childOption(ChannelOption.TCP_NODELAY, true) // Eliminate Nagle for low latency
                     .handler(new LoggingHandler(LogLevel.INFO))
                     .childHandler(server)
                     .childOption(ChannelOption.AUTO_READ, false)
@@ -125,12 +133,12 @@ public class AppServer implements Server{
         int port = Integer.parseInt(s.getPort());
         ServerInitializer server = new ServerInitializer(port);
         try {
-
             ServerBootstrap httpBootstrap = new ServerBootstrap();
             return httpBootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
-                    .option(ChannelOption.SO_BACKLOG, 2048)
+                    .option(ChannelOption.SO_BACKLOG, 65535)
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childOption(ChannelOption.TCP_NODELAY, true)
                     .handler(new LoggingHandler(LogLevel.INFO))
                     .childHandler(server)
                     .childOption(ChannelOption.AUTO_READ, false)
@@ -147,8 +155,9 @@ public class AppServer implements Server{
             ServerBootstrap httpBootstrap = new ServerBootstrap();
             return httpBootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
-                    .option(ChannelOption.SO_BACKLOG, 2048)
+                    .option(ChannelOption.SO_BACKLOG, 65535)
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childOption(ChannelOption.TCP_NODELAY, true)
                     .handler(new LoggingHandler(LogLevel.INFO))
                     .childHandler(server)
                     .childOption(ChannelOption.AUTO_READ, false)

@@ -1,4 +1,5 @@
 package com.scaleguard.server.ssh;
+import com.scaleguard.server.concurrent.VirtualThreads;
 import com.scaleguard.server.ssh.tunnel.TunnelBook;
 import org.apache.sshd.common.session.Session;
 import org.apache.sshd.common.session.SessionHeartbeatController;
@@ -20,7 +21,7 @@ public class SshServerWithTunnelListener {
         startServer();
     }
     public static void startServer() throws IOException {
-        new Thread(() -> {
+        VirtualThreads.submit("ssh-server", () -> {
             SshServer sshd = SshServer.setUpDefaultServer();
             sshd.setPort(sshPort);
 
@@ -69,7 +70,7 @@ public class SshServerWithTunnelListener {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-        }).start();
+        });
     }
 
 }

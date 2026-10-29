@@ -1,5 +1,6 @@
 package com.scaleguard.server.http.router;
 
+import com.scaleguard.server.concurrent.VirtualThreads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,7 +25,8 @@ public class HostGroupWatcher {
         this.allHosts=allHosts;
     }
     public void start(){
-        Thread t=  new Thread(()->{
+        // Virtual thread: sleeps for 20s between polls — no OS thread wasted while sleeping
+        VirtualThreads.submit("host-group-watcher", () -> {
             while(true) {
                 try {
                     allHosts.forEach(hg -> {
@@ -51,14 +53,11 @@ public class HostGroupWatcher {
                 try {
                     Thread.sleep(20000);
                 } catch (InterruptedException e) {
-                    logger.error("Error ",e);
+                    Thread.currentThread().interrupt();
+                    break;
                 }
             }
-
         });
-        t.setDaemon(true);
-        t.start();
-
     }
 
     public static int getResponse(String urlToRead) throws Exception {

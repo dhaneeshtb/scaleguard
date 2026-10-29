@@ -123,7 +123,15 @@ public class HttpStaticFileServerHandler extends SimpleChannelInboundHandler<Ful
         // Write the content.
         ChannelFuture sendFileFuture;
         ChannelFuture lastContentFuture;
-        if (ctx.pipeline().get(SslHandler.class) == null) {
+        // Zero-copy sendfile only on plain HTTP/1.1 sockets. TLS connections and HTTP/2 streams need the file as
+        // HTTP chunks, which requires a ChunkedWriteHandler (added on first use; previously missing, so static
+        // files over HTTPS never completed).
+        boolean zeroCopy = ctx.pipeline().get(SslHandler.class) == null
+                && !(ctx.channel() instanceof io.netty.handler.codec.http2.Http2StreamChannel);
+        if (!zeroCopy && ctx.pipeline().get(io.netty.handler.stream.ChunkedWriteHandler.class) == null) {
+            ctx.pipeline().addBefore(ctx.name(), "chunked-writer", new io.netty.handler.stream.ChunkedWriteHandler());
+        }
+        if (zeroCopy) {
             sendFileFuture =
                     ctx.write(new DefaultFileRegion(raf.getChannel(), 0, fileLength), ctx.newProgressivePromise());
             // Write the end marker.

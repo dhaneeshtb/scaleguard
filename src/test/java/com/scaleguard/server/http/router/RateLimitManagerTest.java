@@ -67,12 +67,15 @@ public class RateLimitManagerTest {
     @Test
     public void testRateLimitWithIPBlockingIntegration() {
         IPBlockingManager ibm = new IPBlockingManager();
-        RateLimitManager rlmWithBlocking = new RateLimitManager(5, ibm);
+        // Use a high limit so burst (MIN_BURST=10) is quickly exhausted with enough requests.
+        // With 60 req/min the burst cap = max(10, ceil(60/60*10)) = 10 tokens.
+        // Sending 11 requests exhausts all 10 burst tokens and the 11th is rejected → IP blocked.
+        RateLimitManager rlmWithBlocking = new RateLimitManager(60, ibm);
 
         RouteTarget rt = createRouteTarget("10.0.0.1");
 
-        // Exceed rate limit — should trigger IP blocking
-        for (int i = 0; i < 6; i++) {
+        // Exceed the burst limit — should trigger IP blocking on the first rejected request
+        for (int i = 0; i < 12; i++) {
             rlmWithBlocking.checkRate(rt, "10.0.0.1");
         }
 

@@ -178,7 +178,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     final Channel inboundChannel = ctx.channel();
     Bootstrap b = new Bootstrap();
     b.group(inboundChannel.eventLoop())
-        .channel(ctx.channel().getClass())
+        .channel(com.scaleguard.server.http.utils.NettyTransport.socketChannel())   // HTTP/2 stream channels aren't socket types
         .handler(new SecureProxyInitializer(ts, inboundChannel,
                 "https".equalsIgnoreCase(ts.getTargetSystem().getScheme()), messageKey))
         .option(ChannelOption.AUTO_READ, false);

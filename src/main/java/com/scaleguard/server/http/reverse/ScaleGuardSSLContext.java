@@ -7,14 +7,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 public class ScaleGuardSSLContext {
     private static final Logger logger = LoggerFactory.getLogger(ScaleGuardSSLContext.class);
-    public static SSLContext  get(){
-        SSLContext context=null;
-        try {
-            context = create();
-        } catch (Exception e) {
-            logger.error("Failed to create SSL context", e);
+    // The key manager looks certificates up per handshake (SNI), so one context serves every connection;
+    // building a new SSLContext per connection was pure overhead.
+    private static volatile SSLContext cached;
+
+    public static SSLContext get(){
+        SSLContext c = cached;
+        if (c != null) return c;
+        synchronized (ScaleGuardSSLContext.class) {
+            if (cached == null) {
+                try {
+                    cached = create();
+                } catch (Exception e) {
+                    logger.error("Failed to create SSL context", e);
+                    return null;
+                }
+            }
+            return cached;
         }
-        return context;
     }
     public static SSLContext create() throws Exception {
         final SSLContext context;

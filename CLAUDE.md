@@ -10,6 +10,9 @@ src/main/java/com/scaleguard/server/
   http/reverse/     AppServer (main, listeners), ScaleGuardFrontendHandler (per-request pipeline),
                     InboundMessageHandler (route match, X-Forwarded-*), DefaultResponseHandler (admin API dispatch,
                     internal endpoints), RequestRoutingContexts (admin route table), SecureProxyInitializer, Websocket
+  http/h2/          HTTP/2 + gRPC: ProtocolPipelines (builds HTTP/1.1 & HTTP/2 pipelines), CleartextProtocolDetector (h2c
+                    prior-knowledge vs HTTP/1.1), AlpnHandler (TLS: h2 vs http/1.1), StreamDispatcher (per stream: gRPC vs
+                    plain), GrpcProxyHandler (frame-by-frame gRPC relay), Http2ClientPool (h2 backend connections)
   http/router/      RouteTable (in-memory routes), ConfigManager (CRUD for sources/targets/host groups),
                     SourceSystem / TargetSystem / HostGroup, RateLimitManager, ClientIpResolver, HostGroupWatcher (health)
   http/utils/       NettyTransport (io_uring/epoll/kqueue/NIO selection), CidrSet, AppProperties
@@ -24,7 +27,15 @@ dev-tools/          test harnesses + load tools — see dev-tools/README.md
 ```
 
 ## Request flow (HTTP)
-`ServerInitializer` → HttpServerCodec → HttpObjectAggregator → CORS → **ScaleGuardFrontendHandler.channelRead**:
+Listener: `ServerInitializer` (plain: `CleartextProtocolDetector`) / `SSLServerInitializer` (TLS + ALPN: `AlpnHandler`) pick
+HTTP/1.1 or HTTP/2 (`-Dscaleguard.http2=false` turns HTTP/2 off). HTTP/1.1: HttpServerCodec → aggregator → CORS → frontend.
+HTTP/2: Http2FrameCodec → Http2MultiplexHandler → per stream `StreamDispatcher`:
+- `content-type: application/grpc*` (not grpc-web) → `GrpcProxyHandler`: route/rate-limit/WAF(headers+path)/client-auth on the
+  headers, then frames relayed as-is to the backend over HTTP/2 (`Http2ClientPool`, one connection per backend per event loop,
+  h2c or TLS+ALPN). Refusals are trailers-only gRPC statuses: 12 no route, 8 rate limited, 7 WAF/auth, 14 backend down.
+- anything else → Http2StreamFrameToHttpObjectCodec → aggregator → same frontend handler as HTTP/1.1 (backend stays HTTP/1.1).
+
+Frontend handler, **ScaleGuardFrontendHandler.channelRead**:
 1. `ClientIpResolver.resolve(peer, X-Forwarded-For)` — XFF trusted only from `trustedProxies`
 2. `InboundMessageHandler.matchTarget` → `RouteTarget` (null = internal/admin request)
 3. `RateLimitManager.getInstance().check()` → 429 + Retry-After
@@ -46,7 +57,7 @@ dev-tools/          test harnesses + load tools — see dev-tools/README.md
   `waf.policy.<sourceId>`, `waf.customRules`. Load once at startup, keep in memory, write-through on change.
 - Notable keys: `port`/`sport` (HTTP/HTTPS, default 80/443), `scaleguard.transport` (auto|io_uring|epoll|kqueue|nio),
   `scaleguard.acceptors`, `scaleguard.rateLimit` (first-run default, per min), `scaleguard.adminRateLimit` (3000/min),
-  `scaleguard.trustedProxies`, `dnsServer=true` + `dns*` keys (documented in DnsConfig.java).
+  `scaleguard.trustedProxies`, `scaleguard.http2` (default true), `scaleguard.http2.maxConcurrentStreams` (250), `dnsServer=true` + `dns*` keys (documented in DnsConfig.java).
 
 ## Build & run
 ```
@@ -68,12 +79,18 @@ Data (SQLite DB, certs, licence) lives in `~/.scaleguard` (LicenceUtil.dataDir()
 - WAF patterns: no nested quantifiers (ReDoS); inputs are normalised (URL-decoded ×3, HTML entities, SQL comments) and capped at 8 KB/field.
   Run `dev-tools/py/waf_test.py` after any rule change — it must stay 44/44 attacks, 37/37 benign.
 - `ScaleGuardFrontendHandler` releases `msg` in `finally` unless forwarded — keep ownership rules intact when adding early returns.
+- HTTP/2 streams are child channels: don't use `ctx.channel().getClass()` for outbound bootstraps, check TLS with
+  `ProtocolPipelines.isTls(ch)` (the SslHandler is on the parent), and don't write `FileRegion`s to them
+  (HttpStaticFileServerHandler adds a ChunkedWriteHandler for TLS/HTTP/2).
 - Logging: never log per request at INFO (throughput). Throttle (see RateLimitManager) or use DEBUG.
 
 ## Verify changes (see dev-tools/README.md for details)
 - Compile only: `mvn -q -DskipTests compile`
 - Proxy/WAF/rate-limit end-to-end: `LbHarness` + Go backend + `py/waf_test.py`, `py/waf_live.py`, `go/count`
+- HTTP/2 + gRPC: `go/h2backend.go` + `go/h2check.go` (unary, streaming both ways, bidi, 4 MiB, 200 concurrent, WAF/no-route/
+  rate-limit/backend-down statuses), over h2c and TLS
 - DNS: `DnsHarness` + `py/upstream.py` + `py/test_dns.py` (29 checks)
 - Load: `go/load http://localhost:8080/ 50 10`; compare against direct backend to see proxy overhead
 - Benchmarks seen on a 2-vCPU box (server + backend + load generator sharing CPUs): proxy ~8–12k req/s
-  (io_uring ≈ +45% vs epoll), WAF on ≈ −20–25%, DNS ~80–110k answers/s.
+  (io_uring ≈ +45% vs epoll), WAF on ≈ −20–25%, DNS ~80–110k answers/s, gRPC unary via proxy ~7k calls/s h2c,
+  ~5.8k TLS (one client connection, 50 concurrent calls).

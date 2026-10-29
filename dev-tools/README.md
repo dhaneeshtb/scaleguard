@@ -31,7 +31,22 @@ java -Dport=8081 -Dsport=8443 -DadminUser=admin -DadminPassword=$SG_ADMIN_PASSWO
 Raise the limit for load tests: `POST /ratelimit {"enabled":false}` or `-Dscaleguard.rateLimit=2000000000`.
 Pick a transport with `-Dscaleguard.transport=io_uring|epoll|nio`.
 
-## 2. DNS server
+## 2. HTTP/2 and gRPC
+
+```
+go run go/h2backend.go :9100 &                         # h2c + HTTP/1.1 backend with a hand-rolled gRPC echo service
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout key.pem -out cert.pem \
+        -days 30 -subj /CN=localhost -addext subjectAltName=DNS:localhost
+java ... -Dharness.tlsCert=cert.pem -Dharness.tlsKey=key.pem -cp /tmp/sgdev:$SG_JAR LbHarness 127.0.0.1:9100 &
+go run go/h2check.go http://localhost:8080             # h2c: 9 checks
+go run go/h2check.go https://localhost:8443 tls waf    # TLS + ALPN h2 (route s2); "waf" adds the PERMISSION_DENIED check
+go run go/h2check.go http://127.0.0.1:8080 x expect=12 # no route → UNIMPLEMENTED; expect=8:30 with a low rate limit
+go run go/h2check.go http://localhost:8080 x bench=50:8 # unary calls/s
+```
+TLS to backends: `go run go/h2backend.go :9443 cert.pem key.pem` and start LbHarness with `-Dharness.backendScheme=https`.
+grpc-go can't be fetched in some sandboxes, so the gRPC framing (5-byte prefix, grpc-status trailers) is hand-written.
+
+## 3. DNS server
 
 ```
 python3 py/upstream.py &        # fake upstream resolver on 127.0.0.1:5399 (UDP+TCP), uses name compression on purpose
@@ -46,7 +61,7 @@ java -cp /tmp/sgdev LoadGen api.acme.test 1 2 8   # UDP answers/sec
 `DNSEntriesDB` for environments without the SQLite native library (put `stub` classes first on the classpath).
 `java/UnitChecks.java` covers the DNS rate limiter, record add/update/remove DB call counts and SQL escaping.
 
-## 3. Admin UI preview without a server
+## 4. Admin UI preview without a server
 
 `ui-preview/build-preview.sh` builds the UI with a hash router, inlines it with `mock.js` (fake API responses
 for every page) and writes `admin-ui/design-preview.html`, which opens straight from disk.

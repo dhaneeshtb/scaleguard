@@ -71,6 +71,7 @@ public class RateLimitManager {
         final String client;
         final String route;
         double tokens;
+        boolean admin;   // admin & internal endpoints (fixed burst)
         long lastRefill;
         long lastLogged;
         long rejectedSinceLog;
@@ -98,6 +99,11 @@ public class RateLimitManager {
             }
         }
         return m;
+    }
+
+    /** Standalone limiter using the default configured rate limit (scaleguard.rateLimit, default 10 000 req/min). */
+    public RateLimitManager() {
+        this(configuredInt("scaleguard.rateLimit", 10_000));
     }
 
     /** Standalone limiter with its own settings (not persisted). */
@@ -219,7 +225,8 @@ public class RateLimitManager {
         Bucket b = buckets.computeIfAbsent(key, k -> {
             Bucket n = new Bucket(ip, routeLabel(rt));
             n.limitPerMinute = limit;
-            n.tokens = burst(limit);
+            n.admin = rt == null;
+            n.tokens = burst(limit, n.admin);
             n.lastRefill = now;
             return n;
         });
@@ -263,13 +270,17 @@ public class RateLimitManager {
         return s.enabled() ? s.perMinute() : 0;
     }
 
-    private double burst(int limitPerMinute) {
-        return Math.max(MIN_BURST, Math.ceil(limitPerMinute / 60.0 * settings.burstSeconds()));
+    /** Admin/internal traffic always gets a 10-second burst, so a tight UI burst setting can't throttle the admin UI. */
+    private double burst(int limitPerMinute, boolean admin) {
+        int seconds = admin ? ADMIN_BURST_SECONDS : settings.burstSeconds();
+        return Math.max(MIN_BURST, Math.ceil(limitPerMinute / 60.0 * seconds));
     }
+
+    private static final int ADMIN_BURST_SECONDS = 10;
 
     private void refill(Bucket b, long now, int limitPerMinute) {
         if (limitPerMinute <= 0) return;
-        double cap = burst(limitPerMinute);
+        double cap = burst(limitPerMinute, b.admin);
         if (b.limitPerMinute != limitPerMinute) { // limit changed from the UI
             b.limitPerMinute = limitPerMinute;
             b.tokens = Math.min(b.tokens, cap);
@@ -331,6 +342,18 @@ public class RateLimitManager {
 
     public int trackedKeys() {
         return buckets.size();
+    }
+
+    /**
+     * Logs the current rate-limit state for a route target (or null for admin/internal routes).
+     * Safe to call with a null argument; this is a read-only diagnostic — no tokens are spent.
+     */
+    public void log(RouteTarget rt) {
+        String label = rt == null ? "admin & internal" : routeLabel(rt);
+        Settings s = settings;
+        int limit = limitFor(rt);
+        logger.info("RateLimit state — route: {}, enabled: {}, limit: {}/min, trackedClients: {}",
+                label, s.enabled(), limit, buckets.size());
     }
 
     // ------------------------------------------------------------------ config helpers

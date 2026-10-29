@@ -142,7 +142,7 @@ public class InboundMessageHandler {
 
       if(request.headers().contains(HttpHeaderNames.HOST)) {
         headers.set("X-Forwarded-Host", request.headers().get(HttpHeaderNames.HOST));
-        headers.set("X-Forwarded-Proto", ctx.pipeline().get(SslHandler.class) != null ? "https" : "http");
+        headers.set("X-Forwarded-Proto", com.scaleguard.server.http.h2.ProtocolPipelines.isTls(ctx.channel()) ? "https" : "http");
       }
 
 

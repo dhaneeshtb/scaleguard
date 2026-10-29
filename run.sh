@@ -38,7 +38,7 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── defaults ──────────────────────────────────────────────────────────────────
-SCALEGUARD_JAR="${SCALEGUARD_JAR:-${SCRIPT_DIR}/target/scaleguard-1.0-SNAPSHOT.jar}"
+SCALEGUARD_JAR="${SCALEGUARD_JAR:-${SCRIPT_DIR}/scaleguard.jar}"
 SCALEGUARD_DATA="${SCALEGUARD_DATA:-${HOME}/.scaleguard}"
 SCALEGUARD_HEAP="${SCALEGUARD_HEAP:-1g}"
 SCALEGUARD_HTTP_PORT="${SCALEGUARD_HTTP_PORT:-80}"

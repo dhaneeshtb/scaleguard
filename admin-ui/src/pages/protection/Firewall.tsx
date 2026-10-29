@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useToast } from "@chakra-ui/react";
 import { useSearchParams, Link as RouterLink } from "react-router-dom";
-import { FiAlertTriangle, FiCheckCircle, FiChevronDown, FiCode, FiList, FiPlay, FiPlus, FiShield, FiTrash2, FiXOctagon } from "react-icons/fi";
+import { FiAlertTriangle, FiCheckCircle, FiChevronDown, FiCode, FiEye, FiList, FiPlay, FiPlus, FiShield, FiTrash2, FiXOctagon } from "react-icons/fi";
 import { useAuth } from "../../contexts/AuthContext";
 import { Card, Field, PageHeader, Pill, SaveBar, Segmented, Stat, ToggleRow, ago, fmt, inputCls } from "../../components/ui/controls";
 
@@ -339,37 +339,135 @@ function TestCard({ routeId, draft }: { routeId: string; draft: Policy }) {
 
     const run = async () => {
         setBusy(true);
+        setResult(null);
         try {
             const headers: Record<string, string> = {};
             if (ua) headers["User-Agent"] = ua;
             if (body) headers["Content-Type"] = body.trim().startsWith("{") ? "application/json" : "application/x-www-form-urlencoded";
-            const r = await axios.post(`${auth.data.host}/waf/test?scaleguard=true`, { sourceId: routeId, policy: { ...draft, enabled: true }, uri: encodeURI(uri), headers, body }, { headers: { Authorization: auth.data.token } });
+            const r = await axios.post(
+                `${auth.data.host}/waf/test?scaleguard=true`,
+                { sourceId: routeId, policy: { ...draft, enabled: true }, uri: encodeURI(uri), headers, body },
+                { headers: { Authorization: auth.data.token } }
+            );
             setResult(r.data);
         } finally { setBusy(false); }
     };
 
+    // Determine verdict kind: "blocked" | "logged" | "allowed"
+    const verdict = result
+        ? result.blocked
+            ? "blocked"
+            : result.matches.length > 0
+                ? "logged"
+                : "allowed"
+        : null;
+
+    const verdictCfg = {
+        blocked: {
+            border: "border-rose-500/40",
+            bg: "bg-rose-500/[0.08] dark:bg-rose-500/[0.12]",
+            icon: <FiXOctagon className="shrink-0 text-[22px] text-rose-500" />,
+            badge: "bg-rose-500 text-white",
+            label: "BLOCKED",
+            title: "This request would be blocked",
+            sub: "The firewall would return 403 Forbidden before the request reached your backend.",
+        },
+        logged: {
+            border: "border-amber-400/40",
+            bg: "bg-amber-400/[0.08] dark:bg-amber-400/[0.10]",
+            icon: <FiEye className="shrink-0 text-[22px] text-amber-400" />,
+            badge: "bg-amber-400 text-slate-900",
+            label: "LOGGED",
+            title: "Request would be allowed — but logged",
+            sub: "One or more rules matched but their action is set to Log only. The request reaches your backend; the match is recorded.",
+        },
+        allowed: {
+            border: "border-teal-500/40",
+            bg: "bg-teal-500/[0.07] dark:bg-teal-500/[0.10]",
+            icon: <FiCheckCircle className="shrink-0 text-[22px] text-teal-500" />,
+            badge: "bg-teal-500 text-white",
+            label: "ALLOWED",
+            title: "Request would pass through",
+            sub: "No rules matched. The request would reach your backend normally.",
+        },
+    } as const;
+
     return (
         <Card icon={FiPlay} title="Test a request" description="Runs a sample request through this route's current (unsaved) policy. Nothing is sent to your backend or recorded.">
-            <div className="space-y-3">
-                <Field label="Path and query" htmlFor="t-uri"><input id="t-uri" className={`${inputCls} font-mono text-[12.5px]`} value={uri} onChange={e => setUri(e.target.value)} spellCheck={false} /></Field>
+            <div className="space-y-4">
+                {/* Inputs */}
+                <Field label="Path and query" htmlFor="t-uri">
+                    <input id="t-uri" className={`${inputCls} font-mono text-[12.5px]`} value={uri}
+                        onChange={e => { setUri(e.target.value); setResult(null); }} spellCheck={false} />
+                </Field>
                 <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="User-Agent (optional)" htmlFor="t-ua"><input id="t-ua" className={`${inputCls} font-mono text-[12.5px]`} value={ua} onChange={e => setUa(e.target.value)} placeholder="sqlmap/1.7" /></Field>
-                    <Field label="Body (optional)" htmlFor="t-body"><input id="t-body" className={`${inputCls} font-mono text-[12.5px]`} value={body} onChange={e => setBody(e.target.value)} placeholder='{"comment":"<script>…"}' /></Field>
+                    <Field label="User-Agent (optional)" htmlFor="t-ua">
+                        <input id="t-ua" className={`${inputCls} font-mono text-[12.5px]`} value={ua}
+                            onChange={e => { setUa(e.target.value); setResult(null); }} placeholder="sqlmap/1.7" />
+                    </Field>
+                    <Field label="Body (optional)" htmlFor="t-body">
+                        <input id="t-body" className={`${inputCls} font-mono text-[12.5px]`} value={body}
+                            onChange={e => { setBody(e.target.value); setResult(null); }} placeholder='{"comment":"<script>…"}' />
+                    </Field>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={run} disabled={busy} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-4 text-[12.5px] font-semibold text-slate-700 hover:border-teal-400/50 dark:border-white/10 dark:text-slate-200"><FiPlay /> Run test</button>
-                    {result && (result.blocked ? <Pill tone="bad"><FiXOctagon /> Would be blocked</Pill> : result.matches.length ? <Pill tone="warn">Allowed, logged</Pill> : <Pill tone="good"><FiCheckCircle /> Allowed</Pill>)}
-                </div>
-                {result && result.matches.length > 0 && (
-                    <ul className="space-y-2">
-                        {result.matches.map((m, i) => (
-                            <li key={i} className="rounded-xl border border-slate-200 p-3 text-[12.5px] dark:border-white/[0.07]">
-                                <span className="font-semibold text-slate-800 dark:text-slate-100">{m.ruleName}</span> <span className="text-slate-500">in {m.location}</span>
-                                <code className="mt-1 block truncate rounded-md bg-slate-100 px-2 py-1 font-mono text-[11.5px] text-rose-600 dark:bg-white/[0.04] dark:text-rose-300">{m.snippet}</code>
-                            </li>
-                        ))}
-                    </ul>
-                )}
+
+                {/* Run button */}
+                <button onClick={run} disabled={busy}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-5 text-[13px] font-semibold text-white shadow-sm disabled:opacity-50 hover:brightness-110 transition-all">
+                    {busy
+                        ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        : <FiPlay />}
+                    {busy ? "Testing…" : "Run test"}
+                </button>
+
+                {/* ── Verdict banner ─────────────────────────────────────── */}
+                {verdict && (() => {
+                    const cfg = verdictCfg[verdict];
+                    return (
+                        <div className={`rounded-2xl border ${cfg.border} ${cfg.bg} p-4`}>
+                            {/* Header row */}
+                            <div className="flex items-center gap-3">
+                                {cfg.icon}
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold tracking-widest ${cfg.badge}`}>
+                                            {cfg.label}
+                                        </span>
+                                        <span className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100">
+                                            {cfg.title}
+                                        </span>
+                                    </div>
+                                    <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">{cfg.sub}</p>
+                                </div>
+                            </div>
+
+                            {/* Matched rules */}
+                            {result!.matches.length > 0 && (
+                                <ul className="mt-3 space-y-2">
+                                    {result!.matches.map((m, i) => (
+                                        <li key={i} className="rounded-xl border border-slate-200/70 bg-white/70 p-3 dark:border-white/[0.07] dark:bg-white/[0.04]">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${m.action === "block" ? "bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400" : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"}`}>
+                                                    {m.action === "block" ? "BLOCK" : "LOG"}
+                                                </span>
+                                                <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">{m.ruleName}</span>
+                                                <span className="text-[11.5px] text-slate-400">·</span>
+                                                <span className="text-[11.5px] text-slate-500">{m.category}</span>
+                                            </div>
+                                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] text-slate-500">
+                                                <span>matched in</span>
+                                                <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{m.location}</code>
+                                            </div>
+                                            <code className="mt-2 block w-full overflow-x-auto rounded-lg bg-slate-950/[0.04] px-3 py-2 font-mono text-[11.5px] text-rose-600 dark:bg-black/30 dark:text-rose-300">
+                                                {m.snippet}
+                                            </code>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
         </Card>
     );

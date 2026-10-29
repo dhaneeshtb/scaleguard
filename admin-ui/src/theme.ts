@@ -1,18 +1,19 @@
 import { extendTheme, type ThemeConfig } from '@chakra-ui/react';
 import { mode } from '@chakra-ui/theme-tools';
 
-// Shared ink palette — mirrors the Tailwind `slate` override so Chakra surfaces match.
+// Pure neutral palette — mirrors the Tailwind slate override so Chakra surfaces match.
+// Zero blue hue: every shade is a true neutral gray.
 const ink = {
-  50: '#f6f8fc',
-  100: '#eef1f8',
-  200: '#dde3ef',
-  300: '#c0c9dc',
-  400: '#8c97b2',
-  500: '#636f8d',
-  600: '#454f6b',
-  700: '#283049',
-  800: '#141a2b',
-  900: '#0c1120',
+  50:  '#f9f9f9',
+  100: '#f2f2f2',
+  200: '#e5e5e5',
+  300: '#c8c8c8',
+  400: '#9a9a9a',
+  500: '#6b6b6b',
+  600: '#4a4a4a',
+  700: '#2e2e2e',
+  800: '#1a1a1a',
+  900: '#111111',
 };
 
 const config: ThemeConfig = {
@@ -24,8 +25,8 @@ const theme = extendTheme({
   config,
   fonts: {
     heading: `'Inter', ui-sans-serif, system-ui, sans-serif`,
-    body: `'Inter', ui-sans-serif, system-ui, sans-serif`,
-    mono: `'JetBrains Mono', ui-monospace, monospace`,
+    body:    `'Inter', ui-sans-serif, system-ui, sans-serif`,
+    mono:    `'JetBrains Mono', ui-monospace, monospace`,
   },
   colors: { gray: ink, slate: ink },
   radii: { md: '0.5rem', lg: '0.75rem', xl: '1rem' },
@@ -40,21 +41,21 @@ const theme = extendTheme({
   components: {
     Drawer: {
       baseStyle: (props: any) => ({
-        dialog: { bg: mode('white', '#0c1120')(props) },
+        dialog: { bg: mode('white', '#0f0f0f')(props) },
       }),
     },
     Modal: {
       baseStyle: (props: any) => ({
-        dialog: { bg: mode('white', '#0c1120')(props) },
-        overlay: { bg: 'blackAlpha.600', backdropFilter: 'blur(6px)' },
+        dialog: { bg: mode('white', '#0f0f0f')(props) },
+        overlay: { bg: 'blackAlpha.700', backdropFilter: 'blur(6px)' },
       }),
     },
     Menu: {
       baseStyle: (props: any) => ({
         list: {
-          bg: mode('white', '#0f1526')(props),
+          bg: mode('white', '#161616')(props),
           borderColor: mode('slate.200', 'whiteAlpha.100')(props),
-          boxShadow: '0 24px 48px -16px rgba(0,0,0,.5)',
+          boxShadow: '0 24px 48px -16px rgba(0,0,0,.7)',
           rounded: 'xl',
           p: 1.5,
         },
@@ -76,7 +77,7 @@ const theme = extendTheme({
       defaultProps: { focusBorderColor: 'teal.400' },
     },
     Tooltip: {
-      baseStyle: { bg: '#0f1526', color: 'slate.100', rounded: 'md', fontSize: 'xs', px: 2, py: 1 },
+      baseStyle: { bg: '#161616', color: 'slate.100', rounded: 'md', fontSize: 'xs', px: 2, py: 1 },
     },
   },
 });

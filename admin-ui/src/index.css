@@ -3,30 +3,30 @@
 @tailwind utilities;
 
 :root {
-  --sg-bg: #f3f5fb;
-  --sg-surface: rgba(255, 255, 255, 0.72);
-  --sg-border: rgba(15, 23, 42, 0.08);
-  --sg-text: #0c1120;
-  --sg-muted: #636f8d;
+  --sg-bg: #f5f5f5;
+  --sg-surface: rgba(255, 255, 255, 0.80);
+  --sg-border: rgba(0, 0, 0, 0.08);
+  --sg-text: #111111;
+  --sg-muted: #6b6b6b;
   --sg-accent: #0ea5a4;
-  --sg-aurora-1: rgba(45, 212, 191, 0.16);
-  --sg-aurora-2: rgba(129, 140, 248, 0.14);
-  --sg-aurora-3: rgba(34, 211, 238, 0.10);
-  --sg-grid: rgba(15, 23, 42, 0.045);
+  --sg-aurora-1: rgba(45, 212, 191, 0.10);
+  --sg-aurora-2: rgba(45, 212, 191, 0.06);
+  --sg-aurora-3: rgba(34, 211, 238, 0.07);
+  --sg-grid: rgba(0, 0, 0, 0.04);
   color-scheme: light;
 }
 
 .dark {
-  --sg-bg: #060912;
-  --sg-surface: rgba(20, 26, 43, 0.62);
-  --sg-border: rgba(148, 163, 214, 0.10);
-  --sg-text: #eef1f8;
-  --sg-muted: #8c97b2;
+  --sg-bg: #0a0a0a;
+  --sg-surface: rgba(20, 20, 20, 0.80);
+  --sg-border: rgba(255, 255, 255, 0.08);
+  --sg-text: #f2f2f2;
+  --sg-muted: #9a9a9a;
   --sg-accent: #2dd4bf;
-  --sg-aurora-1: rgba(45, 212, 191, 0.13);
-  --sg-aurora-2: rgba(139, 92, 246, 0.14);
-  --sg-aurora-3: rgba(34, 211, 238, 0.08);
-  --sg-grid: rgba(148, 163, 214, 0.045);
+  --sg-aurora-1: rgba(45, 212, 191, 0.07);
+  --sg-aurora-2: rgba(45, 212, 191, 0.04);
+  --sg-aurora-3: rgba(34, 211, 238, 0.05);
+  --sg-grid: rgba(255, 255, 255, 0.03);
   color-scheme: dark;
 }
 
@@ -56,16 +56,16 @@ code, kbd, pre, .font-mono {
 *::-webkit-scrollbar-thumb { background: rgba(140, 151, 178, 0.28); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
 *::-webkit-scrollbar-thumb:hover { background-color: rgba(140, 151, 178, 0.5); }
 
-/* Ambient backdrop: aurora + engineering grid */
+/* Ambient backdrop: subtle teal glow only — no violet/indigo aurora */
 .sg-backdrop {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 85% -10%, var(--sg-aurora-2), transparent 60%),
-    radial-gradient(50rem 36rem at 10% -20%, var(--sg-aurora-1), transparent 60%),
-    radial-gradient(40rem 30rem at 50% 120%, var(--sg-aurora-3), transparent 60%);
+    radial-gradient(48rem 32rem at 90% -5%, var(--sg-aurora-1), transparent 65%),
+    radial-gradient(36rem 28rem at 5%  -10%, var(--sg-aurora-2), transparent 65%),
+    radial-gradient(30rem 22rem at 50% 110%, var(--sg-aurora-3), transparent 60%);
 }
 .sg-backdrop::after {
   content: '';
@@ -81,18 +81,18 @@ code, kbd, pre, .font-mono {
 
 @layer components {
   .sg-card {
-    @apply relative rounded-2xl border border-slate-200/70 bg-white/75 backdrop-blur-xl
-           dark:border-white/[0.07] dark:bg-slate-800/50;
-    box-shadow: 0 1px 0 0 rgba(255,255,255,.6) inset, 0 12px 32px -20px rgba(12,17,32,.25);
+    @apply relative rounded-2xl border border-slate-200/70 bg-white/80 backdrop-blur-xl
+           dark:border-white/[0.06] dark:bg-[#161616]/90;
+    box-shadow: 0 1px 0 0 rgba(255,255,255,.6) inset, 0 12px 32px -20px rgba(0,0,0,.18);
   }
   .dark .sg-card {
-    box-shadow: 0 1px 0 0 rgba(255,255,255,.04) inset, 0 24px 48px -28px rgba(0,0,0,.8);
+    box-shadow: 0 1px 0 0 rgba(255,255,255,.03) inset, 0 24px 48px -28px rgba(0,0,0,.9);
   }
   .sg-eyebrow {
     @apply text-[10.5px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400;
   }
   .sg-gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-teal-300 via-cyan-300 to-violet-300;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-teal-300 via-cyan-300 to-teal-200;
   }
   .sg-kbd {
     @apply inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md text-[10px] font-medium

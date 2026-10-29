@@ -238,7 +238,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="sg-backdrop" aria-hidden />
 
             {/* Desktop sidebar */}
-            <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-slate-200/80 bg-white/70 backdrop-blur-2xl transition-[width] duration-300 ease-out dark:border-white/[0.06] dark:bg-slate-950/60 md:block ${sidebarWidth}`}>
+            <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-slate-200/80 bg-white/70 backdrop-blur-2xl transition-[width] duration-300 ease-out dark:border-white/[0.06] dark:bg-[#0f0f0f]/95 md:block ${sidebarWidth}`}>
                 {renderSidebar(collapsed)}
             </aside>
 
@@ -248,7 +248,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <>
                         <motion.div className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm md:hidden"
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMobileOpen(false)} />
-                        <motion.aside className="fixed inset-y-0 left-0 z-50 w-[272px] border-r border-white/[0.06] bg-white dark:bg-slate-950 md:hidden"
+                        <motion.aside className="fixed inset-y-0 left-0 z-50 w-[272px] border-r border-white/[0.06] bg-white dark:bg-[#111111] md:hidden"
                             initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }} transition={{ type: "spring", stiffness: 380, damping: 36 }}>
                             <button onClick={() => setMobileOpen(false)} className="absolute right-3 top-4 rounded-lg p-2 text-slate-400 hover:bg-white/5" aria-label="Close menu"><FiX /></button>
                             {renderSidebar(false)}
@@ -259,7 +259,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
             <div className={`relative z-10 transition-[padding] duration-300 ease-out ${contentPad}`}>
                 {/* Top bar */}
-                <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/60 dark:bg-slate-950/50 backdrop-blur-xl dark:border-white/[0.05]">
+                <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/60 dark:bg-[#0f0f0f]/80 backdrop-blur-xl dark:border-white/[0.05]">
                     <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-10">
                         <button className="-ml-1 rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
                             <FiMenu className="text-lg" />

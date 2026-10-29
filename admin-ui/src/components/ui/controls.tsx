@@ -7,7 +7,7 @@ import type { IconType } from "react-icons";
 
 export const inputCls =
     "w-full h-10 rounded-xl border border-slate-200 bg-white/80 px-3.5 text-[13.5px] text-slate-900 outline-none transition " +
-    "placeholder:text-slate-400 focus:border-teal-400 focus:ring-4 focus:ring-teal-400/15 dark:border-white/10 dark:bg-slate-950/40 dark:text-white";
+    "placeholder:text-slate-400 focus:border-teal-400 focus:ring-4 focus:ring-teal-400/15 dark:border-white/10 dark:bg-[#1c1c1c] dark:text-white";
 
 export function PageHeader({ icon: Icon, eyebrow, title, description, actions }: {
     icon: IconType; eyebrow: string; title: string; description: string; actions?: React.ReactNode;
@@ -85,7 +85,7 @@ export function Segmented<T extends string>({ id, value, options, onChange, size
                 return (
                     <button key={o.value} type="button" role="radio" aria-checked={active} onClick={() => onChange(o.value)}
                         className={`relative rounded-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 ${size === "sm" ? "px-2.5 py-1 text-[11.5px]" : "px-3.5 py-1.5 text-[12.5px]"} ${tone}`}>
-                        {active && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-white/10" transition={{ type: "spring", stiffness: 500, damping: 38 }} />}
+                        {active && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-lg bg-white shadow-sm ring-1 ring-slate-200 dark:bg-[#262626] dark:ring-white/10" transition={{ type: "spring", stiffness: 500, damping: 38 }} />}
                         <span className="relative">{o.label}</span>
                     </button>
                 );
@@ -119,7 +119,7 @@ export function SaveBar({ dirty, saving, onSave, onDiscard, label = "Save change
     if (!dirty) return null;
     return (
         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-            className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 py-2.5 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/90 md:ml-[calc(var(--sg-sidebar,0px)/2)]">
+            className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 py-2.5 shadow-2xl backdrop-blur-xl dark:border-white/[0.08] dark:bg-[#181818]/95 md:ml-[calc(var(--sg-sidebar,0px)/2)]">
             <span className="flex items-center gap-2 text-[13px] font-medium text-amber-600 dark:text-amber-300"><span className="h-2 w-2 rounded-full bg-amber-400" /> Unsaved changes</span>
             <button type="button" onClick={onDiscard} className="h-9 rounded-xl px-3 text-[13px] font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5">Discard</button>
             <button type="button" onClick={onSave} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-400 px-4 text-[13px] font-semibold text-slate-950 shadow-glow hover:brightness-110 disabled:opacity-60">

@@ -59,6 +59,7 @@ public class FileStorage {
                 insStmt.executeUpdate();
             }
             LOG.info("Cert file '{}' stored successfully for certificate '{}'", filename, certificateId);
+            com.scaleguard.server.cluster.ClusterManager.changed("cert_files");
         } catch (Exception e) {
             LOG.error("Failed to store cert file '{}' for certificate '{}'", filename, certificateId, e);
         }
@@ -87,6 +88,7 @@ public class FileStorage {
             pstmt.setString(1, certificateId);
             int deleted = pstmt.executeUpdate();
             LOG.info("Deleted {} cert file(s) for certificate '{}'", deleted, certificateId);
+            com.scaleguard.server.cluster.ClusterManager.changed("cert_files");
         } catch (Exception e) {
             LOG.error("Failed to delete cert files for certificate '{}'", certificateId, e);
         }

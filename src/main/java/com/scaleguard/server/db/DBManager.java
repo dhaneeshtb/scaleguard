@@ -118,6 +118,7 @@ public abstract class DBManager<T extends DBObject> {
                 }
             });
         }
+        published(cl.stream().map(DBObject::getId).collect(Collectors.toList()));
     }
     public void edit(T folder) throws Exception {
         edit(List.of(folder));
@@ -154,6 +155,7 @@ public abstract class DBManager<T extends DBObject> {
 
             });
         }
+        published(folders.stream().map(DBObject::getId).collect(Collectors.toList()));
     }
 
     public void delete(List<T> users) throws Exception {
@@ -163,6 +165,7 @@ public abstract class DBManager<T extends DBObject> {
         try (Connection c = ConnectionUtil.getConnection(); Statement st = c.createStatement()) {
             st.executeUpdate(insertString);
         }
+        published(users.stream().map(DBObject::getId).collect(Collectors.toList()));
     }
 
     public void delete(String id) throws Exception {
@@ -170,6 +173,23 @@ public abstract class DBManager<T extends DBObject> {
         String insertString = "delete from "+tableName+" where id ="+sqlValue(id);
         try (Connection c = ConnectionUtil.getConnection(); Statement st = c.createStatement()) {
             st.executeUpdate(insertString);
+        }
+        published(List.of(id));
+    }
+
+    /**
+     * Cluster scopes a write to these records touches; other nodes reload the subsystems registered for them.
+     * Defaults to the table name. Return an empty list for data that isn't configuration.
+     */
+    protected Collection<String> clusterScopes(Collection<String> ids) {
+        return List.of(tableName);
+    }
+
+    private void published(Collection<String> ids) {
+        try {
+            com.scaleguard.server.cluster.ClusterManager.changed(clusterScopes(ids));
+        } catch (Throwable e) {
+            LOG.debug("cluster change notification failed for {}: {}", tableName, e.toString());
         }
     }
 

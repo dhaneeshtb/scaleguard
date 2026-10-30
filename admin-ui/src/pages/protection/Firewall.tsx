@@ -2,17 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useToast } from "@chakra-ui/react";
 import { useSearchParams, Link as RouterLink } from "react-router-dom";
-import { FiAlertTriangle, FiCheckCircle, FiChevronDown, FiCode, FiEye, FiList, FiPlay, FiPlus, FiShield, FiTrash2, FiXOctagon } from "react-icons/fi";
+import { FiAlertTriangle, FiCheckCircle, FiChevronDown, FiCode, FiEye, FiLayers, FiList, FiPlay, FiPlus, FiShield, FiTrash2, FiUploadCloud, FiXOctagon } from "react-icons/fi";
 import { useAuth } from "../../contexts/AuthContext";
 import { Card, Field, PageHeader, Pill, SaveBar, Segmented, Stat, ToggleRow, ago, fmt, inputCls } from "../../components/ui/controls";
 
-interface Rule { id: string; name: string; category: string; description: string; pattern: string; targets: string[]; defaultAction: "block" | "log"; builtIn: boolean; hits: number }
+interface Rule { id: string; name: string; category: string; description: string; pattern: string; targets: string[]; defaultAction: "block" | "log"; builtIn: boolean; hits: number; severity?: string; paranoia?: number; ruleSet?: string }
 interface RuleSetting { enabled: boolean; action?: "block" | "log" | null }
-interface Policy { enabled: boolean; mode: "block" | "detect"; inspectBody: boolean; maxBodyBytes: number; rules: Record<string, RuleSetting> }
+interface Policy { enabled: boolean; mode: "block" | "anomaly" | "detect"; inspectBody: boolean; maxBodyBytes: number; rules: Record<string, RuleSetting>; anomalyThreshold?: number; paranoiaLevel?: number; ruleSets?: string[] }
+interface RuleSetInfo { name: string; importedAt: number; rules: number; byParanoia: Record<string, number>; skipped: Record<string, number> }
 interface RouteRow { id: string; name: string; host: string; scheme: string; policy: Policy }
 interface Match { ruleId: string; ruleName: string; category: string; location: string; snippet: string; action: string }
 interface WafEvent { time: number; incidentId: string; action: "blocked" | "logged"; routeId: string; route: string; clientIp: string; method: string; uri: string; matches: Match[] }
-interface View { rules: Rule[]; routes: RouteRow[]; stats: { inspected: number; blocked: number; logged: number }; events: WafEvent[] }
+interface View { rules: Rule[]; routes: RouteRow[]; stats: { inspected: number; blocked: number; logged: number }; events: WafEvent[]; ruleSets?: RuleSetInfo[] }
 
 const TARGETS = [
     { id: "PATH", label: "Path" }, { id: "QUERY", label: "Query string" }, { id: "HEADERS", label: "Headers" },
@@ -118,7 +119,7 @@ export default function Firewall() {
                                         <span className="block truncate text-[13px] font-semibold text-slate-800 dark:text-slate-100">{r.name || r.host}</span>
                                         <span className="block truncate font-mono text-[11px] text-slate-500">{r.host}</span>
                                     </span>
-                                    {!p.enabled ? <Pill tone="muted">Off</Pill> : p.mode === "detect" ? <Pill tone="warn">Detect</Pill> : <Pill tone="good">Blocking</Pill>}
+                                    {!p.enabled ? <Pill tone="muted">Off</Pill> : p.mode === "detect" ? <Pill tone="warn">Detect</Pill> : p.mode === "anomaly" ? <Pill tone="good">Scoring</Pill> : <Pill tone="good">Blocking</Pill>}
                                 </button>
                             );
                         })}
@@ -126,9 +127,10 @@ export default function Firewall() {
 
                     {route && draft && (
                         <div className="min-w-0 space-y-5">
-                            <PolicyCard route={route} draft={draft} setDraft={setDraft} />
-                            <RulesCard rules={view.rules} draft={draft} setDraft={setDraft} />
-                            <CustomRulesCard rules={view.rules.filter(r => !r.builtIn)} onChanged={v => { setView(v); }} />
+                            <PolicyCard route={route} draft={draft} setDraft={setDraft} ruleSets={view.ruleSets || []} />
+                            <RulesCard rules={view.rules.filter(r => !r.ruleSet || (draft.ruleSets || []).includes(r.ruleSet))} draft={draft} setDraft={setDraft} />
+                            <RuleSetsCard sets={view.ruleSets || []} onChanged={v => { setView(v); }} />
+                            <CustomRulesCard rules={view.rules.filter(r => !r.builtIn && !r.ruleSet)} onChanged={v => { setView(v); }} />
                             <TestCard routeId={route.id} draft={draft} />
                             <EventsCard events={view.events} routeId={route.id} />
                         </div>
@@ -141,22 +143,75 @@ export default function Firewall() {
     );
 }
 
-function PolicyCard({ route, draft, setDraft }: { route: RouteRow; draft: Policy; setDraft: (p: Policy) => void }) {
+const MODE_HELP: Record<string, string> = {
+    block: "The first rule set to Block that matches rejects the request with 403. Rules set to Log only just record.",
+    anomaly: "Every matching rule adds points by severity (critical 5, error 4, warning 3, notice 2). The request is rejected with 403 once its score reaches the threshold, as in the OWASP Core Rule Set. Fewer false positives from a single weak signal.",
+    detect: "Nothing is blocked. Matches are recorded so you can check for false positives before blocking.",
+};
+const PL_HELP = [
+    "",
+    "Level 1: recommended. Few false positives; catches the common attacks.",
+    "Level 2: more rules. Expect some false positives that need rule exclusions.",
+    "Level 3: for sensitive applications. Needs careful tuning.",
+    "Level 4: paranoid. Many false positives on normal traffic.",
+];
+
+function PolicyCard({ route, draft, setDraft, ruleSets }: { route: RouteRow; draft: Policy; setDraft: (p: Policy) => void; ruleSets: RuleSetInfo[] }) {
+    const pl = draft.paranoiaLevel || 1;
+    const active = draft.ruleSets || [];
+    const toggleSet = (name: string, on: boolean) => setDraft({ ...draft, ruleSets: on ? [...active.filter(n => n !== name), name] : active.filter(n => n !== name) });
+    const activeRules = ruleSets.filter(s => active.includes(s.name))
+        .reduce((a, s) => a + Object.entries(s.byParanoia).filter(([k]) => +k <= pl).reduce((b, [, v]) => b + v, 0), 0);
     return (
         <Card icon={FiShield} title={`Policy for ${route.name || route.host}`} description={`${route.scheme || "http"}://${route.host}`}
             right={!draft.enabled ? <Pill tone="muted">Not protected</Pill> : draft.mode === "detect" ? <Pill tone="warn">Detect only</Pill> : <Pill tone="good"><FiCheckCircle /> Protected</Pill>}>
             <div className="space-y-3">
                 <ToggleRow id="waf-enabled" label="Inspect this route's traffic" description="When off, requests pass straight through without any firewall checks."
                     checked={draft.enabled} onChange={v => setDraft({ ...draft, enabled: v })} />
-                <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/60 p-3.5 dark:border-white/10 dark:bg-white/[0.02] ${draft.enabled ? "" : "pointer-events-none opacity-50"}`}>
-                    <span className="min-w-0">
-                        <span className="block text-[13.5px] font-medium text-slate-800 dark:text-slate-100">When a rule matches</span>
-                        <span className="mt-0.5 block text-[12px] text-slate-500 dark:text-slate-400">
-                            {draft.mode === "detect" ? "Nothing is blocked. Matches are recorded so you can check for false positives before blocking." : "Rules set to Block reject the request with 403; rules set to Log only record it."}
+                <div className={`space-y-3 rounded-xl border border-slate-200 bg-white/60 p-3.5 dark:border-white/10 dark:bg-white/[0.02] ${draft.enabled ? "" : "pointer-events-none opacity-50"}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-[13.5px] font-medium text-slate-800 dark:text-slate-100">When rules match</span>
+                            <span className="mt-0.5 block text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">{MODE_HELP[draft.mode] || MODE_HELP.block}</span>
                         </span>
-                    </span>
-                    <Segmented id="waf-mode" value={draft.mode} onChange={v => setDraft({ ...draft, mode: v })}
-                        options={[{ value: "block", label: "Block", tone: "danger" }, { value: "detect", label: "Detect only", tone: "warn" }]} />
+                        <Segmented id="waf-mode" value={draft.mode} onChange={v => setDraft({ ...draft, mode: v, anomalyThreshold: draft.anomalyThreshold || 5, paranoiaLevel: draft.paranoiaLevel || 1 })}
+                            options={[{ value: "block", label: "Block on match", tone: "danger" }, { value: "anomaly", label: "Anomaly scoring", tone: "danger" }, { value: "detect", label: "Detect only", tone: "warn" }]} />
+                    </div>
+                    {draft.mode === "anomaly" && (
+                        <div className="grid gap-4 border-t border-slate-200 pt-3 dark:border-white/[0.07] sm:grid-cols-2">
+                            <Field label="Block when the score reaches" htmlFor="waf-threshold" hint="5 = one critical match (the CRS default). Raise it to require several signals.">
+                                <div className="w-28">
+                                    <input id="waf-threshold" inputMode="numeric" className={`${inputCls} font-mono`} value={draft.anomalyThreshold ?? 5}
+                                        onChange={e => setDraft({ ...draft, anomalyThreshold: Math.max(1, parseInt(e.target.value.replace(/\D/g, "") || "1", 10)) })} />
+                                </div>
+                            </Field>
+                            <Field label="Paranoia level" htmlFor="waf-pl" hint={PL_HELP[pl]}>
+                                <Segmented id="waf-pl" size="sm" value={String(pl)} onChange={v => setDraft({ ...draft, paranoiaLevel: +v })}
+                                    options={["1", "2", "3", "4"].map(l => ({ value: l, label: `PL${l}`, tone: +l >= 3 ? "warn" as const : undefined }))} />
+                            </Field>
+                        </div>
+                    )}
+                </div>
+                <div className={`rounded-xl border border-slate-200 bg-white/60 p-3.5 dark:border-white/10 dark:bg-white/[0.02] ${draft.enabled ? "" : "pointer-events-none opacity-50"}`}>
+                    <p className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100">Imported rule sets</p>
+                    {ruleSets.length === 0 ? (
+                        <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">None yet. Import the OWASP Core Rule Set below to add a few hundred more rules.</p>
+                    ) : (
+                        <>
+                            <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">Run alongside the built-in rules on this route{draft.mode === "anomaly" ? `; ${activeRules} rule${activeRules === 1 ? "" : "s"} active at paranoia level ${pl}.` : ". Anomaly scoring is recommended with CRS."}</p>
+                            <ul className="mt-2 space-y-1.5">
+                                {ruleSets.map(rs => (
+                                    <li key={rs.name}>
+                                        <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-slate-700 dark:text-slate-200">
+                                            <input type="checkbox" checked={active.includes(rs.name)} onChange={e => toggleSet(rs.name, e.target.checked)} className="h-4 w-4 accent-teal-500" />
+                                            <span className="font-semibold">{rs.name}</span>
+                                            <span className="text-[12px] text-slate-500">{fmt(rs.rules)} rules</span>
+                                        </label>
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
+                    )}
                 </div>
                 <div className={draft.enabled ? "" : "pointer-events-none opacity-50"}>
                     <ToggleRow id="waf-body" label="Inspect request bodies"
@@ -164,6 +219,78 @@ function PolicyCard({ route, draft, setDraft }: { route: RouteRow; draft: Policy
                         checked={draft.inspectBody} onChange={v => setDraft({ ...draft, inspectBody: v })} />
                 </div>
             </div>
+        </Card>
+    );
+}
+
+function RuleSetsCard({ sets, onChanged }: { sets: RuleSetInfo[]; onChanged: (v: View) => void }) {
+    const { auth } = useAuth() as any;
+    const toast = useToast();
+    const [name, setName] = useState("OWASP CRS 4");
+    const [files, setFiles] = useState<File[]>([]);
+    const [busy, setBusy] = useState(false);
+    const [result, setResult] = useState<any>(null);
+    const [error, setError] = useState<string | null>(null);
+    const h = { headers: { Authorization: auth.data.token } };
+
+    const upload = async () => {
+        setBusy(true); setError(null); setResult(null);
+        try {
+            const contents: Record<string, string> = {};
+            for (const f of files) contents[f.name] = await f.text();
+            const r = await axios.post(`${auth.data.host}/waf/rulesets?scaleguard=true`, { name, files: contents }, h);
+            setResult(r.data); onChanged(r.data.waf); setFiles([]);
+            toast({ title: `Imported ${r.data.imported} rules`, description: "Switch the set on for a route in its policy above.", status: "success", duration: 4000, position: "top-right" });
+        } catch (e: any) {
+            setError(e?.response?.data?.message || "Import failed.");
+        } finally { setBusy(false); }
+    };
+    const remove = async (n: string) => {
+        if (!window.confirm(`Delete rule set "${n}"? Routes using it stop running its rules.`)) return;
+        const r = await axios.delete(`${auth.data.host}/waf/rulesets/${encodeURIComponent(n)}?scaleguard=true`, h);
+        onChanged(r.data);
+    };
+    const skippedTotal = (sk: Record<string, number>) => Object.values(sk || {}).reduce((a, b) => a + b, 0);
+
+    return (
+        <Card icon={FiLayers} title="Rule sets" description="Import the OWASP Core Rule Set (CRS) or other ModSecurity-format rules. Each route chooses which sets it runs in its policy.">
+            {sets.length > 0 && (
+                <ul className="mb-4 divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-white/[0.05] dark:border-white/[0.07]">
+                    {sets.map(s => (
+                        <li key={s.name} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                            <div className="min-w-0">
+                                <p className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100">{s.name}</p>
+                                <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                                    {fmt(s.rules)} rules · {Object.entries(s.byParanoia).map(([k, v]) => `PL${k}: ${v}`).join(" · ")} · imported {ago(s.importedAt)}
+                                    {skippedTotal(s.skipped) > 0 && <> · <span title={Object.entries(s.skipped).map(([k, v]) => `${v} × ${k}`).join("\n")} className="cursor-help underline decoration-dotted">{skippedTotal(s.skipped)} skipped</span></>}
+                                </p>
+                            </div>
+                            <button onClick={() => remove(s.name)} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12.5px] font-semibold text-rose-600 hover:bg-rose-500/10 dark:text-rose-300"><FiTrash2 aria-hidden /> Delete</button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            <div className="grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)_auto] sm:items-end">
+                <Field label="Rule set name" htmlFor="rs-name"><input id="rs-name" className={inputCls} value={name} onChange={e => setName(e.target.value)} /></Field>
+                <Field label="Rule files (.conf) and data files (.data)" htmlFor="rs-files">
+                    <input id="rs-files" type="file" multiple accept=".conf,.data,.txt" onChange={e => setFiles(Array.from(e.target.files || []))}
+                        className="block w-full text-[12.5px] text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-[12.5px] file:font-semibold file:text-slate-700 dark:text-slate-300 dark:file:bg-white/10 dark:file:text-slate-100" />
+                </Field>
+                <button onClick={upload} disabled={busy || !files.length || !name.trim()} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-400 px-4 text-[12.5px] font-semibold text-slate-950 disabled:opacity-40">
+                    <FiUploadCloud aria-hidden />{busy ? "Importing…" : "Import"}</button>
+            </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
+                Download a release from <a className="font-semibold text-teal-600 underline dark:text-teal-300" href="https://github.com/coreruleset/coreruleset/releases" target="_blank" rel="noreferrer">coreruleset/releases</a> and select every <span className="font-mono">rules/REQUEST-*.conf</span> and <span className="font-mono">rules/*.data</span> file. Re-importing a set with the same name replaces it.
+                Chained rules and libinjection checks aren't supported and are skipped; the built-in rules cover those attacks.
+            </p>
+            {error && <p className="mt-2 text-[12.5px] text-rose-500">{error}</p>}
+            {result && (
+                <div className="mt-3 rounded-xl border border-teal-400/30 bg-teal-500/5 p-3 text-[12.5px] text-slate-700 dark:text-slate-200">
+                    <p className="font-semibold">Imported {fmt(result.imported)} rules</p>
+                    <p className="mt-1 text-slate-500 dark:text-slate-400">{Object.entries(result.byCategory).map(([k, v]) => `${k.replace(" (CRS)", "")}: ${v}`).join(" · ")}</p>
+                    {skippedTotal(result.skipped) > 0 && <p className="mt-1 text-slate-500 dark:text-slate-400">Skipped: {Object.entries(result.skipped).map(([k, v]) => `${v} ${k}`).join(", ")}</p>}
+                </div>
+            )}
         </Card>
     );
 }
@@ -229,7 +356,9 @@ function RulesCard({ rules, draft, setDraft }: { rules: Rule[]; draft: Policy; s
                                                     <span className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-slate-800 dark:text-slate-100">
                                                         {r.name}
                                                         {r.hits > 0 && <Pill tone="info">{fmt(r.hits)} hits</Pill>}
-                                                        {!r.builtIn && <Pill tone="muted">Custom</Pill>}
+                                                        {!r.builtIn && !r.ruleSet && <Pill tone="muted">Custom</Pill>}
+                                                        {r.ruleSet && <Pill tone="muted">PL{r.paranoia} · {r.severity}</Pill>}
+                                                        {r.ruleSet && (r.paranoia || 1) > (draft.paranoiaLevel || 1) && <span className="text-[11px] font-normal text-slate-400">not active at PL{draft.paranoiaLevel || 1}</span>}
                                                     </span>
                                                     <span className="mt-0.5 block text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">{r.description}</span>
                                                     <span className="mt-1 block font-mono text-[10.5px] text-slate-400">{r.id} · checks {r.targets.map(t => TARGETS.find(x => x.id === t)?.label || t).join(", ")}</span>

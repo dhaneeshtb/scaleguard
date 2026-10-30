@@ -1,0 +1,6 @@
+entryPoints:
+  web: { address: ":8184" }
+providers:
+  file: { filename: BENCH_DIR/conf/traefik-dyn.yml }
+log: { level: ERROR }
+global: { checkNewVersion: false, sendAnonymousUsage: false }

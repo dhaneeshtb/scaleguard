@@ -4,7 +4,7 @@
 
 ### The open-source application gateway
 
-**Load balancer · Reverse proxy · WAF · Rate limiting · Auto-TLS · HTTP/2 & gRPC · DNS · Tunnels**\
+**Load balancer · Reverse proxy · WAF · Rate limiting · Auto-TLS · HTTP/2, HTTP/3 & gRPC · Analytics · Clustering · DNS · Tunnels**\
 One process replaces the five or six tools you put in front of your services today.
 
 [![Build Status](https://github.com/dhaneeshtb/scaleguard/actions/workflows/ci.yml/badge.svg)](https://github.com/dhaneeshtb/scaleguard/actions)
@@ -41,10 +41,11 @@ flowchart LR
     C([Clients<br/>browsers · apps · gRPC]) --> T
     subgraph SG [ScaleGuard]
         direction LR
-        T[TLS + ALPN<br/>HTTP/1.1 · HTTP/2 · h2c] --> M[Router<br/>host · path · header · JWT]
+        T[TLS + ALPN · QUIC<br/>HTTP/1.1 · HTTP/2 · HTTP/3 · h2c] --> M[Router<br/>host · path · header · JWT]
         M --> R[Rate limiter<br/>per client · per route]
         R --> W[WAF<br/>per-route policy]
         W --> L[Load balancer<br/>4 strategies<br/>active + passive health]
+        L -.-> AN[(Analytics<br/>DuckDB)]
     end
     L --> B1[(Service A)]
     L --> B2[(Service B)]
@@ -77,7 +78,7 @@ Open **http://localhost/adminui/** and sign in. Add a route, point it at your ba
 
 ```bash
 docker build -f docker/Dockerfile -t scaleguard .
-docker run -p 80:80 -p 443:443 \
+docker run -p 80:80 -p 443:443 -p 443:443/udp \
   -e SCALEGUARD_ADMIN_USER=admin -e SCALEGUARD_ADMIN_PASSWORD='choose-a-strong-password' \
   scaleguard
 ```
@@ -105,7 +106,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 |---|---|
 | **Layer-7 load balancing** | Round-robin, least-connections, weighted and active/standby (multi-cluster disaster recovery), per target |
 | **Routing** | By host name, port, path prefix, header value or JWT claim |
-| **HTTP/2 and gRPC** | ALPN `h2` on TLS, h2c on plain HTTP. gRPC unary, client-, server- and bidirectional streaming proxied message by message, trailers intact, over pooled HTTP/2 backend connections |
+| **HTTP/2, HTTP/3 and gRPC** | ALPN `h2` on TLS, h2c on plain HTTP, and HTTP/3 over QUIC on every HTTPS port (advertised with `Alt-Svc`, same certificates, multi-core UDP listeners). gRPC unary, client-, server- and bidirectional streaming proxied message by message, trailers intact, over pooled HTTP/2 backend connections |
 | **WebSockets and TCP** | WebSocket upgrade proxying and raw TCP routes |
 | **Caching** | Per-route response cache with TTLs |
 | **Async delivery** | Hand requests to Kafka or an embedded durable queue, with retries and an event audit API |
@@ -113,8 +114,8 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 ### Protection
 | | |
 |---|---|
-| **Web application firewall** | 21 built-in rules (SQL injection, XSS, path traversal, command injection, SSRF, Log4Shell, scanners and more) plus your own regex rules. Enable per route, block or detect-only, tune each rule, dry-run any request. Inputs are normalised (multi-pass URL decoding, HTML entities, SQL comments) and patterns are ReDoS-safe |
-| **Rate limiting** | Token bucket per client per route, smooth across minute boundaries, `429` + `Retry-After`. Per-route overrides; trusted-proxy aware, so spoofed `X-Forwarded-For` can't dodge it |
+| **Web application firewall** | 21 built-in rules (SQL injection, XSS, path traversal, command injection, SSRF, Log4Shell, scanners and more) plus your own regex rules, plus **OWASP Core Rule Set import** with CRS-style anomaly scoring and paranoia levels. Enable per route; block, score or detect-only; tune each rule; dry-run any request. Inputs are normalised (multi-pass URL decoding, HTML entities, SQL comments) and patterns are ReDoS-safe |
+| **Rate limiting** | Token bucket per client per route, smooth across minute boundaries, `429` + `Retry-After`. Per-route overrides; trusted-proxy aware, so spoofed `X-Forwarded-For` can't dodge it. In a cluster, one budget across all nodes |
 | **Client credentials** | Protect routes with per-application client IDs and secrets |
 | **Admin API safety** | Token auth, separate admin rate limit so a strict setting can't lock you out |
 
@@ -136,8 +137,10 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 ### Operations
 | | |
 |---|---|
-| **Admin UI** | Live traffic, routes, backend health, firewall, rate limits, certificates and DNS, all editable |
+| **Admin UI** | Live traffic, analytics, routes, backend health, firewall, rate limits, cluster, certificates and DNS, all editable |
 | **REST API** | Everything in the UI is scriptable. [Reference](docs/API.md) and [OpenAPI 3 spec](docs/openapi.yaml) |
+| **Request analytics** | Every request recorded in a built-in DuckDB: live dashboards (traffic, status classes, p50/p95 latency, top routes, paths, clients, blocked attacks), searchable access logs with CSV/NDJSON export, and a read-only SQL console. W3C `traceparent` support and an `X-Trace-Id` on every response. No external log stack |
+| **High availability** | Point nodes at one PostgreSQL database and they form a cluster: config changes reach every node in under a second, a leader runs certificate renewal with automatic fail-over, and a Cluster page shows every node live |
 | **Observability** | Prometheus `/metrics`, `/healthz` (503 when no backend is reachable), per-route `/stats`, firewall and rate-limit event feeds |
 | **Zero-reload config** | Every change applies instantly; settings persist to SQLite or Postgres |
 | **Fast I/O** | Netty 4.2 with io_uring, epoll or kqueue picked automatically, SO_REUSEPORT multi-acceptor listeners |
@@ -160,6 +163,23 @@ backend and the load generator sharing those two cores, so dedicated hardware wi
 
 Reproduce: `dev-tools/go/load.go`, `dev-tools/go/h2check.go … bench=50:8`, `dev-tools/java/LoadGen.java`.
 
+**Head to head, one CPU core each** (October 2026, same backend and `wrk`, median of 3 runs, 64 keep-alive
+connections, access logs off unless noted):
+
+| Proxy | Requests/s (12-byte body) | p50 | p99 | Requests/s (16 KB body) |
+|---|---:|---:|---:|---:|
+| HAProxy 3.4 | 44,472 | 1.30 ms | 3.3 ms | 33,718 |
+| NGINX 1.29 | 40,966 | 1.26 ms | 5.3 ms | 31,536 |
+| **ScaleGuard** | **32,369** | **1.20 ms** | 13.2 ms | **24,512** |
+| ScaleGuard + analytics (every request to DuckDB) | 20,455 | 1.56 ms | 30.6 ms | 18,859 |
+| Envoy 1.39 | 16,394 | 3.50 ms | 10.7 ms | 14,945 |
+| Traefik 3.7 | 8,916 | 6.49 ms | 23.6 ms | 9,541 |
+| Caddy 2.11 | 7,180 | 8.12 ms | 23.1 ms | 7,079 |
+
+ScaleGuard runs at ~80% of NGINX per core and about twice Envoy, with the lowest median latency. Its tail latency
+(JVM garbage collection) and memory (~200 MB with a 256 MB heap vs ~15–25 MB for NGINX/HAProxy) are where the
+C proxies are ahead.
+
 ---
 
 ## 📊 How it compares
@@ -170,8 +190,12 @@ What you get **out of the box**, without extra modules, plugins or paid tiers. C
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | L7 load balancing & reverse proxy | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | HTTP/2 + gRPC proxying | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| HTTP/3 (QUIC) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (CloudFront) |
 | Automatic TLS certificates | ✅ | ✅ module | ✅ 3.2+ | ✅ | ✅ | ✅ ACM |
 | Web application firewall | ✅ built-in, per route | module | ❌ (Enterprise) | plugin | plugin | paid add-on (AWS WAF) |
+| OWASP CRS with anomaly scoring | ✅ import in the UI | module (ModSecurity, EOL) | ❌ (Enterprise) | ❌ (Hub) | plugin | managed rules (paid) |
+| Request analytics + SQL, built in | ✅ DuckDB | ❌ logs only | ❌ logs only | ❌ | ❌ | CloudWatch / Athena |
+| Multi-node config sync + shared rate limits | ✅ via PostgreSQL | ❌ (NGINX Plus) | partial (peers) | ❌ (Hub) | ❌ | ✅ managed |
 | Per-client rate limiting | ✅ | ✅ | ✅ | ✅ | plugin | via AWS WAF |
 | Authoritative DNS server | ✅ | ❌ | ❌ | ❌ | ❌ | separate (Route 53) |
 | Self-hosted tunnels (ngrok-style) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -283,13 +307,14 @@ firewall changes. [SafeExpose docs →](https://github.com/dhaneeshtb/scalegurad
 - [x] Admin UI and OpenAPI-documented admin API
 - [x] Prometheus metrics, response caching, Kafka/embedded async delivery
 - [x] Netty 4.2 with io_uring
+- [x] Request analytics and access logs in built-in DuckDB, queryable from the UI
+- [x] OWASP Core Rule Set import and anomaly scoring
+- [x] High availability: multi-node clusters with shared config and cluster-wide rate limits
+- [x] HTTP/3 (QUIC)
 
 **Next**
 - [ ] Bot defences: proof-of-work challenge and CAPTCHA, per route
-- [ ] Request analytics and access logs in built-in DuckDB, queryable from the UI
-- [ ] Deeper WAF: OWASP Core Rule Set import and anomaly scoring
-- [ ] High availability: multi-node clusters with shared config and cluster-wide rate limits
-- [ ] HTTP/3 (QUIC)
+- [ ] Backend connection pooling for HTTP/2 and HTTP/3 streams
 - [ ] Helm chart, canary and A/B routing, OAuth2/OIDC, WebAssembly plugins
 
 Want to help? See [good first issues](https://github.com/dhaneeshtb/scaleguard/labels/good%20first%20issue) or

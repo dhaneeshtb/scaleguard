@@ -4,8 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Menu, MenuButton, MenuList, MenuItem, Tooltip, useColorMode } from '@chakra-ui/react';
 import axios from "axios";
 import {
-    FiActivity, FiHeart, FiChevronsLeft, FiChevronsRight, FiCommand, FiGlobe, FiLock, FiLogOut,
-    FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown, FiSliders, FiKey,
+    FiActivity, FiBarChart2, FiHeart, FiChevronsLeft, FiChevronsRight, FiCommand, FiGlobe, FiLock, FiLogOut,
+    FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown, FiSliders, FiKey, FiServer,
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { useAuth } from "./contexts/AuthContext";
@@ -25,6 +25,7 @@ const navSections: { title: string; links: NavLink[] }[] = [
         title: "Traffic",
         links: [
             { to: "/home", label: "Overview", icon: FiActivity, match: ["/home", "/managehost", "/hostgroups"] },
+            { to: "/analytics", label: "Analytics", icon: FiBarChart2 },
             { to: "/backends", label: "Backend health", icon: FiHeart },
             { to: "/asyncengines", label: "Async Engines", icon: FiZap },
         ],
@@ -42,6 +43,12 @@ const navSections: { title: string; links: NavLink[] }[] = [
         links: [
             { to: "/certificates", label: "Certificates", icon: FiLock },
             { to: "/dns", label: "DNS", icon: FiGlobe },
+        ],
+    },
+    {
+        title: "Platform",
+        links: [
+            { to: "/cluster", label: "Cluster", icon: FiServer },
         ],
     },
 ];

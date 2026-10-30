@@ -1,12 +1,15 @@
 package com.scaleguard.server.http.router;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class RouteTable {
 
-  private List<SourceSystem> sourceSystsems = new ArrayList<>();
-  private Map<String,TargetSystem> targetSystemMap = new HashMap<>();
-  private List<HostGroup> hostGroups = new ArrayList<>();
+  // Read on every request by the I/O threads, written by the admin API and cluster reloads: copy-on-write.
+  private volatile List<SourceSystem> sourceSystsems = new CopyOnWriteArrayList<>();
+  private final Map<String,TargetSystem> targetSystemMap = new ConcurrentHashMap<>();
+  private final List<HostGroup> hostGroups = new CopyOnWriteArrayList<>();
   static SystemLoader loader =new DBSystemLoader();
 
   public static SystemLoader getLoader() {
@@ -43,6 +46,63 @@ public class RouteTable {
     sourceSystsems.addAll(loader.loadSources());
     loader.loadTargets(hostGroups).forEach(s->targetSystemMap.put(s.getGroupId(),s));
     remapSourceSystems();
+  }
+
+  /**
+   * Re-reads routes, targets and backends from the database after another cluster node changed them.
+   * Backends that still exist keep their identity — and with it their health state, passive-health ejections and
+   * open-connection counts; only their configuration is refreshed. Requests in flight finish on the old objects.
+   */
+  public synchronized void reload(){
+    List<HostGroup> freshHosts = loader.loadHostGroups();
+    List<SourceSystem> freshSources = loader.loadSources();
+    if (freshHosts == null || freshSources == null) {
+      throw new IllegalStateException("could not read routes from the database; keeping the current configuration");
+    }
+    Map<String,HostGroup> current = new HashMap<>();
+    hostGroups.forEach(h -> { if (h.getId() != null) current.put(h.getId(), h); });
+    List<HostGroup> merged = new ArrayList<>();
+    for (HostGroup f : freshHosts) {
+      if (f.getId() == null) f.setId(UUID.randomUUID().toString());
+      HostGroup cur = current.get(f.getId());
+      if (cur != null) {
+        copyConfig(f, cur);
+        merged.add(cur);
+      } else {
+        merged.add(f);
+      }
+    }
+    List<TargetSystem> freshTargets = loader.loadTargets(merged);
+    if (freshTargets == null) {
+      throw new IllegalStateException("could not read targets from the database; keeping the current configuration");
+    }
+    Set<HostGroup> keep = Collections.newSetFromMap(new IdentityHashMap<>());
+    keep.addAll(merged);
+    hostGroups.removeIf(h -> !keep.contains(h));
+    for (HostGroup h : merged) {
+      if (hostGroups.stream().noneMatch(x -> x == h)) hostGroups.add(h);
+    }
+    Map<String,TargetSystem> tm = new HashMap<>();
+    freshTargets.forEach(t -> tm.put(t.getGroupId(), t));
+    targetSystemMap.putAll(tm);
+    targetSystemMap.keySet().retainAll(tm.keySet());
+    freshSources.forEach(src -> src.setTargetSystem(tm.get(src.getTarget())));
+    sourceSystsems = new CopyOnWriteArrayList<>(freshSources);
+  }
+
+  /** Copies persisted settings from a freshly loaded backend onto the live one, leaving runtime state alone. */
+  private static void copyConfig(HostGroup from, HostGroup to){
+    for (java.lang.reflect.Field f : HostGroup.class.getDeclaredFields()) {
+      int mod = f.getModifiers();
+      if (java.lang.reflect.Modifier.isStatic(mod) || java.lang.reflect.Modifier.isFinal(mod)
+              || java.lang.reflect.Modifier.isTransient(mod) || f.getName().equals("isReachable")) continue;
+      f.setAccessible(true);
+      try {
+        f.set(to, f.get(from));
+      } catch (IllegalAccessException e) {
+        throw new IllegalStateException(e);
+      }
+    }
   }
 
   public void deleteSource(String id){

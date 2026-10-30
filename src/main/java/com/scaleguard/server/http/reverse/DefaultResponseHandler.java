@@ -143,7 +143,7 @@ public class DefaultResponseHandler {
                     }
 
                     try {
-                      RequestRoutingResponse resp =   rr.handle(request.method().name(), uri, body);
+                      RequestRoutingResponse resp =   rr.handle(request.method().name(), rr.receivesQueryString() ? request.uri() : uri, body);
                       handleResponse(ctx,resp);
                       return;
                     }catch (Exception e){
@@ -222,6 +222,19 @@ public class DefaultResponseHandler {
         memory.put("max_bytes", runtime.maxMemory());
         memory.put("total_bytes", runtime.totalMemory());
         health.set("memory", memory);
+
+        // Protocols
+        ObjectNode protocols = LocalSystemLoader.mapper.createObjectNode();
+        protocols.put("http2", com.scaleguard.server.http.h2.ProtocolPipelines.http2Enabled());
+        ObjectNode h3 = LocalSystemLoader.mapper.createObjectNode();
+        h3.put("enabled", com.scaleguard.server.http.h3.Http3Listener.enabled());
+        com.fasterxml.jackson.databind.node.ArrayNode h3ports = h3.putArray("udpPorts");
+        com.scaleguard.server.http.h3.Http3Listener.ports().stream().sorted().forEach(h3ports::add);
+        if (com.scaleguard.server.http.h3.Http3Listener.unavailableReason() != null) {
+            h3.put("unavailable", com.scaleguard.server.http.h3.Http3Listener.unavailableReason());
+        }
+        protocols.set("http3", h3);
+        health.set("protocols", protocols);
 
         // Cache stats (DuckDB if active, otherwise in-memory note)
         try {
@@ -360,6 +373,12 @@ public class DefaultResponseHandler {
     }
 
     public void handleResponse(final ChannelHandlerContext ctx, RequestRoutingResponse resp) {
+        if (resp.getDeferred() != null) {
+            // finished off the I/O thread; write the result back on the channel's event loop
+            resp.getDeferred().whenComplete((r, e) -> ctx.executor().execute(() -> handleResponse(ctx,
+                    r != null ? r : new RequestRoutingResponse(500, "{\"message\":\"internal error\"}"))));
+            return;
+        }
         ByteBuf content = Unpooled.copiedBuffer(resp.getBody() != null ? resp.getBody() : "", CharsetUtil.UTF_8);
         HttpResponseStatus status = HttpResponseStatus.valueOf(resp.getStatus());
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, content);

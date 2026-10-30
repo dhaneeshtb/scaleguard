@@ -58,6 +58,26 @@ public class WafRoute implements RequestRoute {
                 waf.saveCustomRule(text(n, "id"), text(n, "name"), text(n, "description"), text(n, "pattern"), targets, action);
                 return ok(view(waf));
             }
+            if ("post".equalsIgnoreCase(method) && parts.length == 2 && parts[1].equals("rulesets")) {
+                JsonNode n = JSON.parse(body);
+                if (n == null || !n.has("files")) return error(400, "Send {\"name\": \"…\", \"files\": {\"file name\": \"content\"}}.");
+                Map<String, String> files = new LinkedHashMap<>();
+                n.get("files").fields().forEachRemaining(e -> files.put(e.getKey(), e.getValue().asText()));
+                final String setName = text(n, "name");
+                // compiling a few hundred large regexes takes a moment: do it off the I/O thread
+                return RequestRoutingResponse.later(() -> {
+                    try {
+                        return importResponse(waf, waf.importRuleSet(setName, files));
+                    } catch (IllegalArgumentException e) {
+                        return error(400, e.getMessage());
+                    }
+                });
+            }
+            if ("delete".equalsIgnoreCase(method) && parts.length == 3 && parts[1].equals("rulesets")) {
+                String name = java.net.URLDecoder.decode(parts[2], java.nio.charset.StandardCharsets.UTF_8);
+                if (!waf.deleteRuleSet(name)) return error(404, "Rule set " + name + " not found.");
+                return ok(view(waf));
+            }
             if ("delete".equalsIgnoreCase(method) && parts.length == 3 && parts[1].equals("rules")) {
                 if (!waf.deleteCustomRule(parts[2])) return error(404, "Custom rule " + parts[2] + " not found.");
                 return ok(view(waf));
@@ -72,6 +92,7 @@ public class WafRoute implements RequestRoute {
                 WafEngine.Verdict v = waf.test(p, text(n, "uri"), headers, text(n, "body"));
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("blocked", v.blocked());
+                out.put("score", v.score());
                 List<Map<String, Object>> matches = new ArrayList<>();
                 for (WafEngine.Match m : v.matches()) { // this Jackson version can't serialise records
                     Map<String, Object> mm = new LinkedHashMap<>();
@@ -92,6 +113,20 @@ public class WafRoute implements RequestRoute {
         return error(404, "Unknown WAF endpoint.");
     }
 
+    private static RequestRoutingResponse importResponse(WafEngine waf, CrsImporter.Result r) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("imported", r.rules().size());
+        Map<Integer, Integer> byPl = new java.util.TreeMap<>();
+        Map<String, Integer> byCat = new java.util.TreeMap<>();
+        for (WafRule w : r.rules()) { byPl.merge(w.getParanoia(), 1, Integer::sum); byCat.merge(w.getCategory(), 1, Integer::sum); }
+        out.put("byParanoia", byPl);
+        out.put("byCategory", byCat);
+        out.put("skipped", r.skipped());
+        out.put("examples", r.examples());
+        out.put("waf", view(waf));
+        return ok(out);
+    }
+
     private static Map<String, Object> view(WafEngine waf) {
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, Object> stats = waf.stats();
@@ -103,14 +138,31 @@ public class WafRoute implements RequestRoute {
             m.put("name", r.getName());
             m.put("category", r.getCategory());
             m.put("description", r.getDescription());
-            m.put("pattern", r.getPattern());
+            String pat = r.getPattern();
+            m.put("pattern", r.getRuleSet() != null && pat.length() > 300 ? pat.substring(0, 300) + "…" : pat);
             m.put("targets", r.getTargets());
             m.put("defaultAction", r.getDefaultAction().name().toLowerCase());
             m.put("builtIn", r.isBuiltIn());
+            m.put("severity", r.getSeverity().name().toLowerCase());
+            m.put("paranoia", r.getParanoia());
+            if (r.getRuleSet() != null) m.put("ruleSet", r.getRuleSet());
             m.put("hits", hits.getOrDefault(r.getId(), 0L));
             rules.add(m);
         }
         out.put("rules", rules);
+        List<Map<String, Object>> sets = new ArrayList<>();
+        for (WafEngine.RuleSet rs : waf.ruleSets().values()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("name", rs.name());
+            m.put("importedAt", rs.importedAt());
+            m.put("rules", rs.rules().size());
+            Map<Integer, Integer> byPl = new java.util.TreeMap<>();
+            for (WafRule w : rs.rules()) byPl.merge(w.getParanoia(), 1, Integer::sum);
+            m.put("byParanoia", byPl);
+            m.put("skipped", rs.skipped());
+            sets.add(m);
+        }
+        out.put("ruleSets", sets);
         List<Map<String, Object>> routes = new ArrayList<>();
         for (SourceSystem ss : RouteTable.getInstance().getSourceSystsems()) {
             Map<String, Object> m = new LinkedHashMap<>();

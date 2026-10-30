@@ -39,6 +39,10 @@ public class RateLimitManager {
     static final String P_PER_MINUTE = "ratelimit.perMinute";
     static final String P_BURST_SECONDS = "ratelimit.burstSeconds";
     static final String P_TRUSTED = "ratelimit.trustedProxies";
+    static final String P_CLUSTER_MODE = "ratelimit.clusterMode";
+
+    /** Cluster modes: each node limits on its own; nodes share one budget; or each node gets limit ÷ live nodes. */
+    public static final String MODE_LOCAL = "local", MODE_SHARED = "shared", MODE_DIVIDED = "divided";
 
     public static final String DEFAULT_TRUSTED = "127.0.0.0/8,::1/128";
     private static final long IDLE_EVICT_NANOS = TimeUnit.MINUTES.toNanos(5);
@@ -54,13 +58,24 @@ public class RateLimitManager {
     private static volatile RateLimitManager instance;
 
     /** Immutable settings snapshot; swapped atomically on update. */
-    public record Settings(boolean enabled, int perMinute, int burstSeconds, String trustedProxies) {
+    public record Settings(boolean enabled, int perMinute, int burstSeconds, String trustedProxies, String clusterMode) {
         public Settings {
             perMinute = Math.max(1, perMinute);
             burstSeconds = Math.max(1, Math.min(3600, burstSeconds));
             trustedProxies = trustedProxies == null || trustedProxies.isBlank() ? DEFAULT_TRUSTED : trustedProxies.trim();
+            clusterMode = clusterMode == null || clusterMode.isBlank() ? MODE_SHARED : clusterMode.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!clusterMode.equals(MODE_LOCAL) && !clusterMode.equals(MODE_SHARED) && !clusterMode.equals(MODE_DIVIDED)) {
+                throw new IllegalArgumentException("clusterMode must be local, shared or divided");
+            }
+        }
+
+        public Settings(boolean enabled, int perMinute, int burstSeconds, String trustedProxies) {
+            this(enabled, perMinute, burstSeconds, trustedProxies, MODE_SHARED);
         }
     }
+
+    /** Tokens one node spent on a key, as published to the other nodes (cumulative since the bucket was created). */
+    public record Usage(String key, double consumed, int limitPerMinute) {}
 
     /** Outcome of a rate check. */
     public record Decision(boolean allowed, long retryAfterSeconds) {
@@ -70,6 +85,7 @@ public class RateLimitManager {
     private static final class Bucket {
         final String client;
         final String route;
+        String key;
         double tokens;
         boolean admin;   // admin & internal endpoints (fixed burst)
         long lastRefill;
@@ -78,6 +94,9 @@ public class RateLimitManager {
         long rejectedTotal;
         long lastRejected;
         int limitPerMinute;
+        double unpublished;      // spent here since the last cluster publish
+        double publishedTotal;   // spent here since this bucket was created, as last published
+        boolean republish;       // the last publish failed
 
         Bucket(String client, String route) { this.client = client; this.route = route; }
     }
@@ -136,8 +155,9 @@ public class RateLimitManager {
     private void apply(Settings s) {
         this.settings = s;
         ClientIpResolver.setTrustedProxies(s.trustedProxies());
-        logger.info("HTTP rate limit {}: {}/min per client per route, burst {}s, trusted proxies {}",
-                s.enabled() ? "on" : "off", s.perMinute(), s.burstSeconds(), s.trustedProxies());
+        logger.info("HTTP rate limit {}: {}/min per client per route, burst {}s, trusted proxies {}{}",
+                s.enabled() ? "on" : "off", s.perMinute(), s.burstSeconds(), s.trustedProxies(),
+                com.scaleguard.server.cluster.ClusterManager.enabled() ? ", cluster mode " + s.clusterMode() : "");
     }
 
     private static Settings loadSettings() {
@@ -145,6 +165,7 @@ public class RateLimitManager {
         int perMinute = Math.max(1, configuredInt("scaleguard.rateLimit", 10_000));
         int burstSeconds = configuredInt("scaleguard.rateLimitBurstSeconds", 10);
         String trusted = configured("scaleguard.trustedProxies", DEFAULT_TRUSTED);
+        String clusterMode = configured("scaleguard.rateLimitClusterMode", MODE_SHARED);
         try {
             for (SystemProperty p : SystemPropertyDB.getInstance().readAll()) {
                 String v = p.getValue();
@@ -154,13 +175,23 @@ public class RateLimitManager {
                     case P_PER_MINUTE -> perMinute = Integer.parseInt(v);
                     case P_BURST_SECONDS -> burstSeconds = Integer.parseInt(v);
                     case P_TRUSTED -> trusted = v;
+                    case P_CLUSTER_MODE -> clusterMode = v;
                     default -> { }
                 }
             }
         } catch (Exception e) {
             logger.warn("Could not read rate-limit settings from the database, using defaults: {}", e.toString());
         }
-        return new Settings(enabled, perMinute, burstSeconds, trusted);
+        try {
+            return new Settings(enabled, perMinute, burstSeconds, trusted, clusterMode);
+        } catch (IllegalArgumentException e) {
+            return new Settings(enabled, perMinute, burstSeconds, trusted, MODE_SHARED);
+        }
+    }
+
+    /** Re-reads the settings from the database (another cluster node changed them). */
+    public void reloadSettings() {
+        apply(loadSettings());
     }
 
     private static void persist(Settings s) throws Exception {
@@ -170,6 +201,7 @@ public class RateLimitManager {
         props.add(prop(P_PER_MINUTE, String.valueOf(s.perMinute()), now));
         props.add(prop(P_BURST_SECONDS, String.valueOf(s.burstSeconds()), now));
         props.add(prop(P_TRUSTED, s.trustedProxies(), now));
+        props.add(prop(P_CLUSTER_MODE, s.clusterMode(), now));
         SystemPropertyDB.getInstance().save(props);
     }
 
@@ -224,6 +256,7 @@ public class RateLimitManager {
         long now = System.nanoTime();
         Bucket b = buckets.computeIfAbsent(key, k -> {
             Bucket n = new Bucket(ip, routeLabel(rt));
+            n.key = k;
             n.limitPerMinute = limit;
             n.admin = rt == null;
             n.tokens = burst(limit, n.admin);
@@ -234,6 +267,7 @@ public class RateLimitManager {
             refill(b, now, limit);
             if (b.tokens >= 1) {
                 b.tokens -= 1;
+                if (!b.admin && clusterShared()) b.unpublished += 1;
                 allowed.increment();
                 return Decision.ALLOW;
             }
@@ -259,15 +293,77 @@ public class RateLimitManager {
      */
     private static final int ADMIN_LIMIT = Math.max(0, configuredInt("scaleguard.adminRateLimit", 3_000));
 
-    /** Effective limit for this route in requests/minute; 0 means unlimited. */
+    /** Effective limit for this route in requests/minute on this node; 0 means unlimited. */
     private int limitFor(RouteTarget rt) {
         Settings s = settings;
         if (rt == null) return ADMIN_LIMIT;
+        int limit = s.enabled() ? s.perMinute() : 0;
         if (rt.getSourceSystem() != null) {
             Integer override = rt.getSourceSystem().getRateLimit();
-            if (override != null && override >= 0) return override;
+            if (override != null && override >= 0) limit = override;
         }
-        return s.enabled() ? s.perMinute() : 0;
+        if (limit > 0 && MODE_DIVIDED.equals(s.clusterMode()) && com.scaleguard.server.cluster.ClusterManager.enabled()) {
+            int nodes = com.scaleguard.server.cluster.ClusterManager.liveNodes();
+            if (nodes > 1) limit = Math.max(1, (int) Math.ceil(limit / (double) nodes));
+        }
+        return limit;
+    }
+
+    // ------------------------------------------------------------------ cluster-wide limits
+
+    /** True when buckets are shared with the other cluster nodes. */
+    public boolean clusterShared() {
+        return MODE_SHARED.equals(settings.clusterMode()) && com.scaleguard.server.cluster.ClusterManager.enabled();
+    }
+
+    /** Takes the per-key spend accumulated since the last call (at most {@code max} keys; the rest wait a tick). */
+    public List<Usage> drainUsage(int max) {
+        List<Usage> out = new ArrayList<>();
+        for (Bucket b : buckets.values()) {
+            if (b.admin || (b.unpublished <= 0 && !b.republish)) continue;
+            synchronized (b) {
+                if (b.unpublished <= 0 && !b.republish) continue;
+                b.publishedTotal += b.unpublished;
+                b.unpublished = 0;
+                b.republish = false;
+                out.add(new Usage(b.key, b.publishedTotal, b.limitPerMinute));
+            }
+            if (out.size() >= max) break;
+        }
+        return out;
+    }
+
+    /** Marks usage that failed to publish so the next tick sends it again (totals are cumulative, so nothing is lost). */
+    public void restoreUsage(List<Usage> usage) {
+        for (Usage u : usage) {
+            Bucket b = buckets.get(u.key());
+            if (b != null) {
+                synchronized (b) {
+                    b.republish = true;
+                }
+            }
+        }
+    }
+
+    /** Deducts tokens another node spent on this key. Tokens may go negative (down to −burst), i.e. into debt. */
+    public void applyRemote(String key, double spent, int limitPerMinute) {
+        if (spent <= 0 || key == null || key.endsWith("|system")) return;
+        long now = System.nanoTime();
+        int limit = limitPerMinute > 0 ? limitPerMinute : settings.perMinute();
+        Bucket b = buckets.computeIfAbsent(key, k -> {
+            int bar = k.indexOf('|');
+            Bucket n = new Bucket(bar > 0 ? k.substring(0, bar) : k, bar > 0 ? "route " + k.substring(bar + 1) : k);
+            n.key = k;
+            n.limitPerMinute = limit;
+            n.tokens = burst(limit, false);
+            n.lastRefill = now;
+            return n;
+        });
+        synchronized (b) {
+            refill(b, now, b.limitPerMinute > 0 ? b.limitPerMinute : limit);
+            double cap = burst(b.limitPerMinute > 0 ? b.limitPerMinute : limit, false);
+            b.tokens = Math.max(-cap, b.tokens - spent);
+        }
     }
 
     /** Admin/internal traffic always gets a 10-second burst, so a tight UI burst setting can't throttle the admin UI. */
@@ -321,6 +417,9 @@ public class RateLimitManager {
         m.put("rejected", rejected.sum());
         m.put("trackedClients", buckets.size());
         m.put("sinceMs", startedAt);
+        m.put("clusterMode", settings.clusterMode());
+        m.put("cluster", com.scaleguard.server.cluster.ClusterManager.enabled());
+        m.put("clusterNodes", com.scaleguard.server.cluster.ClusterManager.liveNodes());
         long now = System.currentTimeMillis();
         List<Map<String, Object>> top = new ArrayList<>();
         buckets.values().stream()

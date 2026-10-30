@@ -117,6 +117,21 @@ public class ClientInfo {
         return clientInfoMap;
     }
 
+    /** Replaces the in-memory clients with the database's (another cluster node changed one). */
+    public static synchronized void reload() {
+        try {
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            ClientInfoEntriesDB.getInstance().readAll().forEach(r -> {
+                ids.add(r.getId());
+                clientInfoMap.put(r.getId(), new WrappeClientInfoRecord(r.getName(), r.getDescription(), r.getAppid(),
+                        r.getClientid(), r.getClientsecret(), r.getExpiry(), r.getId()));
+            });
+            clientInfoMap.keySet().retainAll(ids);
+        } catch (Exception e) {
+            LOGGER.error("error reloading client info entries from db", e);
+        }
+    }
+
     private static void load() {
         try {
             LOGGER.info("loading entries from db");

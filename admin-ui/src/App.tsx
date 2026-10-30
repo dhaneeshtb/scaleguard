@@ -27,6 +27,8 @@ import AsyncEngines from './pages/asyncengines/AsyncEngines';
 import RateLimiting from './pages/protection/RateLimiting';
 import Firewall from './pages/protection/Firewall';
 import BackendHealth from './pages/traffic/BackendHealth';
+import Analytics from './pages/traffic/Analytics';
+import Cluster from './pages/platform/Cluster';
 
 function App() {
   return (
@@ -57,6 +59,8 @@ function App() {
                     <Route path="/ratelimit" element={<RateLimiting />} />
                     <Route path="/firewall" element={<Firewall />} />
                     <Route path="/backends" element={<BackendHealth />} />
+                    <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/cluster" element={<Cluster />} />
                   </Routes>
                 </Layout>
               }

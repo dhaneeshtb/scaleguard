@@ -82,7 +82,8 @@ public class InboundMessageHandler {
 
   public RouteTarget matchTarget(ChannelHandlerContext ctx, Object msg,int port) {
     SourceSystem ss = new SourceSystem();
-    String inAddress= ((InetSocketAddress)ctx.channel().remoteAddress()).getAddress().getHostAddress();
+    InetSocketAddress peerAddr = com.scaleguard.server.http.h3.Http3Listener.peer(ctx.channel());
+    String inAddress= peerAddr != null ? peerAddr.getAddress().getHostAddress() : "unknown";
     HttpHeaders headers =null;
     String uri=null;
     if (msg instanceof HttpRequest) {

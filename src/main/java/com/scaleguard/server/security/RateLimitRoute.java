@@ -42,6 +42,10 @@ public class RateLimitRoute implements RequestRoute {
             int perMinute = n.has("perMinute") ? n.get("perMinute").asInt(-1) : cur.perMinute();
             int burst = n.has("burstSeconds") ? n.get("burstSeconds").asInt(-1) : cur.burstSeconds();
             String trusted = n.has("trustedProxies") ? n.get("trustedProxies").asText("") : cur.trustedProxies();
+            String clusterMode = n.has("clusterMode") ? n.get("clusterMode").asText("") : cur.clusterMode();
+            if (!List.of("local", "shared", "divided").contains(clusterMode)) {
+                return error("clusterMode must be local, shared or divided.");
+            }
 
             if (perMinute < 1 || perMinute > 10_000_000) return error("Requests per minute must be between 1 and 10,000,000.");
             if (burst < 1 || burst > 3600) return error("Burst must be between 1 and 3600 seconds.");
@@ -52,7 +56,7 @@ public class RateLimitRoute implements RequestRoute {
             }
             if (!bad.isEmpty()) return error("Not a valid IP or CIDR range: " + String.join(", ", bad));
 
-            rl.update(new RateLimitManager.Settings(enabled, perMinute, burst, trusted));
+            rl.update(new RateLimitManager.Settings(enabled, perMinute, burst, trusted, clusterMode));
             return RequestRoutingResponse.succes(JSON.toString(view(rl)));
         }
         return RequestRoutingResponse.response(405, "{}");
@@ -66,6 +70,7 @@ public class RateLimitRoute implements RequestRoute {
         settings.put("perMinute", s.perMinute());
         settings.put("burstSeconds", s.burstSeconds());
         settings.put("trustedProxies", s.trustedProxies());
+        settings.put("clusterMode", s.clusterMode());
         out.put("settings", settings);
         out.put("stats", rl.stats());
         List<Map<String, Object>> routes = new ArrayList<>();

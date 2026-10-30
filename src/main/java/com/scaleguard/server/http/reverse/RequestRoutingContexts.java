@@ -39,6 +39,8 @@ public class RequestRoutingContexts {
         routesMap.put("ratelimit",new RateLimitRoute());
         routesMap.put("waf",new WafRoute());
         routesMap.put("backends",new com.scaleguard.server.http.router.BackendHealthRoute());
+        routesMap.put("analytics",new com.scaleguard.server.analytics.AnalyticsRoute());
+        routesMap.put("cluster",new com.scaleguard.server.cluster.ClusterRoute());
 
 
 

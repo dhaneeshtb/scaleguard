@@ -2,15 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useToast } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
-import { FiActivity, FiAlertTriangle, FiGlobe, FiLayers, FiSliders } from "react-icons/fi";
+import { FiActivity, FiAlertTriangle, FiGlobe, FiLayers, FiServer, FiSliders } from "react-icons/fi";
 import { useAuth } from "../../contexts/AuthContext";
 import { updateSource } from "../../components/sourceupdate";
-import { Card, Field, PageHeader, Pill, SaveBar, Stat, ToggleRow, fmt, inputCls } from "../../components/ui/controls";
+import { Card, Field, PageHeader, Pill, SaveBar, Segmented, Stat, ToggleRow, fmt, inputCls } from "../../components/ui/controls";
 
-interface Settings { enabled: boolean; perMinute: number; burstSeconds: number; trustedProxies: string }
+type ClusterMode = "local" | "shared" | "divided";
+interface Settings { enabled: boolean; perMinute: number; burstSeconds: number; trustedProxies: string; clusterMode?: ClusterMode }
 interface LimitedClient { client: string; route: string; rejected: number; limitPerMinute: number; lastRejectedSecondsAgo: number }
 interface RouteRow { id: string; name: string; host: string; rateLimit: number | null }
-interface View { settings: Settings; stats: { allowed: number; rejected: number; trackedClients: number; limitedClients: LimitedClient[] }; routes: RouteRow[] }
+interface View { settings: Settings; stats: { allowed: number; rejected: number; trackedClients: number; limitedClients: LimitedClient[]; cluster?: boolean; clusterNodes?: number }; routes: RouteRow[] }
+
+const CLUSTER_HELP: Record<ClusterMode, string> = {
+    shared: "One budget for the whole cluster: nodes tell each other what every client spent, so a client gets the limit once no matter which node it reaches.",
+    divided: "Each node allows its share (limit ÷ live nodes). No coordination traffic; accurate when your load balancer spreads clients evenly.",
+    local: "Each node counts on its own, so a client can get up to the limit from every node.",
+};
 
 const perSecond = (perMinute: number) => {
     const v = perMinute / 60;
@@ -98,6 +105,14 @@ export default function RateLimiting() {
                         </Field>
                         <div className="mt-3 flex flex-wrap gap-1.5">{proxies.map(p => <Pill key={p} tone="muted">{p}</Pill>)}</div>
                     </Card>
+
+                    {view.stats.cluster && (
+                        <Card icon={FiServer} title="Across the cluster" description={`${view.stats.clusterNodes ?? 1} live node${(view.stats.clusterNodes ?? 1) === 1 ? "" : "s"} share this configuration.`}>
+                            <Segmented id="rl-cluster" value={(draft.clusterMode ?? "shared") as ClusterMode} onChange={v => setDraft({ ...draft, clusterMode: v })}
+                                options={[{ value: "shared", label: "Shared" }, { value: "divided", label: "Divided" }, { value: "local", label: "Per node" }]} />
+                            <p className="mt-3 text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-300">{CLUSTER_HELP[(draft.clusterMode ?? "shared") as ClusterMode]}</p>
+                        </Card>
+                    )}
 
                     <RouteLimits view={view} defaults={view.settings} onChanged={() => load(false)} />
                 </div>

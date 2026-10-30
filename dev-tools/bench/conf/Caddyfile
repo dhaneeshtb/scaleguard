@@ -1,0 +1,14 @@
+{
+  admin off
+  auto_https off
+  persist_config off
+}
+:8183 {
+  reverse_proxy 127.0.0.1:9200 {
+    transport http {
+      keepalive 5m
+      keepalive_idle_conns 512
+      keepalive_idle_conns_per_host 256
+    }
+  }
+}

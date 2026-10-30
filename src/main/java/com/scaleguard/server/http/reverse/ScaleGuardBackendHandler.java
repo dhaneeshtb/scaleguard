@@ -69,6 +69,12 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
         if(msg instanceof FullHttpResponse) {
             FullHttpResponse response= (FullHttpResponse) msg;
             PassiveHealthManager.getInstance().recordStatus(host, response.status().code());
+            com.scaleguard.server.analytics.AccessRecord rec = com.scaleguard.server.analytics.AccessLog.nextResponse(ctx.channel());
+            if (rec != null) {
+                rec.bytesOut = response.content().readableBytes();
+                if (rec.traceId != null && com.scaleguard.server.analytics.TraceContext.HEADERS) response.headers().set("X-Trace-Id", rec.traceId);
+                rec.finish(response.status().code());
+            }
             if (response.status().code() >= 300 && response.status().code() < 400) {
                 // Handle Redirect
                 String location = response.headers().get(HttpHeaderNames.LOCATION);
@@ -125,6 +131,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
                     }
                     RouteLogger.log(rt);
                 } else {
+                    logger.debug("Could not deliver the response to the client: {}", future.cause() == null ? "closed" : future.cause().toString());
                     future.channel().close();
                 }
             }
@@ -135,6 +142,8 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
+        // backend closed before answering: those requests failed
+        com.scaleguard.server.analytics.AccessLog.failPending(ctx.channel(), 502, com.scaleguard.server.analytics.AccessRecord.ERROR);
         ScaleGuardFrontendHandler.closeOnFlush(inboundChannel);
     }
 

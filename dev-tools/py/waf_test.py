@@ -13,8 +13,11 @@ def api(path, body=None, method=None):
         return json.load(urllib.request.urlopen(req))
     except urllib.error.HTTPError as e:
         return {"_status": e.code, **json.load(e)}
+POLICY = json.loads(os.environ["WAF_POLICY"]) if os.environ.get("WAF_POLICY") else None  # e.g. CRS anomaly scoring
 def test(uri="/", headers=None, body=None):
-    return api("/waf/test", {"uri": uri, "headers": headers or {}, "body": body})
+    req = {"uri": uri, "headers": headers or {}, "body": body}
+    if POLICY: req["policy"] = POLICY
+    return api("/waf/test", req)
 q = urllib.parse.quote
 ATTACKS = [
  ("sqli union", "/products?id=1 UNION SELECT username,password FROM users"),

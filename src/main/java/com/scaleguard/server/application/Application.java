@@ -99,6 +99,21 @@ public class Application {
         }
     }
 
+    /** Replaces the in-memory applications with the database's (another cluster node changed one). */
+    public static synchronized void reload(){
+        try {
+            java.util.Set<String> names = new java.util.HashSet<>();
+            ApplicationEntriesDB.getInstance().readAll().forEach(r -> {
+                names.add(r.getName());
+                applicationsMap.put(r.getName(), new WrappeApplicationRecord(r.getName(), r.getDescription(), r.getId()));
+            });
+            applicationsMap.keySet().retainAll(names);
+            loadClients();
+        }catch (Exception e){
+            LOGGER.error("error reloading entries from db", e);
+        }
+    }
+
     public static void loadClients(){
         try {
             Map<String,WrappeApplicationRecord> appIdMap = new HashMap<>();

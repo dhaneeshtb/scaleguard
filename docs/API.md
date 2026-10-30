@@ -9,7 +9,9 @@ Insomnia or Swagger UI.
 - [Routing configuration](#routing-configuration): source systems, target systems, host groups, quick mapping
 - [Backend health](#backend-health)
 - [Rate limiting](#rate-limiting)
-- [Web application firewall](#web-application-firewall)
+- [Web application firewall](#web-application-firewall), including [OWASP CRS import and anomaly scoring](#owasp-crs-import-and-anomaly-scoring)
+- [Request analytics](#request-analytics): access logs, dashboards and SQL over the built-in DuckDB
+- [Cluster](#cluster): multi-node high availability
 - [DNS](#dns) and [tunnels](#tunnels)
 - [Certificates](#certificates)
 - [Applications and clients](#applications-and-clients)
@@ -17,7 +19,7 @@ Insomnia or Swagger UI.
 - [Dynamic registration](#dynamic-registration)
 - [System settings](#system-settings)
 - [Public endpoints](#public-endpoints): health, metrics, stats
-- [Protocols: HTTP/2 and gRPC](#protocols-http2-and-grpc)
+- [Protocols: HTTP/2, HTTP/3 and gRPC](#protocols-http2-http3-and-grpc)
 
 ## Conventions
 
@@ -162,6 +164,8 @@ POST /ratelimit
 - `perMinute`: 1 to 10,000,000. `burstSeconds`: 1 to 3600. A client can send `perMinute / 60 × burstSeconds` requests at once (at least 10).
 - `trustedProxies`: comma-separated IPs or CIDRs. `X-Forwarded-For` is only believed from these peers.
 - Per-route overrides: set `rateLimit` on the source system.
+- `clusterMode` (only matters in a [cluster](#cluster)): `shared` (default) — one budget for the whole cluster, nodes exchange per-client spend every 500 ms;
+  `divided` — each node allows `limit ÷ live nodes`; `local` — each node counts on its own.
 - `stats`: `allowed`, `rejected`, `trackedClients`, `limitedClients[]` (`client`, `route`, `rejected`, `limitPerMinute`, `lastRejectedSecondsAgo`).
 
 ## Web application firewall
@@ -200,7 +204,95 @@ POST /waf/test
 {"sourceId": "s1", "uri": "/search?q=' OR '1'='1", "headers": {"User-Agent": "curl/8"}, "body": null}
 → {"blocked": true, "matches": [{"ruleId": "sqli-tautology", ...}]}
 ```
-Pass `"policy": {...}` instead of `sourceId` to test an unsaved policy.
+Pass `"policy": {...}` instead of `sourceId` to test an unsaved policy. The response also has `score` (the anomaly score in `anomaly` mode).
+
+### OWASP CRS import and anomaly scoring
+
+Import the [OWASP Core Rule Set](https://coreruleset.org/) (or any ModSecurity `SecRule` files) and score requests
+the way CRS does: every matching rule adds its severity (critical 5, error 4, warning 3, notice 2) and the request is
+blocked once the total reaches the route's threshold.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/waf/rulesets` | Import (or replace) a rule set |
+| `DELETE` | `/waf/rulesets/{name}` | Delete a rule set; routes using it stop using it |
+
+```json
+POST /waf/rulesets
+{"name": "crs-4", "files": {"REQUEST-942-APPLICATION-ATTACK-SQLI.conf": "<file contents>", "sql-errors.data": "<file contents>"}}
+→ {"imported": 189, "byParanoia": {"1": 120, ...}, "byCategory": {...}, "skipped": {"libinjection operator": 6, ...}, "examples": [...], "waf": {...}}
+```
+Upload the `REQUEST-9xx-*.conf` files plus the `.data` files they reference with `@pmFromFile`. Supported operators:
+`@rx`, `@pm`, `@pmFromFile`, `@contains`, `@beginsWith`, `@endsWith`, `@streq`. Rules using other operators
+(libinjection, negations, IP matching), file uploads or multipart bodies are skipped and counted in `skipped`.
+Imported patterns run with a per-match time budget (`scaleguard.waf.matchBudgetMicros`, default 20000) so a slow
+regex can't stall the proxy.
+
+Policy fields for scoring:
+```json
+{"enabled": true, "mode": "anomaly", "anomalyThreshold": 5, "paranoiaLevel": 1, "ruleSets": ["crs-4"], ...}
+```
+- `mode`: `block` (any blocking rule blocks), `anomaly` (sum severities, block at `anomalyThreshold`) or `detect` (log only).
+- `paranoiaLevel` 1–4: imported rules above this level don't run. Level 1 is safe for most sites; 2+ needs tuning.
+- `ruleSets`: imported sets enabled on this route, on top of the built-in and custom rules.
+
+## Request analytics
+
+Every proxied request (HTTP/1.1, HTTP/2, HTTP/3 and gRPC) is written to an embedded DuckDB database on the node
+(`scaleguard.analytics.path`, default `~/.scaleguard/analytics.duckdb`), off the request path. Admin and health
+calls aren't recorded. Responses carry an `X-Trace-Id` header (the W3C `traceparent` trace id, kept from the client
+if it sent one) so a request can be found in the log. Disable with `-Dscaleguard.analytics=false`.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/analytics/summary` | Totals, time series and top lists for the dashboard |
+| `GET` | `/analytics/logs` | Access log rows, newest first, with filters and paging |
+| `GET` | `/analytics/export` | The same rows as CSV or NDJSON (up to 100,000) |
+| `POST` | `/analytics/query` | Read-only SQL over the `access_log` view |
+| `GET`/`POST` | `/analytics/settings` | `{"enabled", "retentionDays"}` plus storage status |
+
+Common query parameters: `range` (`15m`, `1h`, `6h`, `24h`, `7d`, `30d`), `route` (source system id) and
+`node` (in a cluster, read another node's log; the request is forwarded to it).
+
+- `summary` → `totals` (`requests`, `rps`, `errors4xx`, `errors5xx`, `wafBlocked`, `rateLimited`, `clients`, `bytesIn`, `bytesOut`, `avgMs`, `p50`, `p95`, `p99`),
+  `series` (per-bucket counts and latency), `routes`, `paths`, `clients`, `backends`, `statuses`, `outcomes`, `protocols`, `wafRules`, `status`.
+- `logs` filters: `status` (`2xx`…`5xx` or an exact code), `outcome` (`proxied`, `rate_limited`, `waf_blocked`, `auth_denied`, `no_backend`, `error`, `cancelled`),
+  `ip`, `method`, `trace`, `q` (text in path or query), `limit` (≤ 500), `before` (cursor from `next`). → `{"rows": [...], "next": <cursor|null>}`.
+- `export`: add `format=csv` or `format=ndjson`.
+
+```json
+POST /analytics/query
+{"sql": "SELECT path, count(*) AS n, quantile_cont(duration_ms, 0.95) AS p95 FROM access_log WHERE ts > now() - INTERVAL 1 HOUR GROUP BY 1 ORDER BY n DESC LIMIT 10"}
+→ {"columns": ["path", "n", "p95"], "rows": [["/api/orders", 5123, 41.7], ...], "truncated": false, "ms": 12}
+```
+Only one read statement (`SELECT`, `WITH`, `FROM`, `SUMMARIZE`, `DESCRIBE`, `PIVOT`) is allowed; it runs in a
+transaction that is always rolled back, with file access disabled, a 15 s timeout and at most 1,000 rows.
+Columns: `ts` (UTC), `trace_id`, `client_ip`, `method`, `host`, `path`, `query`, `protocol`, `route_id`, `route_name`,
+`backend`, `status`, `grpc_status`, `bytes_in`, `bytes_out`, `duration_ms`, `outcome`, `waf_rule`, `user_agent`, `referer`, `tls`, `node`.
+
+## Cluster
+
+Point every node at the same PostgreSQL database (`~/.scaleguard/postgres.properties` with `driver`, `url`,
+`username`, `password`) and they form a cluster; nothing else to run.
+
+- **Shared configuration**: a change saved on any node reaches the others within about half a second
+  (PostgreSQL `LISTEN/NOTIFY`, with a 2 s poll as a fallback). Each node reloads only what changed — routes, WAF,
+  rate limits, health checks, DNS, certificates — keeping backend health and open-connection counts.
+- **Leader**: one node holds a PostgreSQL advisory lock and runs singleton jobs (certificate renewal). If it stops,
+  another node takes over at its next heartbeat (3 s).
+- **Cluster-wide rate limits**: see `clusterMode` under [Rate limiting](#rate-limiting).
+- **Analytics** stay per node; pass `node=` to the analytics endpoints to read another node's.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/cluster` | Members, leader, per-node metrics, configuration versions and sync status |
+| `POST` | `/cluster/resync` | Reload everything on this node from the shared database now |
+
+`GET /cluster` → `{"enabled", "reason"?, "liveNodes", "self": {"node", "address", "leader", "startedAt"}, "nodes": [{"node", "address", "alive", "leader", "self", "lastSeenMs", "info": {"rps", "requests", "rateLimited", "wafBlocked", "routes", "backends", "backendsHealthy", "activeConnections", "heapUsedMb", "heapMaxMb", "uptimeMs", "http3Ports"}}], "sync": {...}, "config": [{"scope", "version", "updatedBy", "updatedAt"}]}`
+
+Node settings: `scaleguard.nodeName` (default `<hostname>:<http port>`), `scaleguard.cluster.advertise` (URL other
+nodes use to reach this node's admin API), `scaleguard.cluster=false` to opt out. All nodes must use the same admin
+credentials (tokens are signed with them, which is how nodes call each other).
 
 ## DNS
 
@@ -287,16 +379,26 @@ No auth.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | `{"status": "healthy"}` |
-| `GET` | `/healthz` | Uptime, route counts, reachable hosts, memory, cache. `503` if no backend is reachable |
+| `GET` | `/healthz` | Uptime, route counts, reachable hosts, memory, cache, enabled protocols (`protocols.http3.udpPorts`). `503` if no backend is reachable |
 | `GET` | `/metrics` | Prometheus text format |
 | `GET` | `/stats` | Per-route request counts and response times |
 | `GET` | `/info` | Version |
 | `GET` | `/adminui/` | Admin UI |
 | `GET` | `/.well-known/acme-challenge/{token}` | ACME HTTP-01 responses |
 
-## Protocols: HTTP/2 and gRPC
+## Protocols: HTTP/2, HTTP/3 and gRPC
 
 - **HTTPS listener**: ALPN offers `h2` and `http/1.1`; browsers and gRPC clients get HTTP/2 automatically.
+- **HTTP/3 (QUIC)**: every HTTPS port is also served over UDP on the same port number, with the same certificates
+  (picked per SNI). HTTPS responses carry `Alt-Svc: h3=":443"; ma=86400`, so browsers switch to HTTP/3 on their
+  next request. HTTP/3 requests go through the same routing, WAF, rate limits, caching and analytics
+  (`protocol = 'HTTP/3'`); backends still receive HTTP/1.1. Open the UDP port in your firewall
+  (`docker run -p 443:443 -p 443:443/udp`). Settings: `scaleguard.http3=false` turns it off;
+  `scaleguard.http3.retry=true` requires QUIC address validation (protects against spoofed-source floods, costs one
+  round trip per new connection); `scaleguard.http3.maxStreams` (default 256 concurrent requests per connection);
+  `scaleguard.http3.idleTimeoutSeconds` (60); `scaleguard.http3.congestion` (`cubic`, `bbr`, `reno`);
+  `scaleguard.http3.sockets` (UDP sockets per port on Linux, default one per core). gRPC over HTTP/3 isn't supported;
+  gRPC clients use HTTP/2.
 - **HTTP listener**: HTTP/1.1 and HTTP/2 with prior knowledge (h2c), as used by gRPC without TLS.
 - Plain HTTP/2 requests are proxied to backends over HTTP/1.1, exactly like HTTP/1.1 requests.
 - **gRPC** (`content-type: application/grpc*`) is proxied message by message to the backends over HTTP/2:

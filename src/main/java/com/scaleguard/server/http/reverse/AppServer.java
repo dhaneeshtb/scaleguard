@@ -144,6 +144,16 @@ public class AppServer implements Server{
         int port = Integer.parseInt(s.getPort());
 
         SSLServerInitializer server = new SSLServerInitializer(port);
+        // HTTP/3 on the same port number over UDP (before the TCP bind so the first responses already advertise it)
+        try {
+            ChannelFuture h3 = com.scaleguard.server.http.h3.Http3Listener.bind(port, workerGroup);
+            if (h3 != null) {
+                h3.sync();
+                futureChannels.add(h3);
+            }
+        } catch (Exception e) {
+            logger.warn("HTTP/3 not started on port {}: {}", port, e.getMessage());
+        }
         try {
             return bindAll(newBootstrap(bossGroup, workerGroup, server), port);
         } catch (Exception e) {
@@ -247,6 +257,10 @@ public class AppServer implements Server{
 
     public void start() throws Exception {
         try {
+            // Request analytics: open the DuckDB access log now, not on the first request
+            com.scaleguard.server.analytics.AccessLogStore.getInstance();
+            // High availability: share configuration, rate limits and leadership with other nodes on the same PostgreSQL
+            com.scaleguard.server.cluster.ClusterWiring.start();
             // Enable with dnsServer=true (application.properties, env var or -DdnsServer=true).
             if(DnsServer.isEnabled()) {
                 DnsServer dnsServer = new DnsServer();

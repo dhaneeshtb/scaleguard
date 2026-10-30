@@ -13,11 +13,18 @@ src/main/java/com/scaleguard/server/
   http/h2/          HTTP/2 + gRPC: ProtocolPipelines (builds HTTP/1.1 & HTTP/2 pipelines), CleartextProtocolDetector (h2c
                     prior-knowledge vs HTTP/1.1), AlpnHandler (TLS: h2 vs http/1.1), StreamDispatcher (per stream: gRPC vs
                     plain), GrpcProxyHandler (frame-by-frame gRPC relay), Http2ClientPool (h2 backend connections)
+  http/h3/          HTTP/3: Http3Listener (QUIC on every TLS port over UDP; SO_REUSEPORT sockets + QuicCodecDispatcher;
+                    streams → Http3FrameToHttpObjectCodec → same frontend), QuicSniContexts (per-SNI BoringSSL contexts from
+                    CertificateStore), AltSvcHandler (adds Alt-Svc on TLS HTTP/1.1 + HTTP/2), RetryTokenHandler (opt-in)
+  analytics/        AccessLogStore (DuckDB writer + read-only query), AccessRecord, AccessLog (backend response pairing),
+                    TraceContext (traceparent / X-Trace-Id), AnalyticsRoute (/analytics/*)
+  cluster/          ClusterManager (Postgres: config versions + LISTEN/NOTIFY, heartbeats, advisory-lock leader), ClusterWiring
+                    (which subsystems reload per scope), RateLimitSync (shared buckets), NodeForwarder, ClusterRoute (/cluster)
   http/router/      RouteTable (in-memory routes), ConfigManager (CRUD for sources/targets/host groups),
                     SourceSystem / TargetSystem / HostGroup, RateLimitManager, ClientIpResolver, HostGroupWatcher (active
                     health polls), PassiveHealthManager (ejects failing backends), BackendHealthRoute (/backends), BestHostSelector
   http/utils/       NettyTransport (io_uring/epoll/kqueue/NIO selection), CidrSet, AppProperties
-  security/         RateLimitRoute (/ratelimit), waf/ (WafEngine, BuiltInRules, WafPolicy, WafRoute → /waf)
+  security/         RateLimitRoute (/ratelimit), waf/ (WafEngine, BuiltInRules, WafPolicy, WafRoute → /waf, CrsImporter (SecRule → WafRule))
   dns/              DnsServer, DNSAddressBook (zones), UpstreamResolver, DnsWire, DnsCache, DnsRateLimiter, DnsConfig, DNSRoute
   db/               DBManager<T> (reflection SQL over SQLite or Postgres), *DB singletons, SystemPropertyDB (key/value settings)
   certificates/     ACME ordering/renewal          system/  hostname config     application/  security apps & clients
@@ -35,6 +42,8 @@ HTTP/2: Http2FrameCodec → Http2MultiplexHandler → per stream `StreamDispatch
   headers, then frames relayed as-is to the backend over HTTP/2 (`Http2ClientPool`, one connection per backend per event loop,
   h2c or TLS+ALPN). Refusals are trailers-only gRPC statuses: 12 no route, 8 rate limited, 7 WAF/auth, 14 backend down.
 - anything else → Http2StreamFrameToHttpObjectCodec → aggregator → same frontend handler as HTTP/1.1 (backend stays HTTP/1.1).
+HTTP/3: `Http3Listener` binds UDP on each TLS port; each QUIC request stream → Http3FrameToHttpObjectCodec → aggregator → the same
+frontend handler. The codec sends FIN after LastHttpContent. One backend TCP connection per stream (same as HTTP/2 today).
 
 Frontend handler, **ScaleGuardFrontendHandler.channelRead**:
 1. `ClientIpResolver.resolve(peer, X-Forwarded-For)` — XFF trusted only from `trustedProxies`
@@ -60,7 +69,11 @@ Full reference: `docs/API.md` + `docs/openapi.yaml` (OpenAPI 3.0). **Update both
   `waf.policy.<sourceId>`, `waf.customRules`. Load once at startup, keep in memory, write-through on change.
 - Notable keys: `port`/`sport` (HTTP/HTTPS, default 80/443), `scaleguard.transport` (auto|io_uring|epoll|kqueue|nio),
   `scaleguard.acceptors`, `scaleguard.rateLimit` (first-run default, per min), `scaleguard.adminRateLimit` (3000/min),
-  `scaleguard.trustedProxies`, `scaleguard.http2` (default true), `scaleguard.http2.maxConcurrentStreams` (250), `dnsServer=true` + `dns*` keys (documented in DnsConfig.java).
+  `scaleguard.trustedProxies`, `scaleguard.http2` (default true), `scaleguard.http2.maxConcurrentStreams` (250),
+  `scaleguard.http3` (default true) + `scaleguard.http3.{retry,maxStreams,idleTimeoutSeconds,congestion,sockets}`,
+  `scaleguard.analytics` (false disables) + `.path/.retentionDays/.threads/.memory/.queue`, `scaleguard.traceHeaders`,
+  `scaleguard.nodeName`, `scaleguard.cluster` (false opts out), `scaleguard.cluster.{advertise,pollMs,heartbeatMs,rateSyncMs}`,
+  `scaleguard.waf.{guard,matchBudgetMicros,cacheEntries}`, `dnsServer=true` + `dns*` keys (documented in DnsConfig.java).
 
 ## Build & run
 ```
@@ -92,10 +105,23 @@ Data (SQLite DB, certs, licence) lives in `~/.scaleguard` (LicenceUtil.dataDir()
   Connect failures are retried once on another host (`scaleguard.connectRetries`).
 - `ConfigManager.copy()` skips static/transient fields, so runtime state on HostGroup (passive health) survives edits.
 - Logging: never log per request at INFO (throughput). Throttle (see RateLimitManager) or use DEBUG.
+- HTTP/3 streams (`QuicStreamChannel`) have a `QuicStreamAddress` as remote address: get the client with
+  `Http3Listener.peer(ch)`, never cast `remoteAddress()` to InetSocketAddress. `closeOnFlush` must not write a ByteBuf to a
+  stream channel (its codec only takes HTTP objects).
+- Clustering: every `DBManager` write bumps a scope in `sg_cluster_config` (SystemPropertyDB: `system_properties/<id prefix>`);
+  other nodes run the reloads registered in `ClusterWiring`. A new persisted setting needs a reload hook there, and its reload
+  must replace (not merge) in-memory state. `RouteTable.reload()` keeps HostGroup objects (health, connection counts).
+  Singleton jobs must check `ClusterManager.isLeader()`.
+- Analytics: hot path only enqueues (`AccessRecord.finish`); DuckDB work happens on `sg-access-log-writer`. Admin handlers that
+  query DuckDB or call other nodes must use `RequestRoutingResponse.later(...)` (off the I/O thread).
 
 ## Verify changes (see dev-tools/README.md for details)
 - Compile only: `mvn -q -DskipTests compile`
 - Proxy/WAF/rate-limit end-to-end: `LbHarness` + Go backend + `py/waf_test.py`, `py/waf_live.py`, `go/count`
+- HTTP/3: `java/H3Client.java` (Netty HTTP/3 client: `H3Client host port path [n] [concurrency] [authority]`), or put
+  Envoy in front as an HTTP/1.1 → HTTP/3 forwarder (`http3_protocol_options` upstream) and drive it with wrk
+- Cluster: two nodes on one Postgres (`-Duser.home` per node with its own `postgres.properties`, distinct `-Dport` and
+  `-Dscaleguard.nodeName`); routes on a shared port are load-balanced between local nodes by SO_REUSEPORT
 - HTTP/2 + gRPC: `go/h2backend.go` + `go/h2check.go` (unary, streaming both ways, bidi, 4 MiB, 200 concurrent, WAF/no-route/
   rate-limit/backend-down statuses), over h2c and TLS
 - DNS: `DnsHarness` + `py/upstream.py` + `py/test_dns.py` (29 checks)

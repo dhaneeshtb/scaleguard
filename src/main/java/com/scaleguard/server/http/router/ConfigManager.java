@@ -32,6 +32,11 @@ public class ConfigManager {
         return publisher;
     }
 
+    /** Tells the server about a route so it opens a listener if the route uses a new port. */
+    public static void announce(SourceSystem ss) {
+        publisher.submit(ss);
+    }
+
 
     public static JsonNode update(String type, String method, String[] params, String json) throws Exception {
         JsonNode out = null;

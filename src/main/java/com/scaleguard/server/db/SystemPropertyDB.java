@@ -73,4 +73,15 @@ public class SystemPropertyDB extends DBManager<SystemProperty>{
 
     public static void main(String[] args) throws Exception {
     }
+
+    /** One scope per setting family ("waf.policy.x" -> system_properties/waf), so a rate-limit change doesn't reload the WAF. */
+    @Override
+    protected java.util.Collection<String> clusterScopes(java.util.Collection<String> ids) {
+        java.util.Set<String> scopes = new java.util.LinkedHashSet<>();
+        for (String id : ids) {
+            int dot = id == null ? -1 : id.indexOf('.');
+            scopes.add("system_properties/" + (dot > 0 ? id.substring(0, dot) : "misc"));
+        }
+        return scopes;
+    }
 }

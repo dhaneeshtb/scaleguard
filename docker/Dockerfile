@@ -41,7 +41,7 @@ LABEL description="ScaleGuard - High-performance load balancer (JVM mode, JDK 21
 WORKDIR /usr/app
 COPY --from=build /build/target/scaleguard-1.0-SNAPSHOT.jar scaleguard.jar
 
-EXPOSE 80 443 2222
+EXPOSE 80 443 443/udp 2222
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:80/healthz || exit 1
@@ -76,7 +76,7 @@ RUN apt-get update && apt-get install -y curl libz-dev && rm -rf /var/lib/apt/li
 WORKDIR /usr/app
 COPY --from=build /build/target/scaleguard ./scaleguard
 
-EXPOSE 80 443 2222
+EXPOSE 80 443 443/udp 2222
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:80/healthz || exit 1

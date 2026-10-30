@@ -144,6 +144,7 @@ components:
         perMinute: { type: integer, minimum: 1, maximum: 10000000 }
         burstSeconds: { type: integer, minimum: 1, maximum: 3600 }
         trustedProxies: { type: string, example: "127.0.0.0/8,::1/128" }
+        clusterMode: { type: string, enum: [shared, divided, local], description: "How limits apply across cluster nodes (default shared)" }
     RateLimitView:
       type: object
       properties:
@@ -171,7 +172,10 @@ components:
       type: object
       properties:
         enabled: { type: boolean, default: false }
-        mode: { type: string, enum: [block, detect] }
+        mode: { type: string, enum: [block, anomaly, detect] }
+        anomalyThreshold: { type: integer, minimum: 1, default: 5, description: "anomaly mode: block when the summed severity reaches this" }
+        paranoiaLevel: { type: integer, minimum: 1, maximum: 4, default: 1 }
+        ruleSets: { type: array, items: { type: string }, description: Imported rule sets enabled on this route }
         inspectBody: { type: boolean, default: true }
         maxBodyBytes: { type: integer, default: 65536 }
         rules:
@@ -348,6 +352,101 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WafTest' } } } }
       responses:
         '200': { description: Verdict, content: { application/json: { schema: { type: object, properties: { blocked: { type: boolean }, matches: { type: array, items: { type: object } } } } } } }
+  /waf/rulesets:
+    post:
+      tags: [Firewall]
+      summary: Import or replace a ModSecurity / OWASP CRS rule set
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, files]
+              properties:
+                name: { type: string, maxLength: 80 }
+                files: { type: object, additionalProperties: { type: string }, description: "File name → contents (.conf and .data files)" }
+      responses:
+        '200': { description: "Import summary: imported, byParanoia, byCategory, skipped, examples, waf" }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /waf/rulesets/{name}:
+    delete:
+      tags: [Firewall]
+      summary: Delete an imported rule set
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: Deleted }, '404': { description: Not found } }
+  /analytics/summary:
+    get:
+      tags: [Analytics]
+      summary: Dashboard totals, time series and top lists
+      parameters:
+        - $ref: '#/components/parameters/scaleguard'
+        - { name: range, in: query, schema: { type: string, enum: [15m, 1h, 6h, 24h, 7d, 30d], default: 1h } }
+        - { name: route, in: query, schema: { type: string }, description: Source system id }
+        - { name: node, in: query, schema: { type: string }, description: Cluster node whose log to read }
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /analytics/logs:
+    get:
+      tags: [Analytics]
+      summary: Access log rows, newest first
+      parameters:
+        - $ref: '#/components/parameters/scaleguard'
+        - { name: range, in: query, schema: { type: string, default: 1h } }
+        - { name: route, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string }, description: "2xx–5xx or an exact code" }
+        - { name: outcome, in: query, schema: { type: string, enum: [proxied, rate_limited, waf_blocked, auth_denied, no_backend, no_route, error, cancelled] } }
+        - { name: ip, in: query, schema: { type: string } }
+        - { name: method, in: query, schema: { type: string } }
+        - { name: trace, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string }, description: Text in path or query string }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500, default: 100 } }
+        - { name: before, in: query, schema: { type: integer }, description: "Cursor: the previous page's next value" }
+        - { name: node, in: query, schema: { type: string } }
+      responses: { '200': { description: "{rows, next}" } }
+  /analytics/export:
+    get:
+      tags: [Analytics]
+      summary: Export access log rows (up to 100,000)
+      parameters:
+        - $ref: '#/components/parameters/scaleguard'
+        - { name: format, in: query, schema: { type: string, enum: [csv, ndjson], default: csv } }
+        - { name: range, in: query, schema: { type: string } }
+        - { name: node, in: query, schema: { type: string } }
+      responses: { '200': { description: CSV or NDJSON file } }
+  /analytics/query:
+    post:
+      tags: [Analytics]
+      summary: Read-only DuckDB SQL over the access_log view
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: node, in: query, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [sql], properties: { sql: { type: string } } } } } }
+      responses:
+        '200': { description: "{columns, rows, truncated, ms}" }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /analytics/settings:
+    get:
+      tags: [Analytics]
+      summary: Analytics settings and storage status
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+    post:
+      tags: [Analytics]
+      summary: Update analytics settings
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, retentionDays: { type: integer, minimum: 1, maximum: 3650 } } } } } }
+      responses: { '200': { description: OK }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /cluster:
+    get:
+      tags: [Cluster]
+      summary: Members, leader, per-node metrics, configuration versions and sync status
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /cluster/resync:
+    post:
+      tags: [Cluster]
+      summary: Reload all configuration on this node from the shared database
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK }, '400': { description: Not part of a cluster } }
   /dns:
     parameters: [{ $ref: '#/components/parameters/scaleguard' }]
     get:

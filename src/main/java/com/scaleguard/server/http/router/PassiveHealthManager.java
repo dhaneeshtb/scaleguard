@@ -79,6 +79,13 @@ public final class PassiveHealthManager {
         return settings;
     }
 
+    /** Re-reads the settings from the database (another cluster node changed them). */
+    public void reload() {
+        Settings s = load();
+        settings = s;
+        if (!s.enabled()) RouteTable.getInstance().getHostGroups().forEach(this::reset);
+    }
+
     public synchronized void update(Settings s) throws Exception {
         long now = System.currentTimeMillis();
         List<SystemProperty> props = new ArrayList<>();

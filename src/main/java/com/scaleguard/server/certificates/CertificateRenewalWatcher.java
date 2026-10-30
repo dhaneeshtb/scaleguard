@@ -112,6 +112,17 @@ public class CertificateRenewalWatcher {
         while (running.get()) {
             long now = System.currentTimeMillis();
 
+            // In a cluster only the leader talks to the ACME CA, so certificates aren't ordered twice
+            if (!com.scaleguard.server.cluster.ClusterManager.isLeader()) {
+                try {
+                    Thread.sleep(PENDING_CHECK_INTERVAL_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                continue;
+            }
+
             // Check and auto-verify pending certificates on every cycle
             try {
                 checkAndVerifyPendingCertificates();

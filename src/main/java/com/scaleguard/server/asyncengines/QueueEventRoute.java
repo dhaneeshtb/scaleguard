@@ -37,6 +37,11 @@ public class QueueEventRoute implements RequestRoute {
     }
 
     @Override
+    public boolean receivesQueryString() {
+        return true;   // ?status= and ?engineId= filters (were silently ignored before)
+    }
+
+    @Override
     public RequestRoutingResponse handle(String method, String uri, String body) throws Exception {
         if (!"get".equalsIgnoreCase(method)) {
             return RequestRoutingResponse.response(405, "{\"message\":\"Method not allowed\"}");

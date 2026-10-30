@@ -117,6 +117,27 @@ public class DNSAddressBook {
         return Collections.unmodifiableMap(dnsAddressMap);
     }
 
+    /** Replaces the in-memory zone with the database's (another cluster node changed a record). */
+    public static synchronized void reload() {
+        try {
+            List<DNSEntry> entries = DNSEntriesDB.getInstance().readAll();
+            Map<String, List<WrappedDNSRecord>> next = new java.util.HashMap<>();
+            for (DNSEntry r : entries) {
+                String name = DnsWire.normalize(r.getName());
+                if (name == null || ".".equals(name) || r.getValue() == null) continue;
+                WrappedDNSRecord rec = new WrappedDNSRecord(name, r.getValue(), r.getType(), r.getTtl() > 0 ? r.getTtl() : DEFAULT_TTL);
+                rec.setId(r.getId());
+                next.computeIfAbsent(name, k -> new CopyOnWriteArrayList<>()).add(rec);
+            }
+            dnsAddressMap.putAll(next);
+            dnsAddressMap.keySet().retainAll(next.keySet());
+            bumpSerial();
+            LOGGER.info("Reloaded {} DNS records for {} names", entries.size(), dnsAddressMap.size());
+        } catch (Exception e) {
+            LOGGER.error("error reloading DNS entries from db", e);
+        }
+    }
+
     private static void load() {
         try {
             List<DNSEntry> entries = DNSEntriesDB.getInstance().readAll();

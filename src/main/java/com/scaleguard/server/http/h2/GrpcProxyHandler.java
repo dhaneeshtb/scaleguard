@@ -63,6 +63,8 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
     private boolean responseStarted;
     private boolean responseEnded;
     private HostGroup backendHost;
+    private com.scaleguard.server.analytics.AccessRecord rec;   // access-log record of this call (null if analytics is off)
+    private int responseStatus = 200;
     private boolean healthRecorded;
 
     GrpcProxyHandler(int port) {
@@ -112,6 +114,25 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
         RouteTarget rt = INBOUND.matchTarget(ctx, req, port);
         String peer = ((InetSocketAddress) ctx.channel().remoteAddress()).getAddress().getHostAddress();
         String clientIp = rt != null && rt.getClientIp() != null ? rt.getClientIp() : peer;
+        if (com.scaleguard.server.analytics.AccessLogStore.getInstance().isRecording()) {
+            rec = new com.scaleguard.server.analytics.AccessRecord();
+            CharSequence tp = h2.get("traceparent");
+            rec.traceId = com.scaleguard.server.analytics.TraceContext.traceId(tp == null ? null : tp.toString());
+            if (com.scaleguard.server.analytics.TraceContext.HEADERS)
+                h2.set("traceparent", com.scaleguard.server.analytics.TraceContext.traceparent(rec.traceId));
+            rec.clientIp = clientIp;
+            rec.method = h2.method() == null ? "POST" : h2.method().toString();
+            rec.host = h2.authority() == null ? null : h2.authority().toString();
+            rec.setUri(h2.path() == null ? null : h2.path().toString());
+            rec.protocol = "gRPC";
+            rec.tls = ProtocolPipelines.isTls(ctx.channel());
+            CharSequence ua = h2.get("user-agent");
+            rec.userAgent = ua == null ? null : ua.toString();
+            if (rt != null && rt.getSourceSystem() != null) {
+                rec.routeId = rt.getSourceSystem().getId();
+                rec.routeName = rt.getSourceSystem().getName() != null ? rt.getSourceSystem().getName() : rt.getSourceSystem().getHost();
+            }
+        }
 
         RateLimitManager.Decision d = RateLimitManager.getInstance().check(rt, clientIp);
         if (!d.allowed()) {
@@ -128,12 +149,14 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
             WafEngine.Verdict v = WafEngine.getInstance().inspect(rt.getSourceSystem().getId(),
                     rt.getSourceSystem().getName() != null ? rt.getSourceSystem().getName() : rt.getSourceSystem().getHost(),
                     clientIp, probe);
+            if (rec != null && !v.matches().isEmpty()) rec.wafRule = v.matches().get(0).ruleId();
             if (v.blocked()) {
                 refuse(ctx, PERMISSION_DENIED, "blocked by the web application firewall; incident " + v.incidentId());
                 return;
             }
         }
         if (!ScaleguardClientAuthHandler.checkClientAuth(rt)) {
+            if (rec != null) rec.outcome = com.scaleguard.server.analytics.AccessRecord.AUTH_DENIED;
             refuse(ctx, PERMISSION_DENIED, "invalid auth credentials");
             return;
         }
@@ -162,6 +185,7 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
         if (include != null) include.forEach((k, v) -> h2.set(k.toLowerCase(java.util.Locale.ROOT), v));
         h2.authority(host + ":" + backendPort);
         rt.setTargetHost(host + ":" + backendPort);
+        if (rec != null) rec.backend = host + ":" + backendPort;
 
         queued.add(new DefaultHttp2HeadersFrame(h2, frame.isEndStream()));
         inbound.config().setAutoRead(false);    // hold client DATA until the backend stream is open
@@ -205,6 +229,7 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void relayUp(Http2StreamFrame f) {
+        if (rec != null && f instanceof Http2DataFrame df) rec.bytesIn += df.content().readableBytes();
         if (outbound == null) {
             if (queued != null) queued.add(f);
             else ReferenceCountUtil.release(f);
@@ -227,6 +252,19 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
                 .set("content-type", "application/grpc")
                 .setInt("grpc-status", status)
                 .set("grpc-message", grpcMessage(message));
+        if (rec != null) {
+            if (rec.traceId != null && com.scaleguard.server.analytics.TraceContext.HEADERS) h.set("x-trace-id", rec.traceId);
+            rec.grpcStatus = status;
+            String outcome = switch (status) {
+                case RESOURCE_EXHAUSTED -> com.scaleguard.server.analytics.AccessRecord.RATE_LIMITED;
+                case PERMISSION_DENIED -> com.scaleguard.server.analytics.AccessRecord.AUTH_DENIED.equals(rec.outcome)
+                        ? rec.outcome : com.scaleguard.server.analytics.AccessRecord.WAF_BLOCKED;
+                case UNIMPLEMENTED -> com.scaleguard.server.analytics.AccessRecord.NO_ROUTE;
+                case UNAVAILABLE -> com.scaleguard.server.analytics.AccessRecord.NO_BACKEND;
+                default -> com.scaleguard.server.analytics.AccessRecord.ERROR;
+            };
+            rec.finish(200, outcome);
+        }
         ctx.writeAndFlush(new DefaultHttp2HeadersFrame(h, true));
         ctx.channel().config().setAutoRead(true);   // keep consuming (and discarding) whatever the client still sends
     }
@@ -261,6 +299,10 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        if (rec != null && !rec.isDone()) {   // client cancelled or disconnected before the call finished
+            rec.grpcStatus = 1;   // CANCELLED
+            rec.finish(499, "cancelled");
+        }
         drainQueued();
         closeOutbound();      // client went away: cancel the backend call (RST_STREAM CANCEL)
         super.channelInactive(ctx);
@@ -283,6 +325,8 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
                 CharSequence st = h.headers().status();
                 if (st != null) {
                     int code = parse(st);
+                    responseStatus = code;
+                    if (rec != null && rec.traceId != null && com.scaleguard.server.analytics.TraceContext.HEADERS) h.headers().set("x-trace-id", rec.traceId);
                     if (PassiveHealthManager.getInstance().getSettings().failureStatuses().contains(code)) health(false, "HTTP " + code);
                 }
                 if (h.isEndStream()) {
@@ -290,12 +334,18 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
                     CharSequence gs = h.headers().get("grpc-status");
                     if (gs != null && "14".contentEquals(gs)) health(false, "grpc-status 14 UNAVAILABLE");
                     else health(true, null);
+                    if (rec != null) {
+                        rec.grpcStatus = gs == null ? -1 : parse(gs);
+                        rec.finish(responseStatus);
+                    }
                 }
             } else if (msg instanceof Http2DataFrame d) {
                 out = new DefaultHttp2DataFrame(d.content(), d.isEndStream(), d.padding());
+                if (rec != null) rec.bytesOut += d.content().readableBytes();
                 if (d.isEndStream()) {
                     responseEnded = true;
                     health(true, null);
+                    if (rec != null) rec.finish(responseStatus);
                 }
             } else {
                 if (msg instanceof Http2ResetFrame) inbound.close();
@@ -319,6 +369,10 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
             // Backend stream closed before its trailers: tell the client (RST or UNAVAILABLE status).
             if (!responseEnded) {
                 if (!refused && inbound.isActive()) health(false, "backend reset the stream");
+                if (rec != null && responseStarted && !rec.isDone()) {   // reset mid-response (before: refuseLater logs it)
+                    rec.grpcStatus = UNAVAILABLE;
+                    rec.finish(502, com.scaleguard.server.analytics.AccessRecord.ERROR);
+                }
                 inbound.eventLoop().execute(() -> {
                     if (responseStarted) inbound.close();
                     else refuseLater(UNAVAILABLE, "backend closed the stream");

@@ -111,4 +111,10 @@ public class QueueEventDB extends DBManager<QueueEvent> {
         }
         LOG.info("queue_events table ready (postgres={})", pg);
     }
+
+    /** Queue events are data, not configuration: never broadcast to the cluster. */
+    @Override
+    protected java.util.Collection<String> clusterScopes(java.util.Collection<String> ids) {
+        return java.util.List.of();
+    }
 }

@@ -51,8 +51,9 @@ public class CertificateStore {
             this.key = key;
         }
     }
-    private static Map<String, CertificateInfo> certificateMap = new HashMap<>();
-    private static Map<String, CertificateInfo> wildcardCertsMap = new HashMap<>();
+    // Swapped whole on reload so TLS handshakes never see a half-loaded store.
+    private static volatile Map<String, CertificateInfo> certificateMap = java.util.Collections.synchronizedMap(new HashMap<>());
+    private static volatile Map<String, CertificateInfo> wildcardCertsMap = java.util.Collections.synchronizedMap(new HashMap<>());
 
     static{
         java.security.Security.addProvider(
@@ -60,6 +61,15 @@ public class CertificateStore {
         );
         loadAllCerts();
     }
+    /** Some loaded certificate, for clients that send no SNI name; null when none is loaded. */
+    public static CertificateInfo any() {
+        Map<String, CertificateInfo> m = certificateMap;
+        synchronized (m) {
+            for (CertificateInfo c : m.values()) if (c != null && c.getKey() != null) return c;
+        }
+        return null;
+    }
+
     public static CertificateInfo get(String alias) {
         if (certificateMap.containsKey(alias)) {
             return certificateMap.get(alias);
@@ -80,9 +90,9 @@ public class CertificateStore {
     public static void loadAllCerts(){
         long startTime = System.currentTimeMillis();
         try {
-            // Clear stale entries before reloading
-            certificateMap.clear();
-            wildcardCertsMap.clear();
+            // Build the new maps aside and swap them in at the end
+            Map<String, CertificateInfo> certificateMap = java.util.Collections.synchronizedMap(new HashMap<>());
+            Map<String, CertificateInfo> wildcardCertsMap = java.util.Collections.synchronizedMap(new HashMap<>());
 
             Set<String> certificateIds = AcmeUtils.listCertificateIds();
             LOGGER.info("Loading {} certificates...", certificateIds.size());
@@ -120,6 +130,8 @@ public class CertificateStore {
                 }
             }
 
+            CertificateStore.certificateMap = certificateMap;
+            CertificateStore.wildcardCertsMap = wildcardCertsMap;
             long elapsed = System.currentTimeMillis() - startTime;
             LOGGER.info("Loaded {} certificates in {}ms", certificateMap.size(), elapsed);
 

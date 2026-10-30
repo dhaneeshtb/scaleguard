@@ -49,6 +49,9 @@ public final class ProtocolPipelines {
     /** HTTP/1.1 handlers, appended to the pipeline. {@code cors} matches the previous per-listener behaviour. */
     public static void configureHttp1(ChannelPipeline p, int port, boolean cors) {
         p.addLast("http1-codec", new HttpServerCodec());
+        if (p.get(io.netty.handler.ssl.SslHandler.class) != null && com.scaleguard.server.http.h3.Http3Listener.listening(port)) {
+            p.addLast("alt-svc", new com.scaleguard.server.http.h3.AltSvcHandler(port));   // TLS: advertise HTTP/3
+        }
         p.addLast("http1-aggregator", new HttpObjectAggregator(maxBodyBytes()));
         if (cors) p.addLast("cors", new CorsHandler(corsConfig()));
         p.addLast("frontend", new ScaleGuardFrontendHandler(port));
@@ -76,6 +79,9 @@ public final class ProtocolPipelines {
     static void configureHttpStream(Channel stream, int port, boolean cors) {
         ChannelPipeline p = stream.pipeline();
         p.addLast("h2-to-http", new io.netty.handler.codec.http2.Http2StreamFrameToHttpObjectCodec(true));
+    if (!cors && com.scaleguard.server.http.h3.Http3Listener.listening(port)) {
+        p.addLast("alt-svc", new com.scaleguard.server.http.h3.AltSvcHandler(port));   // TLS: advertise HTTP/3
+    }
         p.addLast("http-aggregator", new HttpObjectAggregator(maxBodyBytes()));
         if (cors) p.addLast("cors", new CorsHandler(corsConfig()));
         p.addLast("frontend", new ScaleGuardFrontendHandler(port));
@@ -83,6 +89,7 @@ public final class ProtocolPipelines {
 
     /** True when the channel (or, for an HTTP/2 stream, its connection) is TLS. */
     public static boolean isTls(Channel ch) {
+        if (com.scaleguard.server.http.h3.Http3Listener.isHttp3(ch)) return true;   // QUIC is always TLS 1.3
         if (ch.pipeline().get(io.netty.handler.ssl.SslHandler.class) != null) return true;
         Channel parent = ch.parent();
         return parent != null && parent.pipeline().get(io.netty.handler.ssl.SslHandler.class) != null;

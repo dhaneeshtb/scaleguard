@@ -67,7 +67,49 @@ java -cp /tmp/sgdev LoadGen api.acme.test 1 2 8   # UDP answers/sec
 `DNSEntriesDB` for environments without the SQLite native library (put `stub` classes first on the classpath).
 `java/UnitChecks.java` covers the DNS rate limiter, record add/update/remove DB call counts and SQL escaping.
 
-## 4. Admin UI preview without a server
+## 4. HTTP/3 (QUIC)
+
+Start LbHarness with a certificate as in §2; it then also listens on UDP `:8443` (`HTTP/3 (QUIC) listening on UDP port 8443`).
+```
+curl -sk -D - -o /dev/null https://localhost:8443/ | grep -i alt-svc   # h3=":8443"; ma=86400 on HTTP/1.1 and HTTP/2
+javac -d /tmp/sgdev -cp $SG_JAR java/H3Client.java
+java -cp /tmp/sgdev:$SG_JAR H3Client localhost 8443 /              # status, headers, body over HTTP/3
+java -cp /tmp/sgdev:$SG_JAR H3Client localhost 8443 / 5000 50      # 5000 requests, 50 concurrent streams
+java -cp /tmp/sgdev:$SG_JAR H3Client 127.0.0.1 8443 / 1 1 localhost:8443   # no SNI: falls back to a loaded certificate
+```
+For load tests use an independent QUIC stack: Envoy with an HTTP/3 upstream (`http3_protocol_options` +
+`envoy.transport_sockets.quic`, `sni: localhost`) in front, driven by `wrk` over HTTP/1.1. Requests show up in analytics
+with `protocol = 'HTTP/3'`.
+
+## 5. Request analytics, OWASP CRS and clustering
+
+- Analytics: send traffic (`go run go/loadvar.go http://localhost:8080 50 30` for varied paths, cookies and agents), then
+  `GET /analytics/summary?range=15m`, `/analytics/logs`, `POST /analytics/query {"sql": "SELECT protocol, count(*) FROM access_log GROUP BY 1"}`.
+  Write-only DML/COPY/`read_csv` must be rejected and leave the data intact.
+- CRS: `POST /waf/rulesets {"name":"crs","files":{...}}` with the `REQUEST-9xx-*.conf` + `.data` files from coreruleset,
+  set the route policy to `{"mode":"anomaly","paranoiaLevel":1,"ruleSets":["crs"]}`, then `WAF_POLICY='{...}' python3 py/waf_test.py`
+  (expect 44/44 attacks; at PL1 34+/37 benign).
+- Cluster: run PostgreSQL, and per node a separate home with `~/.scaleguard/postgres.properties`
+  (`driver=org.postgresql.Driver`, `url=jdbc:postgresql://127.0.0.1:5432/scaleguard`, `username`, `password`):
+  `java -Duser.home=/tmp/nodeA -Dport=7081 -Dscaleguard.nodeName=node-a -Dscaleguard.cluster.advertise=http://127.0.0.1:7081 …`
+  and the same for node-b on 7082. Check: a route created on A is served by B within ~0.5 s; `GET /cluster` lists both and
+  one leader; `kill -9` the leader → the other takes over; with `ratelimit.clusterMode=shared` a client's budget is shared
+  (send a burst to A, then to B with the same `X-Forwarded-For`: B is limited). Use a route port no node binds as its
+  base port: nodes on one machine share it through SO_REUSEPORT.
+
+## 6. Head-to-head benchmark
+
+`bench/run.sh` runs NGINX, HAProxy, Envoy, Caddy, Traefik and ScaleGuard one at a time on CPU 1 against the same NGINX
+backend, with `wrk` on CPU 0, and prints req/s, p50/p99, CPU and RSS for a 12-byte and a 16 KB response.
+Put the binaries (`nginx`, `haproxy`, `envoy`, `caddy`, `traefik`, `wrk`) in `bench/bin` (or set `BIN`), compile
+`java/LbHarness.java` into `SG_DEV`, then:
+```
+cd bench && ./run.sh setup
+for p in nginx haproxy envoy caddy traefik scaleguard scaleguard-analytics; do SG_JAR=$SG_JAR SG_DEV=/tmp/sgdev ./run.sh $p; done
+```
+Repeat 3× and take the median; `C=1024` for many connections, `SG_HEAP=256m` for a memory-realistic ScaleGuard.
+
+## 7. Admin UI preview without a server
 
 `ui-preview/build-preview.sh` builds the UI with a hash router, inlines it with `mock.js` (fake API responses
 for every page) and writes `admin-ui/design-preview.html`, which opens straight from disk.

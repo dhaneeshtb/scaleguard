@@ -1,0 +1,5 @@
+http:
+  routers:
+    r: { rule: "PathPrefix(`/`)", service: s, entryPoints: [web] }
+  services:
+    s: { loadBalancer: { servers: [ { url: "http://127.0.0.1:9200" } ] } }

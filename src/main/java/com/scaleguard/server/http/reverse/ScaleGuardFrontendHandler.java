@@ -15,6 +15,10 @@
  */
 package com.scaleguard.server.http.reverse;
 
+import com.scaleguard.server.analytics.AccessLog;
+import com.scaleguard.server.analytics.AccessLogStore;
+import com.scaleguard.server.analytics.AccessRecord;
+import com.scaleguard.server.analytics.TraceContext;
 import com.scaleguard.server.http.router.ClientIpResolver;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.PassiveHealthManager;
@@ -44,6 +48,46 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
   private RouteTarget targetSystem;
 
+  /** Access-log record of the request being handled (set per request in channelRead). */
+  private AccessRecord current;
+
+  private static final AccessLogStore ACCESS_LOG = AccessLogStore.getInstance();
+
+  /**
+   * Starts an access-log record for a routed request and propagates a W3C traceparent upstream.
+   * Admin/internal requests (no route) aren't logged.
+   */
+  private static AccessRecord startRecord(ChannelHandlerContext ctx, Object msg, RouteTarget ts, String clientIp) {
+    if (ts == null || !(msg instanceof HttpRequest req) || !ACCESS_LOG.isRecording()) return null;
+    io.netty.handler.codec.http.HttpHeaders h = req.headers();
+    AccessRecord r = new AccessRecord();
+    r.traceId = TraceContext.traceId(h.get("traceparent"));
+    if (TraceContext.HEADERS) h.set("traceparent", TraceContext.traceparent(r.traceId));
+    r.clientIp = clientIp;
+    r.method = req.method().name();
+    r.host = h.get(io.netty.handler.codec.http.HttpHeaderNames.HOST);
+    r.setUri(req.uri());
+    r.protocol = ctx.channel() instanceof io.netty.handler.codec.http2.Http2StreamChannel ? "HTTP/2"
+            : com.scaleguard.server.http.h3.Http3Listener.isHttp3(ctx.channel()) ? "HTTP/3" : req.protocolVersion().text();
+    r.tls = com.scaleguard.server.http.h2.ProtocolPipelines.isTls(ctx.channel());
+    r.userAgent = h.get(io.netty.handler.codec.http.HttpHeaderNames.USER_AGENT);
+    r.referer = h.get(io.netty.handler.codec.http.HttpHeaderNames.REFERER);
+    if (msg instanceof FullHttpRequest full) r.bytesIn = full.content().readableBytes();
+    if (ts.getSourceSystem() != null) {
+      r.routeId = ts.getSourceSystem().getId();
+      r.routeName = ts.getSourceSystem().getName() != null ? ts.getSourceSystem().getName() : ts.getSourceSystem().getHost();
+    }
+    return r;
+  }
+
+  /** Adds X-Trace-Id to a locally generated error response so it can be found in the access log. */
+  private static java.util.Map<String, String> withTrace(AccessRecord rec, java.util.Map<String, String> headers) {
+    if (rec == null || rec.traceId == null || !TraceContext.HEADERS) return headers;
+    java.util.Map<String, String> m = new java.util.HashMap<>(headers);
+    m.put("X-Trace-Id", rec.traceId);
+    return m;
+  }
+
   private int port = 80;
 
   private static final InboundMessageHandler inboundHandler = new InboundMessageHandler();
@@ -60,6 +104,12 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
    */
   static void closeOnFlush(Channel ch) {
     if (ch != null && ch.isActive()) {
+      if (ch.parent() != null && !(ch instanceof io.netty.channel.socket.SocketChannel)) {
+        // HTTP/2 / HTTP/3 stream: its codec only accepts HTTP objects, so flush what's queued and close the stream
+        ch.flush();
+        ch.close();
+        return;
+      }
       ch.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
     }
   }
@@ -74,18 +124,23 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     String inAddress = "unknown";
     boolean forwarded = false;
     try {
-      String peerIp = ((InetSocketAddress) ctx.channel().remoteAddress()).getAddress().getHostAddress();
+      InetSocketAddress peer = com.scaleguard.server.http.h3.Http3Listener.peer(ctx.channel());
+      String peerIp = peer != null ? peer.getAddress().getHostAddress() : "unknown";
       // Real client IP: X-Forwarded-For is only honoured when the peer is a trusted proxy.
       String xff = msg instanceof HttpRequest ? ((HttpRequest) msg).headers().get("X-Forwarded-For") : null;
       inAddress = ClientIpResolver.resolve(peerIp, xff);
 
       RouteTarget ts = inboundHandler.matchTarget(ctx, msg, port);
+      // Access log / analytics record for routed traffic (null when analytics is off or it's an admin request)
+      AccessRecord rec = startRecord(ctx, msg, ts, inAddress);
+      current = rec;
 
       RateLimitManager.Decision decision = rateLimitManager.check(ts, inAddress);
       if (!decision.allowed()) {
         // Logged (throttled) inside RateLimitManager — no per-request log line here.
+        if (rec != null) rec.finish(429, AccessRecord.RATE_LIMITED);
         DefaultResponseHandler.getInstance().handleFailure(ctx, "rate limit exceeded", HttpResponseStatus.TOO_MANY_REQUESTS,
-                java.util.Map.of("Retry-After", String.valueOf(decision.retryAfterSeconds())));
+                withTrace(rec, java.util.Map.of("Retry-After", String.valueOf(decision.retryAfterSeconds()))));
         return;
       }
 
@@ -94,10 +149,12 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         WafEngine.Verdict verdict = WafEngine.getInstance().inspect(ts.getSourceSystem().getId(),
                 ts.getSourceSystem().getName() != null ? ts.getSourceSystem().getName() : ts.getSourceSystem().getHost(),
                 inAddress, (FullHttpRequest) msg);
+        if (rec != null && !verdict.matches().isEmpty()) rec.wafRule = verdict.matches().get(0).ruleId();
         if (verdict.blocked()) {
+          if (rec != null) rec.finish(403, AccessRecord.WAF_BLOCKED);
           DefaultResponseHandler.getInstance().handleFailure(ctx,
                   "Request blocked by the web application firewall. Incident " + verdict.incidentId(),
-                  HttpResponseStatus.FORBIDDEN, java.util.Map.of("X-ScaleGuard-Incident", verdict.incidentId()));
+                  HttpResponseStatus.FORBIDDEN, withTrace(rec, java.util.Map.of("X-ScaleGuard-Incident", verdict.incidentId())));
           return;
         }
       }
@@ -107,6 +164,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         DefaultResponseHandler.getInstance().handle(ctx, null, msg);
       } else {
         if (!ScaleguardClientAuthHandler.checkClientAuth(ts)) {
+          if (rec != null) rec.finish(403, AccessRecord.AUTH_DENIED);
           DefaultResponseHandler.getInstance().handleFailure(ctx, "invalid auth credentials", HttpResponseStatus.FORBIDDEN);
           return;
         }
@@ -178,14 +236,14 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   private void handleNewOutboundChannel(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey) {
-    handleNewOutboundChannel(ts, ctx, msg, messageKey, null);
+    handleNewOutboundChannel(ts, ctx, msg, messageKey, null, current);
   }
 
   /** Connect retries: nothing has been sent yet, so a failed connect is retried once on a different backend. */
   private static final int CONNECT_RETRIES = Integer.getInteger("scaleguard.connectRetries", 1);
 
   private void handleNewOutboundChannel(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey,
-                                        java.util.Set<HostGroup> failed) {
+                                        java.util.Set<HostGroup> failed, AccessRecord rec) {
     final Channel inboundChannel = ctx.channel();
     Bootstrap b = new Bootstrap();
     b.group(inboundChannel.eventLoop())
@@ -199,6 +257,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       // retry: prefer a host we haven't just failed to reach
       for (int i = 0; i < 4 && hg != null && failed.contains(hg); i++) hg = ts.getTargetSystem().getHostGroup();
       if (hg == null || failed.contains(hg)) {   // no other backend to try
+        if (rec != null) rec.finish(502, AccessRecord.NO_BACKEND);
         handleConnectionError(ts, ctx);
         io.netty.util.ReferenceCountUtil.release(msg);
         inboundChannel.close();
@@ -215,6 +274,14 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       inboundHandler.reset(msg, hg.getHost(), ts.getTargetSystem().getIncludeHeaders());
       logger.debug("Connecting to {}:{}", hg.getHost(), hg.getPort());
       f = b.connect(hg.getHost(), Integer.parseInt(hg.getPort()));
+    } else if (ts.getTargetSystem().getHost() == null || ts.getTargetSystem().getPort() == null) {
+      // Every backend in the group is down (BestHostSelector logs that, throttled) and the target has no
+      // fallback address of its own: a clean 503 — not a NumberFormatException with a stack trace per request.
+      if (rec != null) rec.finish(503, AccessRecord.NO_BACKEND);
+      DefaultResponseHandler.getInstance().handleFailure(ctx,
+              "No healthy backend for " + ts.getTargetSystem().getGroupId(), HttpResponseStatus.SERVICE_UNAVAILABLE);
+      io.netty.util.ReferenceCountUtil.release(msg);
+      return;
     } else {
       ts.setTargetHost(ts.getTargetSystem().getHost() + ":" + ts.getTargetSystem().getPort());
       // Thread-safe: pass host as parameter instead of writing shared inboundHandler.host field
@@ -224,6 +291,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       } catch (Exception e) {
         // Port parse failure or bootstrap misconfiguration — reject immediately
         logger.error("Invalid backend configuration for [{}]: {}", ts.getTargetSystem().getGroupId(), e.getMessage(), e);
+        if (rec != null) rec.finish(502, AccessRecord.NO_BACKEND);
         handleConnectionError(ts, ctx);
         return;
       }
@@ -231,6 +299,10 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
 
     outboundChannel = f.channel();
     targetSystem = ts;
+    if (rec != null) {
+      rec.backend = ts.getTargetHost();
+      AccessLog.expectResponse(outboundChannel, rec);   // the next response on this connection completes it
+    }
 
     f.addListener((ChannelFutureListener) future -> {
       if (future.isSuccess()) {
@@ -252,10 +324,12 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
                 ts.getTargetSystem().getGroupId(), cause != null ? cause.getMessage() : "unknown error");
         java.util.Set<HostGroup> tried = failed == null ? new java.util.HashSet<>() : failed;
         if (chosen != null) tried.add(chosen);
+        AccessLog.withdraw(future.channel(), rec);
         if (chosen != null && tried.size() <= CONNECT_RETRIES && inboundChannel.isActive()) {
-          handleNewOutboundChannel(ts, ctx, msg, messageKey, tried);
+          handleNewOutboundChannel(ts, ctx, msg, messageKey, tried, rec);
           return;
         }
+        if (rec != null) rec.finish(502, AccessRecord.NO_BACKEND);
         handleConnectionError(ts, ctx);
         io.netty.util.ReferenceCountUtil.release(msg);
         inboundChannel.close();
@@ -282,6 +356,10 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     ts.setSelectedHost(hg);
     String targetHost = hg != null ? hg.getHost() : ts.getTargetSystem().getHost();
     inboundHandler.reset(msg, targetHost, ts.getTargetSystem().getIncludeHeaders());
+    if (current != null) {
+      current.backend = hg != null ? hg.getHost() + ":" + hg.getPort() : targetHost;
+      AccessLog.expectResponse(outboundChannel, current);
+    }
     outboundChannel.writeAndFlush(msg).addListener((ChannelFutureListener) future -> {
       if (future.isSuccess()) {
         ctx.channel().read();

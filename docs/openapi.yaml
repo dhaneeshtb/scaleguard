@@ -19,6 +19,15 @@ components:
       type: apiKey
       in: header
       name: Authorization
+    oauthClient:
+      type: http
+      scheme: basic
+      description: 'OAuth client authentication: client_id and client_secret (client_secret_basic). client_secret_post (form fields) also works.'
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from /oauth2/token, sent to routes that have an app attached
   parameters:
     scaleguard:
       name: scaleguard
@@ -63,7 +72,8 @@ components:
         certificateId: { type: string }
         async: { type: boolean }
         asyncEngine: { type: string }
-        secappid: { type: string, description: Require client credentials of this application }
+        secappid: { type: string, description: 'Require an OAuth 2.0 access token issued for this app (401 without one)' }
+        oauthScopes: { type: string, description: 'Space-separated scopes the token must carry on this route (403 insufficient_scope otherwise)' }
         jwtKeylookup: { type: string }
         headerLookup: { type: string }
         keyLookupMap: { type: object, additionalProperties: { type: array, items: { type: string } } }
@@ -71,6 +81,8 @@ components:
         rateLimit: { type: integer, description: "Requests/min per client. -1 or absent = default, 0 = unlimited" }
         http2: { type: boolean, default: true, description: "HTTP/2 (ALPN h2 / h2c) for this route" }
         http3: { type: boolean, default: true, description: "HTTP/3 over QUIC (HTTPS routes), advertised with Alt-Svc" }
+        ipAllow: { type: string, description: "Only these IPs/CIDRs may use the route (comma-separated)" }
+        ipDeny: { type: string, description: "IPs/CIDRs refused on this route (comma-separated)" }
         grpc: { type: boolean, default: true, description: "Proxy gRPC calls end to end over HTTP/2; off = UNIMPLEMENTED" }
     TargetSystem:
       type: object
@@ -330,6 +342,33 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RateLimitView' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /ratelimit/access:
+    post:
+      tags: [Rate limiting]
+      summary: Block IPs/networks or exempt them from rate limits
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [list, values]
+              properties:
+                list: { type: string, enum: [blocked, exempt] }
+                values: { type: string, description: "IPs / CIDR ranges separated by commas, spaces or new lines" }
+                note: { type: string }
+                ttlSeconds: { type: integer, minimum: 0, description: "0 = permanent" }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RateLimitView' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /ratelimit/access/remove:
+    post:
+      tags: [Rate limiting]
+      summary: Remove an entry from the blocked or exempt list
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [list, value], properties: { list: { type: string, enum: [blocked, exempt] }, value: { type: string } } } } } }
+      responses: { '200': { description: OK }, '404': { description: Not on the list } }
   /waf:
     get:
       tags: [Firewall]
@@ -547,46 +586,161 @@ paths:
       responses: { '200': { description: OK } }
   /apps:
     parameters: [{ $ref: '#/components/parameters/scaleguard' }]
-    get: { tags: [Applications], summary: List applications, responses: { '200': { description: OK } } }
+    get: { tags: [App security], summary: List apps (each with its clients), responses: { '200': { description: OK } } }
     post:
-      tags: [Applications]
-      summary: Create an application
+      tags: [App security]
+      summary: Create an app (one per API you protect)
       requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, description: { type: string } } } } } }
       responses: { '200': { description: Created } }
   /apps/{id}:
     delete:
-      tags: [Applications]
-      summary: Delete an application
+      tags: [App security]
+      summary: Delete an app and its clients
       parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
       responses: { '200': { description: Deleted } }
   /clients:
     parameters: [{ $ref: '#/components/parameters/scaleguard' }]
-    get: { tags: [Applications], summary: List clients, responses: { '200': { description: OK } } }
+    get: { tags: [App security], summary: 'List OAuth clients (never includes secrets)', responses: { '200': { description: OK } } }
     post:
-      tags: [Applications]
-      summary: Create or update a client of an application
+      tags: [App security]
+      summary: Create an OAuth client. The response is the only place the secret appears
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [appid, expiry]
+              required: [appid, name]
               properties:
-                id: { type: string }
                 appid: { type: string }
                 name: { type: string }
                 description: { type: string }
-                clientid: { type: string }
-                clientsecret: { type: string }
-                expiry: { type: integer, format: int64 }
-      responses: { '200': { description: Saved }, '404': { description: App not found } }
+                clientid: { type: string, description: Generated when omitted }
+                clientsecret: { type: string, minLength: 24, description: 'Import an existing secret; generated when omitted' }
+                scopes: { type: array, items: { type: string } }
+                expiry: { type: integer, format: int64, description: 'Epoch ms when the credentials expire; 0 = never' }
+                accessTokenTtlSeconds: { type: integer, description: '60-86400; -1 = gateway default' }
+                refreshTokenTtlSeconds: { type: integer, description: '300-31536000; -1 = gateway default' }
+                refreshTokens: { type: boolean, default: true }
+                enabled: { type: boolean, default: true }
+      responses:
+        '201':
+          description: 'Created: {client, client_secret, credentials}'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client: { type: object }
+                  client_secret: { type: string }
+                  credentials: { type: object, properties: { client_id: { type: string }, client_secret: { type: string }, token_endpoint_path: { type: string }, grant_type: { type: string }, scope: { type: string }, app: { type: string } } }
+        '400': { description: Invalid input }
+        '404': { description: App not found }
   /clients/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+    post:
+      tags: [App security]
+      summary: Update a client (name, description, expiry, scopes, token lifetimes, refreshTokens, enabled)
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: Saved client }, '404': { description: Not found } }
     delete:
-      tags: [Applications]
-      summary: Delete a client
-      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      tags: [App security]
+      summary: Delete a client (its tokens stop working)
       responses: { '200': { description: Deleted } }
+  /clients/{id}/secret:
+    post:
+      tags: [App security]
+      summary: Rotate the secret. Old secret and all tokens issued so far stop working
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '201': { description: 'New secret: {client, client_secret, credentials}' } }
+  /clients/{id}/revoke:
+    post:
+      tags: [App security]
+      summary: Revoke every access and refresh token issued to the client so far
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: '{"revoked": true}' } }
+  /oauth:
+    get:
+      tags: [App security]
+      summary: OAuth settings, signing keys (public info) and endpoint paths
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /oauth/settings:
+    post:
+      tags: [App security]
+      summary: Change OAuth settings
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accessTokenTtlSeconds: { type: integer, minimum: 60, maximum: 86400 }
+                refreshTokenTtlSeconds: { type: integer, minimum: 300, maximum: 31536000 }
+                issuer: { type: string, description: 'iss claim; blank = the address the token was requested on' }
+                pathPrefix: { type: string, default: /oauth2 }
+                legacyHeaders: { type: boolean, description: 'Also accept client_id/client_secret request headers' }
+      responses: { '200': { description: Saved }, '400': { description: Out of range } }
+  /oauth/keys/rotate:
+    post:
+      tags: [App security]
+      summary: New RS256 signing key (older keys keep verifying for 7 days)
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /oauth2/token:
+    post:
+      tags: [OAuth 2.0]
+      summary: 'Token endpoint: client_credentials and refresh_token grants (RFC 6749)'
+      security: [{ oauthClient: [] }]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type: { type: string, enum: [client_credentials, refresh_token] }
+                scope: { type: string, description: Space-separated subset of the allowed scopes }
+                refresh_token: { type: string }
+                client_id: { type: string, description: client_secret_post only }
+                client_secret: { type: string, description: client_secret_post only }
+      responses:
+        '200':
+          description: Token response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_in: { type: integer }
+                  scope: { type: string }
+                  refresh_token: { type: string }
+                  refresh_token_expires_in: { type: integer }
+        '400': { description: 'invalid_request, invalid_grant, invalid_scope, unauthorized_client, unsupported_grant_type' }
+        '401': { description: invalid_client }
+  /oauth2/revoke:
+    post:
+      tags: [OAuth 2.0]
+      summary: Revoke an access or refresh token (RFC 7009)
+      security: [{ oauthClient: [] }]
+      requestBody: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [token], properties: { token: { type: string }, token_type_hint: { type: string } } } } } }
+      responses: { '200': { description: Revoked (also for unknown tokens) }, '401': { description: invalid_client } }
+  /oauth2/introspect:
+    post:
+      tags: [OAuth 2.0]
+      summary: Token introspection (RFC 7662), for clients of the same app or the admin
+      security: [{ oauthClient: [] }, { bearer: [] }]
+      requestBody: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [token], properties: { token: { type: string } } } } } }
+      responses: { '200': { description: '{"active": false} or {"active": true, client_id, scope, aud, exp, ...}' }, '401': { description: invalid_client } }
+  /oauth2/jwks:
+    get: { tags: [OAuth 2.0], summary: 'Public signing keys (RFC 7517 JWK Set)', security: [], responses: { '200': { description: OK } } }
+  /.well-known/oauth-authorization-server:
+    get: { tags: [OAuth 2.0], summary: 'Authorization server metadata (RFC 8414)', security: [], responses: { '200': { description: OK } } }
   /asyncengines:
     parameters: [{ $ref: '#/components/parameters/scaleguard' }]
     get: { tags: [Async], summary: List async engines, responses: { '200': { description: OK } } }

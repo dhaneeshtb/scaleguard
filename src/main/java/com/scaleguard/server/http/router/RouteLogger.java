@@ -80,6 +80,12 @@ public class RouteLogger {
 
     private static Map<String,RouteStats> routeStatsMap = new ConcurrentHashMap<>();
 
+    /** The stats bucket for this route + backend, for callers that log many responses for the same pair. */
+    public static RouteStats stats(RouteTarget rt) {
+        String key = rt.getSourceSystem().getId()+":"+rt.getTargetSystem().getId()+":"+rt.getTargetHost();
+        return routeStatsMap.computeIfAbsent(key, RouteStats::new);
+    }
+
     public static void log(RouteTarget rt){
         log(rt,false);
     }
@@ -88,7 +94,9 @@ public class RouteLogger {
         long repTime =System.currentTimeMillis()-rt.getStartTime();
         RouteStats rs = routeStatsMap.computeIfAbsent(key,k->new RouteStats(k));
         rs.addRT(repTime);
-        logger.debug(key+" : "+(repTime)+" Average:"+rs.getAverageRT()+": Min=>"+rs.getMinTime()+",Max=>"+rs.getMaxTime());
+        if (logger.isDebugEnabled()) {
+            logger.debug(key+" : "+(repTime)+" Average:"+rs.getAverageRT()+": Min=>"+rs.getMinTime()+",Max=>"+rs.getMaxTime());
+        }
     }
 
     public static JsonNode toStatsJson(){

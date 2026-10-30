@@ -44,6 +44,33 @@ public class AppServer implements Server{
 
     private static final int CPU = Runtime.getRuntime().availableProcessors();
 
+    static {
+        // Buffer leak detection captures a stack trace for sampled buffers, which costs a few percent of
+        // throughput on the proxy path. Off by default; turn it on to debug with
+        // -Dio.netty.leakDetection.level=SIMPLE (or ADVANCED / PARANOID).
+        if (System.getProperty("io.netty.leakDetection.level") == null
+                && System.getProperty("io.netty.leakDetectionLevel") == null) {
+            io.netty.util.ResourceLeakDetector.setLevel(io.netty.util.ResourceLeakDetector.Level.DISABLED);
+        }
+        // Per-access reference-count and bounds checks on every buffer read/write cost a few percent on the proxy path
+        // (atomic loads on ARM especially). The proxy only touches buffers through Netty's codecs, which manage their
+        // lifetimes; turn the checks back on to debug with -Dio.netty.buffer.checkAccessible=true / checkBounds=true.
+        // (Must run before Netty's buffer classes load: run.sh and the Dockerfile also pass them on the command line.)
+        if (System.getProperty("io.netty.buffer.checkAccessible") == null) System.setProperty("io.netty.buffer.checkAccessible", "false");
+        if (System.getProperty("io.netty.buffer.checkBounds") == null) System.setProperty("io.netty.buffer.checkBounds", "false");
+    }
+
+    /**
+     * One buffer allocator for client and backend connections: Netty 4.2's adaptive allocator (its default, built for
+     * many event loops) unless -Dscaleguard.allocator=pooled.
+     */
+    static final io.netty.buffer.ByteBufAllocator ALLOCATOR = "pooled".equalsIgnoreCase(System.getProperty("scaleguard.allocator", "adaptive"))
+            ? PooledByteBufAllocator.DEFAULT : io.netty.buffer.ByteBufAllocator.DEFAULT;
+
+    /** I/O threads: one per core (like one worker process per core), override with -Dscaleguard.ioThreads. */
+    static final int IO_THREADS = Math.max(1, Integer.getInteger("scaleguard.ioThreads",
+            Integer.parseInt(System.getenv().getOrDefault("SCALEGUARD_IO_THREADS", String.valueOf(CPU)))));
+
     // ── Write-buffer watermarks ───────────────────────────────────────────────
     // When the outbound buffer exceeds HIGH, Netty pauses reads on the
     // inbound channel (back-pressure).  When it drains below LOW, reads resume.
@@ -64,17 +91,12 @@ public class AppServer implements Server{
     }
 
     private static EventLoopGroup createWorkerGroup() {
-        // Workers: 2 × CPU cores handles hundreds of thousands of concurrent channels.
-        return NettyTransport.newGroup(CPU * 2, "sg-io");
+        // Workers: one event loop per core. Each loop is non-blocking and serves thousands of connections;
+        // more loops than cores only adds context switches.
+        return NettyTransport.newGroup(IO_THREADS, "sg-io");
     }
 
     public static void main(String[] args) throws Exception {
-        // PARANOID mode samples every ByteBuf allocation (full stack trace) — never use in production.
-        // SIMPLE (1-in-128 sample) is sufficient to catch leaks without hurting throughput.
-        // Override by passing -Dio.netty.leakDetection.level=ADVANCED / PARANOID explicitly.
-        if (System.getProperty("io.netty.leakDetection.level") == null) {
-            System.setProperty("io.netty.leakDetection.level", "SIMPLE");
-        }
         ConnectionUtil.checkDBProperties();
 
         // Support environment variables as fallback for admin credentials
@@ -207,11 +229,11 @@ public class AppServer implements Server{
          .channel(NettyTransport.serverChannel())
          .option(ChannelOption.SO_BACKLOG, 65535)
          .option(ChannelOption.SO_REUSEADDR, true)
-         .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+         .option(ChannelOption.ALLOCATOR, ALLOCATOR)
          .childOption(ChannelOption.SO_KEEPALIVE, true)
          .childOption(ChannelOption.TCP_NODELAY, true)
          .childOption(ChannelOption.AUTO_READ, false)
-         .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+         .childOption(ChannelOption.ALLOCATOR, ALLOCATOR)
          .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, WRITE_WATERMARK)
          // DEBUG, not INFO: at INFO this logged every accepted connection.
          .handler(new LoggingHandler(LogLevel.DEBUG))
@@ -222,8 +244,9 @@ public class AppServer implements Server{
         }
         if (!transportLogged) {
             transportLogged = true;
-            logger.info("[Netty 4.2] Transport: {} | {} acceptor socket(s) per port{} | {} I/O threads | PooledAllocator | WriteWatermark 32K/64K",
-                    NettyTransport.describe(), ACCEPTORS, ACCEPTORS > 1 ? " (SO_REUSEPORT)" : "", CPU * 2);
+            logger.info("[Netty 4.2] Transport: {} | {} acceptor socket(s) per port{} | {} I/O threads | {} allocator | WriteWatermark 32K/64K",
+                    NettyTransport.describe(), ACCEPTORS, ACCEPTORS > 1 ? " (SO_REUSEPORT)" : "", IO_THREADS,
+                    ALLOCATOR instanceof PooledByteBufAllocator ? "pooled" : "adaptive");
         }
         return b;
     }

@@ -109,6 +109,18 @@ for p in nginx haproxy envoy caddy traefik scaleguard scaleguard-analytics; do S
 ```
 Repeat 3× and take the median; `C=1024` for many connections, `SG_HEAP=256m` for a memory-realistic ScaleGuard.
 
+**Multi-core (e.g. a 4 vCPU / 4 GB proxy).** Give the proxy its own CPUs and the load generator + backend the rest:
+```
+# 8-vCPU machine: proxy on 0-3, wrk + backend on 4-7; every proxy gets 4 workers
+PROXY_CPUS=0-3 LOAD_CPUS=4-7 ./run.sh setup
+PROXY_CPUS=0-3 LOAD_CPUS=4-7 SG_HEAP=2g SG_JAR=$SG_JAR SG_DEV=/tmp/sgdev ./run.sh scaleguard
+PROXY_CPUS=0-3 LOAD_CPUS=4-7 ./run.sh nginx
+# or a 4-vCPU proxy machine + a separate load machine: prints the wrk commands to run there
+PROXY_CPUS=0-3 LOAD_HOST=10.0.0.5 SG_HEAP=2g ./run.sh scaleguard
+```
+Each run also prints `cpu_us/req` (proxy CPU time per request): on a shared or noisy machine it moves far less than
+req/s, so compare builds with it. Warm-up defaults to 30 s because the JVM is still compiling its hot code before that.
+
 ## 7. Admin UI preview without a server
 
 `ui-preview/build-preview.sh` builds the UI with a hash router, inlines it with `mock.js` (fake API responses

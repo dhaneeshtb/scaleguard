@@ -35,6 +35,7 @@ public class RequestRoutingContexts {
         routesMap.put("register",new RegisterRoute());
         routesMap.put("apps",new AppRoute());
         routesMap.put("clients",new ClientRoute());
+        routesMap.put("oauth",new com.scaleguard.server.security.oauth.OAuthRoute());
         routesMap.put(".well-known",new AcmeChannelgeRoute());
         routesMap.put("ratelimit",new RateLimitRoute());
         routesMap.put("waf",new WafRoute());

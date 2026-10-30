@@ -43,7 +43,9 @@ public final class AccessLogStore {
 
     static final String P_ENABLED = "analytics.enabled", P_RETENTION = "analytics.retentionDays";
     private static final int QUEUE_CAPACITY = Integer.getInteger("scaleguard.analytics.queue", 200_000);
-    private static final int BATCH = 20_000;
+    private static final int BATCH = Integer.getInteger("scaleguard.analytics.batch", 50_000);
+    /** How long the writer lets rows collect before appending them (fewer, larger DuckDB commits). */
+    private static final long FLUSH_MS = Long.getLong("scaleguard.analytics.flushMs", 1000);
 
     public record Settings(boolean enabled, int retentionDays) {
         public Settings {
@@ -120,14 +122,7 @@ public final class AccessLogStore {
         path = System.getProperty("scaleguard.analytics.path", LicenceUtil.dataDir() + File.separator + "analytics.duckdb");
         db = (DuckDBConnection) DriverManager.getConnection("jdbc:duckdb:" + path);
         try (Statement s = db.createStatement()) {
-            s.execute("""
-                    CREATE TABLE IF NOT EXISTS access_log_raw (
-                      ts_ms BIGINT, trace_id VARCHAR, client_ip VARCHAR, method VARCHAR, host VARCHAR, path VARCHAR,
-                      query VARCHAR, protocol VARCHAR, route_id VARCHAR, route_name VARCHAR, backend VARCHAR,
-                      status SMALLINT, grpc_status SMALLINT, bytes_in BIGINT, bytes_out BIGINT, duration_ms DOUBLE,
-                      outcome VARCHAR, waf_rule VARCHAR, user_agent VARCHAR, referer VARCHAR, tls BOOLEAN, node VARCHAR)""");
-            // ts is TIMESTAMPTZ (an absolute instant), so "ts > now() - INTERVAL 1 HOUR" is right whatever the time zone.
-            s.execute("CREATE OR REPLACE VIEW access_log AS SELECT to_timestamp(ts_ms / 1000.0) AS ts, * EXCLUDE (ts_ms) FROM access_log_raw");
+            createSchema(s);
             s.execute("SET TimeZone = 'UTC'");
             // Queries from the SQL console can't read or write files, attach databases or load extensions.
             s.execute("SET enable_external_access = false");
@@ -138,7 +133,29 @@ public final class AccessLogStore {
         }
     }
 
+    /**
+     * Writer thread CPU priority, -Dscaleguard.analytics.writerPriority=normal (default) | low (nice 10) | idle (SCHED_IDLE).
+     * Measured on a saturated proxy, normal is best: a lower-priority writer falls behind, and the backlog of queued
+     * records costs more in garbage collection than the priority saves. low/idle suit servers where analytics may lag
+     * (rows are dropped and counted if the queue overflows; traffic is never slowed).
+     */
+    static void lowerWriterPriority() {
+        String mode = System.getProperty("scaleguard.analytics.writerPriority", "normal").toLowerCase(java.util.Locale.ROOT);
+        if (mode.equals("normal")) return;
+        try {
+            java.nio.file.Path self = java.nio.file.Files.readSymbolicLink(java.nio.file.Path.of("/proc/thread-self"));
+            String tid = self.getFileName().toString();
+            String[] cmd = mode.equals("idle") ? new String[]{"chrt", "--idle", "-p", "0", tid} : new String[]{"renice", "-n", "10", "-p", tid};
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0) LOG.info("Request analytics writer runs at {} CPU priority", mode);
+            else LOG.debug("Could not lower the analytics writer's priority ({})", String.join(" ", cmd));
+        } catch (Throwable e) {
+            LOG.debug("Analytics writer priority unchanged: {}", e.toString());   // not Linux, or tools missing
+        }
+    }
+
     private void writerLoop() {
+        lowerWriterPriority();
         List<AccessRecord> batch = new ArrayList<>(BATCH);
         while (true) {
             try {
@@ -149,7 +166,7 @@ public final class AccessLogStore {
                     write(batch);
                     batch.clear();
                 }
-                if (queued.get() < BATCH) Thread.sleep(250);   // batch up: one append + flush per quarter second
+                if (queued.get() < BATCH) Thread.sleep(FLUSH_MS);   // batch up: one append + commit per second
                 long now = System.currentTimeMillis();
                 if (now - lastRetentionRun > TimeUnit.HOURS.toMillis(1)) {
                     lastRetentionRun = now;
@@ -166,36 +183,136 @@ public final class AccessLogStore {
     }
 
     private synchronized void write(List<AccessRecord> rows) throws SQLException {
-        try (DuckDBAppender a = db.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "access_log_raw")) {
+        // New dimension values first (rare: a new route, host, backend…), so the view can resolve every code.
+        for (AccessRecord r : rows) {
+            code(r.method); code(r.host); code(r.protocol); code(r.routeId); code(r.routeName); code(r.backend); code(r.outcome);
+        }
+        code(node);
+        if (!newDims.isEmpty()) {
+            try (DuckDBAppender d = db.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "access_log_dims")) {
+                for (Map.Entry<String, Integer> e : newDims.entrySet()) {
+                    d.beginRow();
+                    d.append(e.getValue());
+                    d.append(e.getKey());
+                    d.endRow();
+                }
+                d.flush();
+            }
+            newDims.clear();
+        }
+        int nodeCode = code(node);
+        try (DuckDBAppender a = db.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "access_log_rows")) {
             for (AccessRecord r : rows) {
                 a.beginRow();
                 a.append(r.tsMillis);
-                a.append(r.traceId);
+                String t = r.traceId;
+                if (t != null && t.length() == 32) {
+                    a.append(Long.parseUnsignedLong(t, 0, 16, 16));
+                    a.append(Long.parseUnsignedLong(t, 16, 32, 16));
+                } else {
+                    a.append(0L);
+                    a.append(0L);
+                }
                 a.append(r.clientIp);
-                a.append(r.method);
-                a.append(r.host);
+                a.append(code(r.method));
+                a.append(code(r.host));
                 a.append(r.path);
                 a.append(r.query);
-                a.append(r.protocol);
-                a.append(r.routeId);
-                a.append(r.routeName);
-                a.append(r.backend);
+                a.append(code(r.protocol));
+                a.append(code(r.routeId));
+                a.append(code(r.routeName));
+                a.append(code(r.backend));
                 a.append((short) r.status);
                 a.append((short) r.grpcStatus);
                 a.append(r.bytesIn);
                 a.append(r.bytesOut);
                 a.append(r.durationMs);
-                a.append(r.outcome);
+                a.append(code(r.outcome));
                 a.append(r.wafRule);
                 a.append(AccessRecord.cap(r.userAgent, 512));
                 a.append(AccessRecord.cap(r.referer, 1024));
                 a.append(r.tls);
-                a.append(node);
+                a.append(nodeCode);
                 a.endRow();
             }
             a.flush();
         }
         written.add(rows.size());
+    }
+
+    // ------------------------------------------------------------------ compact storage
+
+    /*
+     * Rows are stored compactly: repeated text (method, host, protocol, route, backend, outcome, node) as integer codes
+     * into access_log_dims, the trace id as two 64-bit integers. That makes each row ~2x cheaper for DuckDB to append
+     * and compress than storing every value as text. The view access_log_raw puts the text back, with exactly the
+     * columns of the original table, so dashboards, exports and SQL console queries are unchanged.
+     */
+    private final Map<String, Integer> dimIds = new java.util.HashMap<>();
+    private final Map<String, Integer> newDims = new java.util.LinkedHashMap<>();
+    private int nextDim = 1;
+
+    /** Code for a text value (0 = null); new values are queued for the dims table. */
+    private int code(String v) {
+        if (v == null) return 0;
+        Integer id = dimIds.get(v);
+        if (id != null) return id;
+        if (v.length() > 512) v = v.substring(0, 512);
+        id = dimIds.get(v);
+        if (id != null) return id;
+        int nid = nextDim++;
+        dimIds.put(v, nid);
+        newDims.put(v, nid);
+        return nid;
+    }
+
+    private void createSchema(Statement s) throws SQLException {
+        s.execute("CREATE TABLE IF NOT EXISTS access_log_dims (id INTEGER, value VARCHAR)");
+        s.execute("""
+                CREATE TABLE IF NOT EXISTS access_log_rows (
+                  ts_ms BIGINT, trace_hi BIGINT, trace_lo BIGINT, client_ip VARCHAR, method INTEGER, host INTEGER, path VARCHAR,
+                  query VARCHAR, protocol INTEGER, route_id INTEGER, route_name INTEGER, backend INTEGER,
+                  status SMALLINT, grpc_status SMALLINT, bytes_in BIGINT, bytes_out BIGINT, duration_ms DOUBLE,
+                  outcome INTEGER, waf_rule VARCHAR, user_agent VARCHAR, referer VARCHAR, tls BOOLEAN, node INTEGER)""");
+        // Data written by earlier versions lived in a table called access_log_raw: keep it, under another name.
+        boolean legacy = false;
+        try (ResultSet rs = s.executeQuery("SELECT table_type FROM information_schema.tables WHERE table_name = 'access_log_raw'")) {
+            if (rs.next() && "BASE TABLE".equalsIgnoreCase(rs.getString(1))) {
+                s.execute("DROP VIEW IF EXISTS access_log");
+                s.execute("ALTER TABLE access_log_raw RENAME TO access_log_v1");
+                LOG.info("Request analytics: existing rows kept as access_log_v1 (new rows use compact storage)");
+            }
+        }
+        try (ResultSet rs = s.executeQuery("SELECT count(*) FROM information_schema.tables WHERE table_name = 'access_log_v1'")) {
+            legacy = rs.next() && rs.getLong(1) > 0;
+        }
+        s.execute("CREATE OR REPLACE VIEW access_log_raw AS " + rawViewSql(legacy));
+        s.execute("CREATE OR REPLACE VIEW access_log AS SELECT to_timestamp(ts_ms / 1000.0) AS ts, * EXCLUDE (ts_ms) FROM access_log_raw");
+        try (ResultSet rs = s.executeQuery("SELECT id, value FROM access_log_dims")) {
+            while (rs.next()) {
+                dimIds.put(rs.getString(2), rs.getInt(1));
+                nextDim = Math.max(nextDim, rs.getInt(1) + 1);
+            }
+        }
+        hasLegacy = legacy;
+    }
+
+    private boolean hasLegacy;
+
+    /** access_log_raw: the compact rows with their text put back, in the column order of the original table. */
+    private static String rawViewSql(boolean legacy) {
+        return "SELECT r.ts_ms,"
+                + " CASE WHEN r.trace_hi = 0 AND r.trace_lo = 0 THEN NULL"
+                + "  ELSE lower(lpad(to_hex(r.trace_hi), 16, '0') || lpad(to_hex(r.trace_lo), 16, '0')) END AS trace_id,"
+                + " r.client_ip, dm.value AS method, dh.value AS host, r.path, r.query, dp.value AS protocol,"
+                + " dr.value AS route_id, dn.value AS route_name, db.value AS backend, r.status, r.grpc_status, r.bytes_in,"
+                + " r.bytes_out, r.duration_ms, dout.value AS outcome, r.waf_rule, r.user_agent, r.referer, r.tls, dnode.value AS node"
+                + " FROM access_log_rows r"
+                + " LEFT JOIN access_log_dims dm ON dm.id = r.method LEFT JOIN access_log_dims dh ON dh.id = r.host"
+                + " LEFT JOIN access_log_dims dp ON dp.id = r.protocol LEFT JOIN access_log_dims dr ON dr.id = r.route_id"
+                + " LEFT JOIN access_log_dims dn ON dn.id = r.route_name LEFT JOIN access_log_dims db ON db.id = r.backend"
+                + " LEFT JOIN access_log_dims dout ON dout.id = r.outcome LEFT JOIN access_log_dims dnode ON dnode.id = r.node"
+                + (legacy ? " UNION ALL SELECT * FROM access_log_v1" : "");
     }
 
     private void flushOnShutdown() {
@@ -214,7 +331,17 @@ public final class AccessLogStore {
     private synchronized void applyRetention() {
         long cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(settings.retentionDays());
         try (Statement s = db.createStatement()) {
-            int n = s.executeUpdate("DELETE FROM access_log_raw WHERE ts_ms < " + cutoff);
+            int n = s.executeUpdate("DELETE FROM access_log_rows WHERE ts_ms < " + cutoff);
+            if (hasLegacy) {
+                n += s.executeUpdate("DELETE FROM access_log_v1 WHERE ts_ms < " + cutoff);
+                try (ResultSet rs = s.executeQuery("SELECT count(*) FROM access_log_v1")) {
+                    if (rs.next() && rs.getLong(1) == 0) {     // old rows aged out: drop the legacy table
+                        s.execute("CREATE OR REPLACE VIEW access_log_raw AS " + rawViewSql(false));
+                        s.execute("DROP TABLE access_log_v1");
+                        hasLegacy = false;
+                    }
+                }
+            }
             if (n > 0) LOG.info("Access log retention: removed {} rows older than {} days", n, settings.retentionDays());
         } catch (SQLException e) {
             LOG.warn("Access log retention failed: {}", e.toString());

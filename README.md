@@ -115,8 +115,9 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 | | |
 |---|---|
 | **Web application firewall** | 21 built-in rules (SQL injection, XSS, path traversal, command injection, SSRF, Log4Shell, scanners and more) plus your own regex rules, plus **OWASP Core Rule Set import** with CRS-style anomaly scoring and paranoia levels. Enable per route; block, score or detect-only; tune each rule; dry-run any request. Inputs are normalised (multi-pass URL decoding, HTML entities, SQL comments) and patterns are ReDoS-safe |
+| **IP blocking & allow-lists** | Block IPs, networks or a whole proxy/CDN edge gateway-wide (permanently or for a set time, one click from the list of rate-limited clients), exempt monitoring and office networks from limits, and give any route its own allow/deny list |
 | **Rate limiting** | Token bucket per client per route, smooth across minute boundaries, `429` + `Retry-After`. Per-route overrides; trusted-proxy aware, so spoofed `X-Forwarded-For` can't dodge it. In a cluster, one budget across all nodes |
-| **Client credentials** | Protect routes with per-application client IDs and secrets |
+| **OAuth 2.0 for APIs** | Built-in authorization server: client credentials and rotating refresh tokens, RS256 JWT access tokens checked at the edge, per-route required scopes, revocation, introspection, JWKS and discovery. Secrets are stored hashed and downloadable once at creation, with ready-to-run samples. [Guide](docs/OAUTH.md) |
 | **Admin API safety** | Token auth, separate admin rate limit so a strict setting can't lock you out |
 
 ### Resilience
@@ -164,22 +165,41 @@ backend and the load generator sharing those two cores, so dedicated hardware wi
 
 Reproduce: `dev-tools/go/load.go`, `dev-tools/go/h2check.go … bench=50:8`, `dev-tools/java/LoadGen.java`.
 
-**Head to head, one CPU core each** (October 2026, same backend and `wrk`, median of 3 runs, 64 keep-alive
-connections, access logs off unless noted):
+**Head to head, one CPU core each** (October 2026, same backend and `wrk`, 64 keep-alive connections, access logs
+off unless noted). The test machine's speed drifts between sessions, so each proxy is shown as a share of NGINX measured
+in alternating runs in the same session, with the absolute numbers from one such round:
 
-| Proxy | Requests/s (12-byte body) | p50 | p99 | Requests/s (16 KB body) |
-|---|---:|---:|---:|---:|
-| HAProxy 3.4 | 44,472 | 1.30 ms | 3.3 ms | 33,718 |
-| NGINX 1.29 | 40,966 | 1.26 ms | 5.3 ms | 31,536 |
-| **ScaleGuard** | **32,369** | **1.20 ms** | 13.2 ms | **24,512** |
-| ScaleGuard + analytics (every request to DuckDB) | 20,455 | 1.56 ms | 30.6 ms | 18,859 |
-| Envoy 1.39 | 16,394 | 3.50 ms | 10.7 ms | 14,945 |
-| Traefik 3.7 | 8,916 | 6.49 ms | 23.6 ms | 9,541 |
-| Caddy 2.11 | 7,180 | 8.12 ms | 23.1 ms | 7,079 |
+| Proxy | Requests/s (12-byte body) | vs NGINX | p99 | Requests/s (16 KB body) | vs NGINX |
+|---|---:|---:|---:|---:|---:|
+| NGINX 1.29 | 55,856 | 100% | 2.6 ms | 41,196 | 100% |
+| HAProxy 3.4 | 54,680 | ~98% | 2.7 ms | 41,258 | ~99% |
+| **ScaleGuard** | **52,112** | **~93%** | 8.2 ms | **33,918** | **~83%** |
+| ScaleGuard + analytics (every request to DuckDB) | — | ~62% | ~30 ms | — | ~58% |
+| Envoy 1.39 | — | ~40% | 10.7 ms | — | ~47% |
+| Traefik 3.7 | — | ~22% | 23.6 ms | — | ~30% |
+| Caddy 2.11 | — | ~18% | 23.1 ms | — | ~22% |
 
-ScaleGuard runs at ~80% of NGINX per core and about twice Envoy, with the lowest median latency. Its tail latency
-(JVM garbage collection) and memory (~200 MB with a 256 MB heap vs ~15–25 MB for NGINX/HAProxy) are where the
-C proxies are ahead.
+(Envoy, Traefik and Caddy are from the earlier round of the same benchmark.) ScaleGuard is within a few percent of
+NGINX for small responses and more than twice Envoy. Its tail latency (JVM garbage collection) and memory
+(~200 MB with a 256 MB heap vs ~15–25 MB for NGINX/HAProxy) are where the C proxies are ahead.
+
+**Multi-core scaling** (ARM64, 2 proxy cores with wrk + backend on 2 more, after a 30 s warm-up): 157k req/s for small
+responses and 135k req/s for 16 KB, about 12 µs of CPU per request; one core does 67k and 65k. Each core runs its own
+event loop with its own `SO_REUSEPORT` listener, so a 4 vCPU / 4 GB server roughly doubles that again. To measure on
+your own hardware, see `dev-tools/bench` (`PROXY_CPUS=0-3`).
+
+**Throughput tuning.** The defaults are already tuned for a typical 4 vCPU / 4 GB server:
+- **Threads and memory:** one event-loop thread per core (`SCALEGUARD_IO_THREADS`), and a heap of half the machine's
+  memory (`SCALEGUARD_HEAP` to override).
+- **JVM and Netty:** Parallel GC, and Netty's leak detection and per-access buffer checks off. Turn them back on with
+  `-Dio.netty.leakDetection.level=SIMPLE` / `-Dio.netty.buffer.checkAccessible=true` when debugging.
+- **Response streaming:** backend responses go to the client as they arrive instead of being buffered whole.
+- **Request analytics:** records are only queued on the request path. A separate thread writes them to DuckDB once a
+  second in a compact format (repeated text stored as integer codes, about 2× cheaper to write). Analytics still costs
+  roughly a quarter of peak throughput on a saturated proxy. Turn it off (`-Dscaleguard.analytics=false`) on nodes
+  that only need maximum throughput. Virtual threads are used for background and blocking work (admin queries,
+certificate renewal, DuckDB writes); the proxy path itself runs on non-blocking Netty event loops, which is faster
+than any thread-per-request model.
 
 ---
 

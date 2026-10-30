@@ -42,6 +42,14 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 	}
 
 
+	/** -Dscaleguard.streamResponses=false restores whole-response buffering (the old behaviour). */
+	static final boolean STREAM_RESPONSES = !"false".equalsIgnoreCase(System.getProperty("scaleguard.streamResponses"));
+
+	private static final io.netty.handler.codec.http.HttpDecoderConfig BACKEND_DECODER = new io.netty.handler.codec.http.HttpDecoderConfig()
+			.setMaxHeaderSize(Integer.getInteger("scaleguard.maxBackendHeaderBytes", 16 * 1024))
+			.setMaxChunkSize(64 * 1024)   // fewer, larger body pieces when streaming
+			.setValidateHeaders(Boolean.getBoolean("scaleguard.validateBackendHeaders"));
+
 	@Override
 	public void initChannel(SocketChannel ch) throws Exception {
 		ChannelPipeline pipeline = ch.pipeline();
@@ -52,7 +60,7 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 		// You will need something more complicated to identify both
 		// and server in the real world.
 
-		pipeline.addLast(new LoggingHandler(LogLevel.DEBUG));
+		// (no LoggingHandler: even with logging off it is an extra hop for every read, write and flush)
 		if (isSecureBackend) {
 			// SNI + optional certificate verification per target (nginx proxy_ssl_server_name / proxy_ssl_verify)
 			com.scaleguard.server.http.router.TargetSystem t = rt != null ? rt.getTargetSystem() : null;
@@ -65,8 +73,11 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 		// Match the inbound cap so large backend responses are also bounded.
 		// Default 10 MB; tune via -Dscaleguard.maxBodyBytes.
 		int maxBody = Integer.getInteger("scaleguard.maxBodyBytes", 10 * 1024 * 1024);
-		pipeline.addLast(new HttpClientCodec());
-		pipeline.addLast(new HttpObjectAggregator(maxBody));
+		// Backend responses are parsed line by line (no CR/LF injection possible); skipping the per-character header
+		// validation saves measurable CPU per request. -Dscaleguard.validateBackendHeaders=true turns it back on.
+		pipeline.addLast(new HttpClientCodec(BACKEND_DECODER, false, false));
+		// Responses are streamed to the client as they arrive; only routes that cache responses need them whole.
+		if (cacheKey != null || !STREAM_RESPONSES) pipeline.addLast(new HttpObjectAggregator(maxBody));
 		// proxy_read_timeout: 504 when a backend that owes a response goes quiet
 		long readTimeout = rt != null && rt.getTargetSystem() != null ? rt.getTargetSystem().readTimeoutMillis()
 				: Integer.getInteger("scaleguard.readTimeoutSeconds", 60) * 1000L;

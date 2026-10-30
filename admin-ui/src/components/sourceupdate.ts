@@ -101,6 +101,7 @@ const sourceSystemSchema = {
     "scheme": "https",
     "host": "localhost",
     "secappid":"",
+    "oauthScopes":"",
     "port": "80",
     "basePath": "/",
     "name": "",

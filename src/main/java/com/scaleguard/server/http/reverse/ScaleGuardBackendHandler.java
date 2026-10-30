@@ -44,6 +44,22 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     /** The backend this connection goes to (fixed for the connection's lifetime). */
     private final HostGroup host;
 
+    /** Streaming: a response whose head has been forwarded but whose last content hasn't arrived yet. */
+    private boolean midResponse;
+    /** Streaming: its analytics record, finished when the last content arrives. */
+    private com.scaleguard.server.analytics.AccessRecord streamRec;
+    private int streamStatus;
+    /** Streaming: a head was written in this read batch and needs a flush; a read was already requested. */
+    private boolean pendingFlush, readRequested;
+    /** Response-time stats for this connection's route and backend (fixed for its lifetime), looked up once. */
+    private RouteLogger.RouteStats stats;
+
+    private void logResponseTime() {
+        if (rt == null) return;
+        if (stats == null) stats = RouteLogger.stats(rt);
+        stats.addRT(System.currentTimeMillis() - rt.getStartTime());
+    }
+
     public ScaleGuardBackendHandler(RouteTarget rt, Channel inboundChannel, String cacheKey) {
         this.inboundChannel = inboundChannel;
         this.rt=rt;
@@ -68,38 +84,16 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
         Object cachedObject;
         int statusCode;
 
+        if (!(msg instanceof FullHttpResponse) && msg instanceof io.netty.handler.codec.http.HttpObject) {
+            stream(ctx, msg);   // no aggregator in the pipeline: forward head and body as they arrive
+            return;
+        }
         if(msg instanceof FullHttpResponse) {
             FullHttpResponse response= (FullHttpResponse) msg;
-            PassiveHealthManager.getInstance().recordStatus(host, response.status().code());
-            com.scaleguard.server.analytics.AccessRecord rec = com.scaleguard.server.analytics.AccessLog.nextResponse(ctx.channel());
+            com.scaleguard.server.analytics.AccessRecord rec = onHead(ctx, response);
             if (rec != null) {
                 rec.bytesOut = response.content().readableBytes();
-                if (rec.traceId != null && com.scaleguard.server.analytics.TraceContext.HEADERS) response.headers().set("X-Trace-Id", rec.traceId);
                 rec.finish(response.status().code());
-            }
-            if (response.status().code() >= 300 && response.status().code() < 400) {
-                // Handle Redirect
-                String location = response.headers().get(HttpHeaderNames.LOCATION);
-                if (location != null) {
-                    if(rt!=null){
-                       String sfqdn =  rt.getSourceSystem().getScheme()+"://"+rt.getSourceSystem().getHost();
-                       int port = Integer.valueOf(rt.getSourceSystem().getPort());
-                       if(port!=80 && port!=443){
-                           sfqdn=sfqdn+":"+port;
-                       }
-                        HostGroup hg = host != null ? host : rt.getTargetSystem().getHostGroup();
-                        if(hg!=null) {
-                            String tfqdn = hg.getScheme() + "://" + hg.getHost();
-                            int dport = Integer.valueOf(hg.getPort());
-                            if (dport != 80 &&  dport != 443) {
-                                tfqdn = tfqdn + ":" + dport;
-                            }
-                            String cLocation = location.replace(tfqdn, sfqdn);
-                            response.headers().set(HttpHeaderNames.LOCATION, cLocation);
-                            logger.debug("Redirecting to: {}", location);
-                        }
-                    }
-                }
             }
         }
         if(cacheKey!=null){
@@ -131,7 +125,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
                         }
                         cacheManager.saveFresh(cacheInfo, cacheKey, cachedObject, ttl);
                     }
-                    RouteLogger.log(rt);
+                    logResponseTime();
                 } else {
                     logger.debug("Could not deliver the response to the client: {}", future.cause() == null ? "closed" : future.cause().toString());
                     future.channel().close();
@@ -140,6 +134,106 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
         });
 
 
+    }
+
+
+    /** Per response head: passive health, analytics trace header, redirect rewriting. Returns the analytics record. */
+    private com.scaleguard.server.analytics.AccessRecord onHead(ChannelHandlerContext ctx, io.netty.handler.codec.http.HttpResponse response) {
+        PassiveHealthManager.getInstance().recordStatus(host, response.status().code());
+        com.scaleguard.server.analytics.AccessRecord rec = com.scaleguard.server.analytics.AccessLog.nextResponse(ctx.channel());
+        if (rec != null && rec.traceId != null && com.scaleguard.server.analytics.TraceContext.HEADERS) response.headers().set("X-Trace-Id", rec.traceId);
+        if (response.status().code() >= 300 && response.status().code() < 400) {
+            // Handle Redirect
+            String location = response.headers().get(HttpHeaderNames.LOCATION);
+            if (location != null) {
+                if(rt!=null){
+                   String sfqdn =  rt.getSourceSystem().getScheme()+"://"+rt.getSourceSystem().getHost();
+                   int port = Integer.valueOf(rt.getSourceSystem().getPort());
+                   if(port!=80 && port!=443){
+                       sfqdn=sfqdn+":"+port;
+                   }
+                    HostGroup hg = host != null ? host : rt.getTargetSystem().getHostGroup();
+                    if(hg!=null) {
+                        String tfqdn = hg.getScheme() + "://" + hg.getHost();
+                        int dport = Integer.valueOf(hg.getPort());
+                        if (dport != 80 &&  dport != 443) {
+                            tfqdn = tfqdn + ":" + dport;
+                        }
+                        String cLocation = location.replace(tfqdn, sfqdn);
+                        response.headers().set(HttpHeaderNames.LOCATION, cLocation);
+                        logger.debug("Redirecting to: {}", location);
+                    }
+                }
+            }
+        }
+        return rec;
+    }
+
+    /**
+     * Streaming relay (routes without response caching): the head and each body chunk go to the client as they arrive
+     * instead of being collected into one message first — less copying, and large bodies never sit in memory whole.
+     * Back-pressure is unchanged: the backend is read again only after the client accepted what was written.
+     */
+    private void stream(ChannelHandlerContext ctx, Object msg) {
+        if (msg instanceof io.netty.handler.codec.http.HttpResponse head) {
+            if (head.status().code() == 100) {           // 100 Continue: pass on, the real response follows
+                inboundChannel.write(msg);
+                pendingFlush = true;
+                return;
+            }
+            streamRec = onHead(ctx, head);
+            streamStatus = head.status().code();
+            midResponse = true;
+            inboundChannel.write(head);
+            pendingFlush = true;
+        }
+        if (msg instanceof io.netty.handler.codec.http.HttpContent content) {
+            if (streamRec != null) streamRec.bytesOut += content.content().readableBytes();
+            if (content instanceof io.netty.handler.codec.http.LastHttpContent) {
+                midResponse = false;
+                com.scaleguard.server.analytics.AccessRecord rec = streamRec;
+                int status = streamStatus;
+                streamRec = null;
+                pendingFlush = false;
+                readRequested = true;
+                inboundChannel.writeAndFlush(content).addListener((ChannelFutureListener) f -> {
+                    if (f.isSuccess()) {
+                        if (rec != null) rec.finish(status);
+                        ctx.channel().read();
+                        logResponseTime();
+                    } else {
+                        logger.debug("Could not deliver the response to the client: {}", f.cause() == null ? "closed" : f.cause().toString());
+                        f.channel().close();
+                        ctx.close();
+                    }
+                });
+            } else {
+                // a body chunk: queue it; everything from this socket read is flushed together in channelReadComplete
+                inboundChannel.write(content);
+                pendingFlush = true;
+            }
+        }
+    }
+
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) {
+        boolean flushed = pendingFlush;
+        if (pendingFlush) {          // head and/or body chunks queued during this read: one flush for all of them
+            pendingFlush = false;
+            inboundChannel.flush();
+        }
+        if (midResponse && !readRequested) {   // still owe the rest of the response
+            if (!flushed || inboundChannel.isWritable()) {
+                ctx.read();
+            } else {
+                // the client is behind: read on once what we just queued has gone out (back-pressure)
+                // (an empty content object: HTTP/1.1 writes nothing for it, HTTP/2 and /3 an empty DATA frame)
+                inboundChannel.writeAndFlush(new io.netty.handler.codec.http.DefaultHttpContent(io.netty.buffer.Unpooled.EMPTY_BUFFER))
+                        .addListener((ChannelFutureListener) f -> { if (f.isSuccess()) ctx.read(); else ctx.close(); });
+            }
+        }
+        readRequested = false;
+        ctx.fireChannelReadComplete();
     }
 
     @Override
@@ -182,6 +276,14 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
 
     private void sendError(io.netty.handler.codec.http.HttpResponseStatus status, String message) {
         if (!inboundChannel.isActive()) return;
+        if (midResponse) {
+            // part of the backend's response is already on its way to the client: an error response can't follow it,
+            // so end the client connection (the client sees a truncated response, as with nginx)
+            midResponse = false;
+            if (streamRec != null) { streamRec.finish(502, com.scaleguard.server.analytics.AccessRecord.ERROR); streamRec = null; }
+            ScaleGuardFrontendHandler.closeOnFlush(inboundChannel);
+            return;
+        }
         io.netty.buffer.ByteBuf body = io.netty.buffer.Unpooled.copiedBuffer(
                 com.scaleguard.utils.JSON.toString(java.util.Map.of("message", message)), io.netty.util.CharsetUtil.UTF_8);
         io.netty.handler.codec.http.FullHttpResponse r = new io.netty.handler.codec.http.DefaultFullHttpResponse(

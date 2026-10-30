@@ -105,7 +105,7 @@ function Toggle({ id, label, description, checked, onChange, disabled, badge }: 
     );
 }
 
-/** Small monospace tag, e.g. the nginx directive a setting corresponds to. */
+/** Small monospace tag. */
 function Tag({ children }: { children: React.ReactNode }) {
     return <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-px font-mono text-[10.5px] font-medium text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">{children}</span>;
 }
@@ -248,6 +248,8 @@ function validate(type: EntityType, o: any): Record<string, string> {
     };
     if (type === "sourcesystems") {
         cidrList("ipAllow"); cidrList("ipDeny");
+        const badScope = asText(o.oauthScopes).split(/[\s,]+/).find(x => x && !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(x));
+        if (badScope) e.oauthScopes = `“${badScope}” isn't a valid scope.`;
         need("name", "Give this source a name.");
         if (scheme !== "tcp") need("host", "Enter the hostname clients will call.");
         port("port");
@@ -359,6 +361,7 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
             if (type === "sourcesystems") {
                 out.async = isTrue(out.async);
                 ["ipAllow", "ipDeny"].forEach(k => { out[k] = asText(out[k]).split(/[,\s]+/).filter(Boolean).join(","); });
+                out.oauthScopes = asText(out.oauthScopes).split(/[,\s]+/).filter(Boolean).join(" ");
                 ["http2", "http3", "grpc"].forEach(k => { out[k] = isOn(out[k]); });
             }
             // Blank optional numbers go out as -1 so the server falls back to its default (null wouldn't clear a saved value).
@@ -483,21 +486,21 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
             </Section>
 
             {isHttp && (
-                <Section id="sec-protocols" icon={FiRadio} title="Protocols" description="What clients can speak to this route. HTTP/1.1 always works; the rest follow nginx's per-server switches.">
+                <Section id="sec-protocols" icon={FiRadio} title="Protocols" description="What clients can speak to this route. HTTP/1.1 always works; turn the others on or off per route.">
                     <div className="flex flex-wrap gap-1.5 sm:col-span-2" aria-label="Enabled protocols">
                         {protocolChips.map(c => (
                             <span key={c.label} className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold ${c.on ? "border-teal-400/40 bg-teal-400/10 text-teal-700 dark:text-teal-300" : "border-slate-200 text-slate-400 line-through dark:border-white/10"}`}>{c.label}</span>
                         ))}
                     </div>
-                    <Toggle id="f-http2" label="HTTP/2" badge={<Tag>http2 {h2On ? "on" : "off"}</Tag>} checked={h2On} onChange={v => set("http2", v)}
+                    <Toggle id="f-http2" label="HTTP/2" checked={h2On} onChange={v => set("http2", v)}
                         description={scheme === "https"
                             ? "Negotiated during the TLS handshake (ALPN h2). Browsers get multiplexed requests on one connection; required for gRPC."
                             : "h2c with prior knowledge on plain HTTP, as used by gRPC clients without TLS. Browsers only use HTTP/2 over HTTPS."} />
-                    <Toggle id="f-http3" label="HTTP/3 (QUIC)" badge={<Tag>{h3On ? `listen ${asText(draft.port) || "443"} quic · http3 on` : "http3 off"}</Tag>} checked={h3On} disabled={scheme !== "https"} onChange={v => set("http3", v)}
+                    <Toggle id="f-http3" label="HTTP/3 (QUIC)" checked={h3On} disabled={scheme !== "https"} onChange={v => set("http3", v)}
                         description={scheme !== "https"
                             ? "HTTP/3 always runs over TLS: switch the listener to HTTPS to offer it."
                             : <>Served over UDP on port {asText(draft.port) || "443"} with the same certificate, and advertised with <span className="font-mono">Alt-Svc: h3=":{asText(draft.port) || "443"}"</span> so browsers switch on their next request. Faster on lossy and mobile networks. Open UDP {asText(draft.port) || "443"} in your firewall.</>} />
-                    <Toggle id="f-grpc" label="gRPC" badge={<Tag>{grpcOn ? "grpc_pass" : "no grpc_pass"}</Tag>} checked={grpcOn} disabled={!h2On} onChange={v => set("grpc", v)}
+                    <Toggle id="f-grpc" label="gRPC" checked={grpcOn} disabled={!h2On} onChange={v => set("grpc", v)}
                         description={!h2On
                             ? "gRPC needs HTTP/2. Turn HTTP/2 on to proxy gRPC calls."
                             : "Requests with content-type application/grpc are relayed message by message to the target over HTTP/2 (h2c, or h2 over TLS for an HTTPS target): unary and streaming calls, trailers intact. When off, gRPC clients get UNIMPLEMENTED."} />
@@ -521,13 +524,19 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                 </Section>
             )}
 
-            <Section id="sec-security" icon={FiShield} title="App security" description="Attach a security policy that checks requests before they're forwarded.">
-                <Field label="Security app" htmlFor="f-sec" span={2} hint={apps.length ? "Set these up on the App Security page." : "No security apps yet. Create one on the App Security page."}>
+            <Section id="sec-security" icon={FiShield} title="App security" description="Require an OAuth 2.0 access token. Requests without a valid token for the app get 401 (gRPC: UNAUTHENTICATED).">
+                <Field label="Security app" htmlFor="f-sec" span={2} hint={apps.length ? <>Clients get tokens at <span className="font-mono">/oauth2/token</span> on this route's address. Manage apps and clients on the App Security page.</> : "No security apps yet. Create one on the App Security page."}>
                     <SelectInput id="f-sec" value={draft.secappid} onChange={v => set("secappid", v)}>
-                        <option value="">None</option>
+                        <option value="">None — open to everyone</option>
                         {apps.map((a: any) => <option key={a.id} value={a.id}>{a.name || a.id}</option>)}
                     </SelectInput>
                 </Field>
+                {draft.secappid ? (
+                    <Field label="Required scopes" htmlFor="f-oscopes" span={2} error={err("oauthScopes")}
+                        hint="Space-separated. A token must carry all of them, otherwise 403 insufficient_scope. Blank = any token for the app.">
+                        <TextInput id="f-oscopes" value={draft.oauthScopes} onChange={v => set("oauthScopes", v)} placeholder="orders:read" mono error={!!err("oauthScopes")} />
+                    </Field>
+                ) : null}
             </Section>
 
             <Section id="sec-protect" icon={FiShield} title="Rate limit, access & firewall" description="Protect this route from floods, unwanted clients and common attacks.">
@@ -547,11 +556,11 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                     </div>
                 </Field>
                 <Field label="Allow only these clients" htmlFor="f-ipAllow" error={err("ipAllow")}
-                    hint={<>IPs or CIDR ranges, comma-separated. Everyone else gets 403. Blank = open to all. <span className="font-mono">nginx: allow … ; deny all</span></>}>
+                    hint={<>IPs or CIDR ranges, comma-separated. Everyone else gets 403. Blank = open to all.</>}>
                     <TextInput id="f-ipAllow" value={draft.ipAllow} onChange={v => set("ipAllow", v)} placeholder="10.0.0.0/8, 192.168.1.20" mono error={!!err("ipAllow")} />
                 </Field>
                 <Field label="Always refuse" htmlFor="f-ipDeny" error={err("ipDeny")}
-                    hint={<>Refused on this route only (the Rate limiting page has a gateway-wide blocklist). <span className="font-mono">nginx: deny</span></>}>
+                    hint={<>Refused on this route only (the Rate limiting page has a gateway-wide blocklist).</>}>
                     <TextInput id="f-ipDeny" value={draft.ipDeny} onChange={v => set("ipDeny", v)} placeholder="203.0.113.0/24" mono error={!!err("ipDeny")} />
                 </Field>
                 {!isNew && (
@@ -615,25 +624,25 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
             </Section>
 
             {isHttp && (
-                <Section id="sec-upstream" icon={FiClock} title="Upstream connection" description="How ScaleGuard talks to the servers in the host group — the nginx proxy_* and grpc_* settings.">
+                <Section id="sec-upstream" icon={FiClock} title="Upstream connection" description="How ScaleGuard talks to the servers in the host group.">
                     <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-[12.5px] leading-relaxed text-slate-600 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-300 sm:col-span-2">
-                        Requests reach the servers over <b>HTTP/1.1 with keep-alive</b>, whatever the client used (HTTP/1.1, HTTP/2 or HTTP/3) — nginx's <span className="font-mono">proxy_http_version 1.1</span>.
-                        {" "}gRPC calls go over <b>HTTP/2</b>: {scheme === "https" ? <><span className="font-mono">h2</span> over TLS</> : <>cleartext <span className="font-mono">h2c</span></>}, like <span className="font-mono">grpc_pass {scheme === "https" ? "grpcs" : "grpc"}://</span>.
+                        Requests reach the servers over <b>HTTP/1.1 with keep-alive</b>, whatever the client used (HTTP/1.1, HTTP/2 or HTTP/3).
+                        {" "}gRPC calls go over <b>HTTP/2</b>: {scheme === "https" ? <><span className="font-mono">h2</span> over TLS</> : <>cleartext <span className="font-mono">h2c</span></>}.
                     </div>
-                    <Field label="Connect timeout" htmlFor="f-cto" hint={<>Give up on a server that doesn't accept the connection. <Tag>proxy_connect_timeout</Tag></>}>
+                    <Field label="Connect timeout" htmlFor="f-cto" hint={<>Give up on a server that doesn't accept the connection.</>}>
                         <OptionalNumber id="f-cto" value={draft.connectTimeoutMs} onChange={v => set("connectTimeoutMs", v)} placeholder="5000 (default)" unit="ms" />
                     </Field>
-                    <Field label="Response timeout" htmlFor="f-rto" hint={<>Answer 504 when a server goes quiet mid-request. <Tag>proxy_read_timeout</Tag></>}>
+                    <Field label="Response timeout" htmlFor="f-rto" hint={<>Answer 504 when a server goes quiet mid-request.</>}>
                         <OptionalNumber id="f-rto" value={draft.readTimeoutSeconds} onChange={v => set("readTimeoutSeconds", v)} placeholder="60 (default)" unit="seconds" />
                     </Field>
-                    <Field label="Retries on another server" htmlFor="f-retries" hint={<>When a server refuses the connection, try the next one. 0 turns it off. <Tag>proxy_next_upstream</Tag></>}>
+                    <Field label="Retries on another server" htmlFor="f-retries" hint={<>When a server refuses the connection, try the next one. 0 turns it off.</>}>
                         <OptionalNumber id="f-retries" value={draft.retries} onChange={v => set("retries", v)} placeholder="1 (default)" />
                     </Field>
                     {scheme === "https" && (
                         <>
-                            <Toggle id="f-tlsverify" label="Verify the server's certificate" badge={<Tag>proxy_ssl_verify</Tag>} checked={isTrue(draft.tlsVerify)} onChange={v => set("tlsVerify", v)}
-                                description="Reject servers whose certificate isn't trusted or doesn't match the name below. Off by default (as in nginx) so self-signed internal certificates work." />
-                            <Field label="TLS server name (SNI)" htmlFor="f-sni" span={2} hint={<>Sent in the TLS handshake and checked against the certificate. Leave blank to use each server's host. Set it when servers are addressed by IP. <Tag>proxy_ssl_name</Tag></>}>
+                            <Toggle id="f-tlsverify" label="Verify the server's certificate" checked={isTrue(draft.tlsVerify)} onChange={v => set("tlsVerify", v)}
+                                description="Reject servers whose certificate isn't trusted or doesn't match the name below. Off by default so self-signed internal certificates work." />
+                            <Field label="TLS server name (SNI)" htmlFor="f-sni" span={2} hint={<>Sent in the TLS handshake and checked against the certificate. Leave blank to use each server's host. Set it when servers are addressed by IP.</>}>
                                 <TextInput id="f-sni" value={draft.tlsServerName} onChange={v => set("tlsServerName", v)} placeholder="api.internal.example.com" mono />
                             </Field>
                         </>
@@ -696,20 +705,20 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                         { value: "active", label: "Active", sub: "Takes traffic" }, { value: "standby", label: "Backup", sub: "Only when actives can't" },
                     ]} />
                 </Field>
-                <Toggle id="f-active" label="Enabled" badge={draft.active === false || draft.active === "false" ? <Tag>down</Tag> : undefined}
-                    description="Turn off to drain this server without deleting it (nginx down). Backup servers take traffic only when no active server can (nginx backup)."
+                <Toggle id="f-active" label="Enabled" badge={draft.active === false || draft.active === "false" ? <Tag>disabled</Tag> : undefined}
+                    description="Turn off to drain this server without deleting it. Backup servers take traffic only when no active server can."
                     checked={draft.active !== false && draft.active !== "false"} onChange={v => set("active", v)} />
             </Section>
 
             {scheme !== "tcp" && (
-                <Section id="sec-limits" icon={FiShield} title="Limits & failure handling" description="Protect this server from overload and decide when it's taken out of rotation — nginx's server parameters.">
-                    <Field label="Max connections" htmlFor="f-maxconns" hint={<>Open connections from ScaleGuard to this server. When reached, requests go to other servers. Blank = unlimited. <Tag>max_conns</Tag></>}>
+                <Section id="sec-limits" icon={FiShield} title="Limits & failure handling" description="Protect this server from overload and decide when it's taken out of rotation.">
+                    <Field label="Max connections" htmlFor="f-maxconns" hint={<>Open connections from ScaleGuard to this server. When reached, requests go to other servers. Blank = unlimited.</>}>
                         <OptionalNumber id="f-maxconns" value={draft.maxConns} onChange={v => set("maxConns", v)} placeholder="unlimited" />
                     </Field>
-                    <Field label="Failures before ejecting" htmlFor="f-maxfails" hint={<>Failed requests in a row (errors, 502/503/504, timeouts). Blank = the Backend health setting. <Tag>max_fails</Tag></>}>
+                    <Field label="Failures before ejecting" htmlFor="f-maxfails" hint={<>Failed requests in a row (errors, 502/503/504, timeouts). Blank = the Backend health setting.</>}>
                         <OptionalNumber id="f-maxfails" value={draft.maxFails} onChange={v => set("maxFails", v)} placeholder="5 (default)" />
                     </Field>
-                    <Field label="Ejection time" htmlFor="f-failtimeout" span={2} hint={<>How long the server stays out after being ejected; doubles if it fails again right away. Blank = the Backend health setting. <Tag>fail_timeout</Tag></>}>
+                    <Field label="Ejection time" htmlFor="f-failtimeout" span={2} hint={<>How long the server stays out after being ejected; doubles if it fails again right away. Blank = the Backend health setting.</>}>
                         <OptionalNumber id="f-failtimeout" value={draft.failTimeoutSeconds} onChange={v => set("failTimeoutSeconds", v)} placeholder="10 (default)" unit="seconds" />
                     </Field>
                 </Section>

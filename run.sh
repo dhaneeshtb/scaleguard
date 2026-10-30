@@ -11,7 +11,7 @@
 #
 #   SCALEGUARD_JAR        Path to the fat JAR  (default: target/scaleguard-1.0-SNAPSHOT.jar)
 #   SCALEGUARD_DATA       Runtime data dir     (default: ~/.scaleguard)
-#   SCALEGUARD_HEAP       JVM heap, e.g. 2g    (default: 1g)
+#   SCALEGUARD_HEAP       JVM heap, e.g. 2g    (default: half the machine's memory, e.g. 2g on a 4 GB server)
 #   SCALEGUARD_HTTP_PORT  HTTP listen port     (default: 80)
 #   SCALEGUARD_HTTPS_PORT HTTPS listen port    (default: 443)
 #   SCALEGUARD_ADMIN_USER Admin API username   (default: scaleguard)
@@ -23,6 +23,8 @@
 #   SCALEGUARD_L1_CACHE_SIZE  In-memory L1 entries (default: 2000)
 #
 #   -- Performance --
+#   SCALEGUARD_JAVA_OPTS       Extra JVM flags (default: -XX:+UseParallelGC, the fastest collector for a proxy)
+#   SCALEGUARD_IO_THREADS      Event-loop threads (default: one per CPU core)
 #   SCALEGUARD_MAX_BODY_BYTES  Max HTTP body in bytes  (default: 10485760 = 10 MB)
 #   SCALEGUARD_RATE_LIMIT      Req/min per client IP   (default: 10000)
 #   SCALEGUARD_POOL_MAX_CONNS  Outbound pool per upstream (default: 512)
@@ -40,7 +42,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # ── defaults ──────────────────────────────────────────────────────────────────
 SCALEGUARD_JAR="${SCALEGUARD_JAR:-${SCRIPT_DIR}/scaleguard.jar}"
 SCALEGUARD_DATA="${SCALEGUARD_DATA:-${HOME}/.scaleguard}"
-SCALEGUARD_HEAP="${SCALEGUARD_HEAP:-1g}"
+SCALEGUARD_HEAP="${SCALEGUARD_HEAP:-}"   # empty = half of RAM (sized by the JVM)
 SCALEGUARD_HTTP_PORT="${SCALEGUARD_HTTP_PORT:-80}"
 SCALEGUARD_HTTPS_PORT="${SCALEGUARD_HTTPS_PORT:-443}"
 SCALEGUARD_ADMIN_USER="${SCALEGUARD_ADMIN_USER:-scaleguard}"
@@ -131,13 +133,19 @@ fi
 # ── start ─────────────────────────────────────────────────────────────────────
 info "Starting ScaleGuard..."
 info "  JAR  : ${SCALEGUARD_JAR}"
-info "  Heap : ${SCALEGUARD_HEAP}  |  HTTP: ${SCALEGUARD_HTTP_PORT}  HTTPS: ${SCALEGUARD_HTTPS_PORT}"
+info "  Heap : ${SCALEGUARD_HEAP:-50% of RAM}  |  HTTP: ${SCALEGUARD_HTTP_PORT}  HTTPS: ${SCALEGUARD_HTTPS_PORT}"
 info "  Log  : ${SCALEGUARD_LOG}"
+
+# Heap: a fixed size when SCALEGUARD_HEAP is set, otherwise half the machine's (or container's) memory — the rest
+# is left for Netty's direct buffers, DuckDB analytics (512 MB cap) and the OS page cache.
+if [ -n "${SCALEGUARD_HEAP}" ]; then HEAP_ARGS="-Xms${SCALEGUARD_HEAP} -Xmx${SCALEGUARD_HEAP}"
+else HEAP_ARGS="-XX:InitialRAMPercentage=50 -XX:MaxRAMPercentage=50"; fi
 
 # shellcheck disable=SC2086
 nohup java \
-  -Xmx"${SCALEGUARD_HEAP}" \
-  -Xms"${SCALEGUARD_HEAP}" \
+  ${SCALEGUARD_JAVA_OPTS:--XX:+UseParallelGC} \
+  ${HEAP_ARGS} \
+  -Dio.netty.buffer.checkAccessible=false -Dio.netty.buffer.checkBounds=false \
   -Dport="${SCALEGUARD_HTTP_PORT}" \
   -Dsport="${SCALEGUARD_HTTPS_PORT}" \
   -DadminUser="${SCALEGUARD_ADMIN_USER}" \

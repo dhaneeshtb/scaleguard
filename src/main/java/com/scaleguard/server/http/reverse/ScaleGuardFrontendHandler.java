@@ -120,18 +120,36 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
     ctx.channel().config().setAutoRead(true);
   }
 
+  private String portText;
+
+  private String portText() {
+    String p = portText;
+    return p != null ? p : (portText = String.valueOf(port));
+  }
+
+  /** The connection's peer address never changes, so it is turned into a string once per connection, not per request. */
+  private String cachedPeerIp;
+
+  private String peerIp(ChannelHandlerContext ctx) {
+    String p = cachedPeerIp;
+    if (p == null) {
+      InetSocketAddress peer = com.scaleguard.server.http.h3.Http3Listener.peer(ctx.channel());
+      p = cachedPeerIp = peer != null ? peer.getAddress().getHostAddress() : "unknown";
+    }
+    return p;
+  }
+
   @Override
   public void channelRead(final ChannelHandlerContext ctx, Object msg) {
     String inAddress = "unknown";
     boolean forwarded = false;
     try {
-      InetSocketAddress peer = com.scaleguard.server.http.h3.Http3Listener.peer(ctx.channel());
-      String peerIp = peer != null ? peer.getAddress().getHostAddress() : "unknown";
+      String peerIp = peerIp(ctx);
       // Real client IP: X-Forwarded-For is only honoured when the peer is a trusted proxy.
-      String xff = msg instanceof HttpRequest ? ((HttpRequest) msg).headers().get("X-Forwarded-For") : null;
+      String xff = msg instanceof HttpRequest ? ((HttpRequest) msg).headers().get(InboundMessageHandler.X_FORWARDED_FOR) : null;
       inAddress = ClientIpResolver.resolve(peerIp, xff);
 
-      RouteTarget ts = inboundHandler.matchTarget(ctx, msg, port);
+      RouteTarget ts = inboundHandler.matchTarget(ctx, msg, portText(), peerIp, xff, inAddress);
       // Access log / analytics record for routed traffic (null when analytics is off or it's an admin request)
       AccessRecord rec = startRecord(ctx, msg, ts, inAddress);
       current = rec;
@@ -188,9 +206,12 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         // No matching route — serve internal response (admin UI, health, ACME, etc.)
         DefaultResponseHandler.getInstance().handle(ctx, null, msg);
       } else {
-        if (!ScaleguardClientAuthHandler.checkClientAuth(ts)) {
-          if (rec != null) rec.finish(403, AccessRecord.AUTH_DENIED);
-          DefaultResponseHandler.getInstance().handleFailure(ctx, "invalid auth credentials", HttpResponseStatus.FORBIDDEN);
+        com.scaleguard.server.security.oauth.OAuthGuard.Result auth = ScaleguardClientAuthHandler.check(ts);
+        if (!auth.ok()) {
+          if (rec != null) rec.finish(auth.httpStatus(), AccessRecord.AUTH_DENIED);
+          DefaultResponseHandler.getInstance().handleResponse(ctx,
+                  new RequestRoutingResponse(auth.httpStatus(), auth.body())
+                          .header("WWW-Authenticate", auth.challenge()).header("Cache-Control", "no-store"));
           return;
         }
 
@@ -255,7 +276,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       // (a kept-alive connection to a host that has since failed its health checks is not reused)
       handleNewOutboundChannel(ts, ctx, msg, messageKey);
     } else {
-      targetSystem.setStartTime(System.currentTimeMillis());
+      targetSystem.setStartTime(ts.getStartTime());   // the request's own start (one clock read per request)
       handleExistingOutboundChannel(ctx, msg, ts);
     }
   }
@@ -275,6 +296,8 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         .handler(new SecureProxyInitializer(ts, inboundChannel,
                 "https".equalsIgnoreCase(ts.getTargetSystem().getScheme()), messageKey))
         .option(ChannelOption.AUTO_READ, false)
+        .option(ChannelOption.ALLOCATOR, AppServer.ALLOCATOR)
+        .option(ChannelOption.TCP_NODELAY, true)
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, ts.getTargetSystem().connectTimeoutMillis());   // proxy_connect_timeout
 
     HostGroup hg = ts.getTargetSystem().getHostGroup();
@@ -385,16 +408,9 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       current.backend = hg != null ? hg.getHost() + ":" + hg.getPort() : targetHost;
       AccessLog.expectResponse(outboundChannel, current);
     }
-    outboundChannel.writeAndFlush(msg).addListener((ChannelFutureListener) future -> {
-      if (future.isSuccess()) {
-        ctx.channel().read();
-      } else {
-        logger.warn("Failed to write to existing outbound channel for [{}]: {}",
-                ts.getTargetSystem().getGroupId(),
-                future.cause() != null ? future.cause().getMessage() : "unknown");
-        future.channel().close();
-      }
-    });
+    // The client connection reads on its own (auto-read), so nothing has to happen after a successful write; a failed
+    // write closes the backend connection, whose handler then answers the client. One shared listener, no allocation.
+    outboundChannel.writeAndFlush(msg).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
   }
 
   @Override

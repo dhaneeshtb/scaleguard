@@ -209,12 +209,54 @@ public class RouteTable {
   }
 
   public RouteTarget findTarget(SourceSystem source){
-    SourceSystem ss =sourceSystsems.stream().filter(s->isMatchedSpecific(source,s)).findFirst().orElse(sourceSystsems.stream().filter(s->isMatched(source,s)).findFirst().orElse(null)) ;
+    return findTarget(source.getHost(), source.getPort(), source.getBasePath(), source.getKeyLookupMap());
+  }
+
+  /** Hot path (every request): plain loops, no streams, no per-route string building, no allocation until a match. */
+  public RouteTarget findTarget(String inHost, String inPort, String inPath, Map<String, List<String>> requestKeys){
+    List<SourceSystem> routes = sourceSystsems;
+    SourceSystem ss = null, fallback = null;
+    for (SourceSystem s : routes) {
+      if (!sameHostPort(inHost, inPort, s.getHost(), s.getPort())) continue;
+      String base = s.getBasePath();
+      if (base == null || inPath == null) continue;
+      if (!(base.equalsIgnoreCase(inPath) || inPath.startsWith(base))) continue;
+      Map<String, List<String>> keys = s.getKeyLookupMap();
+      if (keys != null && !keys.isEmpty()) {
+        if (isIntersectMaps(requestKeys, keys)) { ss = s; break; }
+      } else if (fallback == null) {
+        fallback = s;
+      }
+    }
+    if (ss == null) ss = fallback;
     if(ss!=null && ss.getTarget()!=null && !ss.getTarget().isEmpty()){
       TargetSystem ts =  targetSystemMap.get(ss.getTarget());
       return new RouteTarget(ss,ts);
     }
     return null;
+  }
+
+  /** Same as comparing "host:port" strings case-insensitively (a host may carry its own ":port"), without allocating. */
+  static boolean sameHostPort(String inHost, String inPort, String rHost, String rPort) {
+    if (inHost == null || rHost == null) return false;
+    int ic = inHost.indexOf(':'), rc = rHost.indexOf(':');
+    int ihl = ic >= 0 ? ic : inHost.length(), rhl = rc >= 0 ? rc : rHost.length();
+    if (ihl != rhl || !inHost.regionMatches(true, 0, rHost, 0, ihl)) return false;
+    // compare the ports in place (no substrings): "host:port" or the separate port field
+    String ip = ic >= 0 ? inHost : inPort; int ipFrom = ic >= 0 ? ic + 1 : 0;
+    String rp = rc >= 0 ? rHost : rPort;   int rpFrom = rc >= 0 ? rc + 1 : 0;
+    if (ip == null || rp == null) return ip == rp;
+    int ipLen = ip.length() - ipFrom, rpLen = rp.length() - rpFrom;
+    return ipLen == rpLen && ip.regionMatches(true, ipFrom, rp, rpFrom, ipLen);
+  }
+
+  /** True when some route selects on header or token values, so requests need their key map built. */
+  public boolean hasKeyLookupRoutes(){
+    for (SourceSystem s : sourceSystsems) {
+      Map<String, List<String>> m = s.getKeyLookupMap();
+      if (m != null && !m.isEmpty()) return true;
+    }
+    return false;
   }
 
   public RouteTarget findTarget(String id){

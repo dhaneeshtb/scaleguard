@@ -80,16 +80,35 @@ public class InboundMessageHandler {
     }
   }
 
+  static final io.netty.util.AsciiString X_FORWARDED_FOR = io.netty.util.AsciiString.cached("X-Forwarded-For");
+  private static final io.netty.util.AsciiString X_REAL_IP = io.netty.util.AsciiString.cached("X-Real-IP");
+  private static final io.netty.util.AsciiString X_FORWARDED_HOST = io.netty.util.AsciiString.cached("X-Forwarded-Host");
+  private static final io.netty.util.AsciiString X_FORWARDED_PROTO = io.netty.util.AsciiString.cached("X-Forwarded-Proto");
+  private static final io.netty.util.AsciiString HTTPS = io.netty.util.AsciiString.cached("https");
+  private static final io.netty.util.AsciiString HTTP = io.netty.util.AsciiString.cached("http");
+
   public RouteTarget matchTarget(ChannelHandlerContext ctx, Object msg,int port) {
-    SourceSystem ss = new SourceSystem();
     InetSocketAddress peerAddr = com.scaleguard.server.http.h3.Http3Listener.peer(ctx.channel());
-    String inAddress= peerAddr != null ? peerAddr.getAddress().getHostAddress() : "unknown";
+    String peerIp = peerAddr != null ? peerAddr.getAddress().getHostAddress() : "unknown";
+    String xff = msg instanceof HttpRequest r ? r.headers().get(X_FORWARDED_FOR) : null;
+    return matchTarget(ctx, msg, port, peerIp, xff, ClientIpResolver.resolve(peerIp, xff));
+  }
+
+  /** Hot path: the caller already knows the peer, its X-Forwarded-For and the resolved client address. */
+  public RouteTarget matchTarget(ChannelHandlerContext ctx, Object msg, int port, String peerIp, String incomingXff, String clientIp) {
+    return matchTarget(ctx, msg, String.valueOf(port), peerIp, incomingXff, clientIp);
+  }
+
+  /** Hot path. {@code port} is the listener port as text (the caller keeps it per connection). */
+  public RouteTarget matchTarget(ChannelHandlerContext ctx, Object msg, String port, String peerIp, String incomingXff, String clientIp) {
+    // The request-side key map (header / token values) is only built when some route selects on it.
+    SourceSystem ss = null;
+    String inAddress = peerIp;
     HttpHeaders headers =null;
-    String uri=null;
+    String uri=null, host = null;
     if (msg instanceof HttpRequest) {
 
       HttpRequest request = (HttpRequest) msg;
-      ss.setBasePath(request.uri());
 
       if(request.uri().equalsIgnoreCase("/health")){
         return null;
@@ -120,39 +139,52 @@ public class InboundMessageHandler {
 
       headers = request.headers();
 
-      QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
-      Map<String, List<String>> params = queryStringDecoder.parameters();
-      String authorization=headers.get("Authorization","").toString();
-      if(authorization==null || authorization.isEmpty()){
-        authorization=params.get("access_token")!=null?params.get("access_token").get(0):null;
-      }
-      if(authorization!=null) {
-        Map<String,Object> keys= Optional.ofNullable(getAuthInfo(authorization)).orElse(new AuthInfo(null,Map.of())).getKeys();
-        if(keys!=null){
-          keys.forEach((k,v)-> ss.setJwtKeylookup(k+":"+v));
+      // Routes can select on header or token values ("key lookup"). Building that map means decoding the
+      // query string, parsing the token and copying every header, so it is only done when some route uses it.
+      boolean keyLookup = routeTable.hasKeyLookupRoutes();
+      if (keyLookup) {
+        ss = new SourceSystem();
+        final SourceSystem kss = ss;
+        QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
+        Map<String, List<String>> params = queryStringDecoder.parameters();
+        String authorization=headers.get("Authorization","").toString();
+        if(authorization==null || authorization.isEmpty()){
+          authorization=params.get("access_token")!=null?params.get("access_token").get(0):null;
+        }
+        if(authorization!=null) {
+          Map<String,Object> keys= Optional.ofNullable(getAuthInfo(authorization)).orElse(new AuthInfo(null,Map.of())).getKeys();
+          if(keys!=null){
+            keys.forEach((k,v)-> kss.setJwtKeylookup(k+":"+v));
+          }
         }
       }
 
       // Real client IP (X-Forwarded-For only trusted from known proxies), and the header we pass upstream:
       // the trusted incoming chain plus our own peer — a client can't inject a fake origin.
-      String incomingXff = headers.get("X-Forwarded-For");
-      String peerIp = inAddress;
-      inAddress = ClientIpResolver.resolve(peerIp, incomingXff);
-      headers.set("X-Forwarded-For", ClientIpResolver.forwardedFor(peerIp, incomingXff));
-      headers.set("X-Real-IP", inAddress);
+      inAddress = clientIp;
+      headers.set(X_FORWARDED_FOR, ClientIpResolver.forwardedFor(peerIp, incomingXff));
+      headers.set(X_REAL_IP, inAddress);
 
-      if(request.headers().contains(HttpHeaderNames.HOST)) {
-        headers.set("X-Forwarded-Host", request.headers().get(HttpHeaderNames.HOST));
-        headers.set("X-Forwarded-Proto", com.scaleguard.server.http.h2.ProtocolPipelines.isTls(ctx.channel()) ? "https" : "http");
+      String hostHeader = headers.get(HttpHeaderNames.HOST);
+      if (hostHeader != null) {
+        headers.set(X_FORWARDED_HOST, hostHeader);
+        headers.set(X_FORWARDED_PROTO, com.scaleguard.server.http.h2.ProtocolPipelines.isTls(ctx.channel()) ? HTTPS : HTTP);
       }
 
 
-      headers.forEach(h->ss.setJwtKeylookup(h.getKey()+":"+h.getValue()));
-      ss.setHost(request.headers().get(HttpHeaderNames.HOST, "unknown").toString());
-      ss.setPort(port+"");
+      if (keyLookup) {
+        final SourceSystem kss = ss;
+        headers.forEach(h->kss.setJwtKeylookup(h.getKey()+":"+h.getValue()));
+      }
       uri=request.uri();
+      host = hostHeader != null ? hostHeader : "unknown";
     }
-    RouteTarget rt= routeTable.findTarget(ss);
+    RouteTarget rt= uri == null ? null : routeTable.findTarget(host, port, uri, ss != null ? ss.getKeyLookupMap() : null);
+    // OAuth token endpoints are served by the gateway itself on hosts it protects (and on unrouted hosts).
+    if (uri != null && com.scaleguard.server.security.oauth.OAuthServer.handlesUri(uri)
+            && (rt == null || (rt.getSourceSystem().getSecappid() != null && !rt.getSourceSystem().getSecappid().isEmpty()))) {
+      return null;
+    }
     if(rt!=null){
       rt.setClientIp(inAddress);
       rt.setHeaders(headers);

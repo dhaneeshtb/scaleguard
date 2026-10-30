@@ -10,13 +10,15 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * nginx's {@code proxy_read_timeout}: if a backend that owes a response sends nothing for {@code timeoutMillis},
- * fires {@link #TIMEOUT} so the backend handler can answer 504. The clock restarts on every byte the backend sends,
- * so slow but steady responses are fine; idle keep-alive connections with nothing outstanding never time out here.
+ * proxy_read_timeout: fires {@link #TIMEOUT} when a backend that owes a response sends nothing for the configured time.
+ *
+ * <p>Hot-path cost is kept to a counter increment: reads and writes don't look at the clock. A timer ticks every quarter
+ * of the timeout while a response is owed; four ticks in a row without activity mean the backend has been silent for
+ * at least the timeout (at most 1.25× it). The timer is left running between keep-alive requests instead of being
+ * cancelled and re-created for each one.
  */
 final class ResponseTimeoutHandler extends ChannelDuplexHandler {
 
-    /** User event fired on the backend channel when the response is overdue. */
     static final Object TIMEOUT = new Object() {
         @Override
         public String toString() {
@@ -24,37 +26,36 @@ final class ResponseTimeoutHandler extends ChannelDuplexHandler {
         }
     };
 
-    private final long timeoutNanos;
+    private static final int TICKS = 4;
+    private final long tickNanos;
     private int outstanding;
-    private long lastActivity;
+    private long activity;          // bumped on every read and request write
+    private long seenActivity = -1;
+    private int idleTicks;
     private ScheduledFuture<?> timer;
 
-    /** Requests sent on this connection that haven't had a complete response yet. */
     int outstanding() {
         return outstanding;
     }
 
     ResponseTimeoutHandler(long timeoutMillis) {
-        this.timeoutNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        this.tickNanos = Math.max(1, TimeUnit.MILLISECONDS.toNanos(timeoutMillis) / TICKS);
     }
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         if (msg instanceof HttpRequest) {
             outstanding++;
-            lastActivity = System.nanoTime();
-            if (timer == null) schedule(ctx, timeoutNanos);
+            activity++;
+            if (timer == null) schedule(ctx);
         }
         ctx.write(msg, promise);
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        lastActivity = System.nanoTime();
-        if (msg instanceof LastHttpContent && outstanding > 0) {
-            outstanding--;
-            if (outstanding == 0) cancel();
-        }
+        activity++;
+        if (msg instanceof LastHttpContent && outstanding > 0) outstanding--;
         ctx.fireChannelRead(msg);
     }
 
@@ -69,18 +70,24 @@ final class ResponseTimeoutHandler extends ChannelDuplexHandler {
         cancel();
     }
 
-    private void schedule(ChannelHandlerContext ctx, long delayNanos) {
-        timer = ctx.executor().schedule(() -> {
-            timer = null;
-            if (outstanding == 0 || !ctx.channel().isActive()) return;
-            long idle = System.nanoTime() - lastActivity;
-            if (idle >= timeoutNanos) {
-                outstanding = 0;
-                ctx.fireUserEventTriggered(TIMEOUT);
-            } else {
-                schedule(ctx, timeoutNanos - idle);
-            }
-        }, delayNanos, TimeUnit.NANOSECONDS);
+    private void schedule(ChannelHandlerContext ctx) {
+        seenActivity = activity;
+        idleTicks = 0;
+        timer = ctx.executor().schedule(() -> tick(ctx), tickNanos, TimeUnit.NANOSECONDS);
+    }
+
+    private void tick(ChannelHandlerContext ctx) {
+        timer = null;
+        if (outstanding == 0 || !ctx.channel().isActive()) return;   // nothing owed: stop until the next request
+        if (activity != seenActivity) {
+            seenActivity = activity;
+            idleTicks = 0;
+        } else if (++idleTicks >= TICKS) {
+            outstanding = 0;
+            ctx.fireUserEventTriggered(TIMEOUT);
+            return;
+        }
+        timer = ctx.executor().schedule(() -> tick(ctx), tickNanos, TimeUnit.NANOSECONDS);
     }
 
     private void cancel() {

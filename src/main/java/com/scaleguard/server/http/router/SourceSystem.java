@@ -60,6 +60,12 @@ public class SourceSystem {
 
   private String secappid;
 
+  /** Scopes an access token must carry on this route (space or comma separated); blank = any token for the app. */
+  private String oauthScopes;
+
+  public String getOauthScopes() { return oauthScopes; }
+  public void setOauthScopes(String oauthScopes) { this.oauthScopes = oauthScopes; }
+
   public boolean isAutoProcure() {
     return autoProcure;
   }

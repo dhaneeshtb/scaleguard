@@ -67,6 +67,15 @@ public class DefaultResponseHandler {
             String token = request.headers().get("Authorization");
             boolean isValidToken = AuthUtils.isTokenValid(token);
 
+            if (com.scaleguard.server.security.oauth.OAuthServer.handles(uri)) {
+                // OAuth 2.0 token service: public endpoints, the client authenticates itself
+                String reqBody = request instanceof FullHttpRequest fr && body == null
+                        ? fr.content().toString(CharsetUtil.UTF_8) : body;
+                handleResponse(ctx, com.scaleguard.server.security.oauth.OAuthServer.handle(request.method().name(),
+                        request.uri(), request.headers(), reqBody,
+                        com.scaleguard.server.http.h2.ProtocolPipelines.isTls(ctx.channel())));
+                return;
+            }
             if(uri.startsWith("/adminui")){
 
                 String fileDefault = null;
@@ -389,6 +398,7 @@ public class DefaultResponseHandler {
         response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_HEADERS, "*");
         response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS, "*");
         response.headers().set("Access-Control-Allow-Private-Network", "true");
+        if (resp.getHeaders() != null) resp.getHeaders().forEach((k, v) -> response.headers().set(k, v));
 
         ctx.writeAndFlush(response).addListener(new ChannelFutureListener() {
             @Override

@@ -14,7 +14,7 @@ Insomnia or Swagger UI.
 - [Cluster](#cluster): multi-node high availability
 - [DNS](#dns) and [tunnels](#tunnels)
 - [Certificates](#certificates)
-- [Applications and clients](#applications-and-clients)
+- [App security: OAuth 2.0](#app-security-oauth-20): apps, clients, token settings (guide: [OAUTH.md](OAUTH.md))
 - [Async engines and queue events](#async-engines-and-queue-events)
 - [Dynamic registration](#dynamic-registration)
 - [System settings](#system-settings)
@@ -78,12 +78,15 @@ Changes take effect immediately; no restart.
 | `autoProcure` | boolean | Order a Let's Encrypt certificate automatically |
 | `certificateId` | string | Use an existing certificate |
 | `async` / `asyncEngine` | boolean / string | Deliver requests through an async engine (Kafka / embedded queue) |
-| `secappid` | string | Require client credentials of this application (see [Applications](#applications-and-clients)) |
+| `secappid` | string | Require an OAuth 2.0 access token issued for this app (see [App security](#app-security-oauth-20)). Requests without one get `401` |
+| `oauthScopes` | string | Space-separated scopes the token must carry on this route; otherwise `403 insufficient_scope`. Blank = any token for the app |
 | `jwtKeylookup`, `headerLookup`, `keyLookupMap` | | Route by JWT claim or header value |
 | `tunnel` | boolean | Route served through an SSH tunnel |
 | `rateLimit` | integer | Requests/min per client for this route. Omit or `-1` = use the default, `0` = unlimited |
 | `http2` | boolean | Default `true`. HTTP/2 for this host: ALPN `h2` on HTTPS (decided per SNI name), h2c on HTTP. nginx `http2 on` |
 | `http3` | boolean | Default `true`, HTTPS only. HTTP/3 over QUIC on the same UDP port, advertised with `Alt-Svc`. When off, the QUIC handshake for this name is refused and no `Alt-Svc` is sent. nginx `listen … quic` + `http3 on` |
+| `ipAllow` | string | Comma-separated IPs/CIDRs. When set, only these clients may use the route; others get `403` (nginx `allow …; deny all`) |
+| `ipDeny` | string | Comma-separated IPs/CIDRs refused on this route (client or connecting peer), in addition to the gateway blocklist (nginx `deny`) |
 | `grpc` | boolean | Default `true` (needs HTTP/2). Proxy `application/grpc` calls end to end over HTTP/2. When off, gRPC calls get status `12 UNIMPLEMENTED`. nginx `grpc_pass` |
 
 A request that arrives over a protocol its route has turned off (e.g. HTTP/2 to a name that shares a connection with
@@ -187,6 +190,25 @@ POST /ratelimit
 - `clusterMode` (only matters in a [cluster](#cluster)): `shared` (default) — one budget for the whole cluster, nodes exchange per-client spend every 500 ms;
   `divided` — each node allows `limit ÷ live nodes`; `local` — each node counts on its own.
 - `stats`: `allowed`, `rejected`, `trackedClients`, `limitedClients[]` (`client`, `route`, `rejected`, `limitPerMinute`, `lastRejectedSecondsAgo`).
+
+### Blocked and exempt addresses
+
+Gateway-wide IP access lists (IPv4/IPv6 addresses and CIDR ranges), shared by all routes and cluster nodes.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/ratelimit/access` | Add entries: `{"list": "blocked" \| "exempt", "values": "203.0.113.7, 198.51.100.0/24", "note": "…", "ttlSeconds": 3600}` |
+| `POST` | `/ratelimit/access/remove` | Remove one: `{"list": "blocked" \| "exempt", "value": "198.51.100.0/24"}` |
+
+- **blocked**: refused with `403` (gRPC `7 PERMISSION_DENIED`, analytics outcome `ip_blocked`). Matched against the real client
+  address *and* the connecting peer, so a proxy or CDN edge can be blocked as a whole. Like nginx `deny`.
+- **exempt**: never rate limited. Matched against the real client address only (X-Forwarded-For counts only from trusted proxies).
+- `values` takes several entries separated by commas, spaces or new lines; anything that isn't an IP/CIDR → `400` listing it.
+  `ttlSeconds` > 0 makes a temporary entry that expires by itself; `0` = permanent. Re-adding an entry replaces it.
+- Applies to proxied traffic (HTTP/1.1, HTTP/2, HTTP/3, gRPC), not the admin API, so you can't lock yourself out.
+- `GET /ratelimit` returns them under `access`: `{"blocked": [{"value", "note", "addedAt", "expiresAt"}], "exempt": [...],
+  "blockedRequests", "recentlyBlocked": [{"client", "requests", "lastSecondsAgo"}]}`.
+- Per route: `ipAllow` / `ipDeny` on the source system (below).
 
 ## Web application firewall
 
@@ -352,18 +374,43 @@ or `record`. `ttl` 1 to 604800 (default from the server config).
 | `GET` | `/certificates/{id}/download` | Certificate and key material |
 | `DELETE` | `/certificates/{id}` | Delete |
 
-## Applications and clients
+## App security: OAuth 2.0
 
-Client credentials for routes protected with `secappid`.
+Routes with `secappid` require `Authorization: Bearer <access token>`. Apps stand for the APIs you protect; clients are
+the services that call them. The full guide, with the token flow and samples, is in [OAUTH.md](OAUTH.md).
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/apps` | Applications |
+| `GET` | `/apps` | Apps, each with its `clients` |
 | `POST` | `/apps` | `{"name", "description"}` |
-| `DELETE` | `/apps/{id}` | |
-| `GET` | `/clients` | Clients |
-| `POST` | `/clients` | `{"appid", "name", "description", "clientid", "clientsecret", "expiry", "id"?}`. `404` if the app doesn't exist |
-| `DELETE` | `/clients/{id}` | |
+| `DELETE` | `/apps/{id}` | Deletes the app **and its clients** |
+| `GET` | `/clients` | Clients (never includes secrets; `secretHint` shows the last characters, `activeRefreshTokens` the live refresh tokens) |
+| `POST` | `/clients` | Create: `{"appid", "name", "description"?, "clientid"?, "scopes"?: [..], "expiry"?: epoch ms (0 = never), "accessTokenTtlSeconds"?, "refreshTokenTtlSeconds"?, "refreshTokens"?: true, "enabled"?: true, "clientsecret"?}`. Returns `201 {"client", "client_secret", "credentials": {...}}`. **The secret is only in this response.** `clientid` is generated when omitted; `clientsecret` imports an existing secret (≥ 24 characters), otherwise one is generated. `404` if the app doesn't exist |
+| `POST` | `/clients/{id}` | Update `name`, `description`, `expiry`, `scopes`, token lifetimes (`-1` = default), `refreshTokens`, `enabled`. Disabling revokes its refresh tokens |
+| `POST` | `/clients/{id}/secret` | Rotate the secret. Returns `201` with the new `client_secret` (shown once). The old secret and every token issued so far stop working |
+| `POST` | `/clients/{id}/revoke` | Revoke every access and refresh token issued to the client so far |
+| `DELETE` | `/clients/{id}` | Delete the client (its tokens stop working) |
+| `GET` | `/oauth` | `{"settings", "keys": [{kid, created, retired?, active}], "endpoints"}` |
+| `POST` | `/oauth/settings` | `{"accessTokenTtlSeconds", "refreshTokenTtlSeconds", "issuer", "pathPrefix", "legacyHeaders"}` (any subset). `400` with a message when out of range |
+| `POST` | `/oauth/keys/rotate` | New RS256 signing key; older keys keep verifying for 7 days |
+
+`{id}` is the client's record `id` or its `clientid`.
+
+### Token endpoints
+
+Public: the client authenticates with HTTP Basic (`client_id:client_secret`) or form fields `client_id` + `client_secret`.
+They're served on the admin port and on every route with `secappid`, under `/oauth2` (configurable). Bodies are
+`application/x-www-form-urlencoded` (JSON is also accepted). Responses carry `Cache-Control: no-store`. Errors are
+`{"error", "error_description"}` with the RFC 6749 codes: `invalid_request`, `invalid_client` (`401`), `invalid_grant`,
+`unauthorized_client`, `unsupported_grant_type`, `invalid_scope`.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/oauth2/token` | `grant_type=client_credentials` (`scope` optional, defaults to all allowed) or `grant_type=refresh_token&refresh_token=…`. Returns `{"access_token", "token_type": "Bearer", "expires_in", "scope", "refresh_token"?, "refresh_token_expires_in"?}` |
+| `POST` | `/oauth2/revoke` | RFC 7009: `token=…` (access or refresh). Always `200` |
+| `POST` | `/oauth2/introspect` | RFC 7662: `token=…`. Allowed for clients of the same app, or with an admin token. `{"active": false}` or `{"active": true, "client_id", "scope", "aud", "exp", …}` |
+| `GET` | `/oauth2/jwks` | RFC 7517 public keys |
+| `GET` | `/.well-known/oauth-authorization-server` | RFC 8414 metadata |
 
 ## Async engines and queue events
 
@@ -405,6 +452,8 @@ No auth.
 | `GET` | `/info` | Version |
 | `GET` | `/adminui/` | Admin UI |
 | `GET` | `/.well-known/acme-challenge/{token}` | ACME HTTP-01 responses |
+| `POST` | `/oauth2/token`, `/oauth2/revoke`, `/oauth2/introspect` | OAuth 2.0 token service (client authentication, see [above](#token-endpoints)) |
+| `GET` | `/oauth2/jwks`, `/.well-known/oauth-authorization-server` | Token signing keys and discovery metadata |
 
 ## Protocols: HTTP/2, HTTP/3 and gRPC
 

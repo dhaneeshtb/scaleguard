@@ -49,6 +49,13 @@ public final class ClusterWiring {
 
         cm.on("dns_entries", DNSAddressBook::reload);
         cm.on("applications", Application::reload);
+        cm.on("system_properties/oauth", () -> {
+            com.scaleguard.server.security.oauth.OAuthSettings.reload();
+            com.scaleguard.server.security.oauth.OAuthKeys.get().reload();
+            com.scaleguard.server.security.oauth.OAuthGuard.clearCache();
+        });
+        cm.on(com.scaleguard.server.security.oauth.AccessTokenRevocations.SCOPE,
+                com.scaleguard.server.security.oauth.AccessTokenRevocations::reload);
         cm.on("clientinfos", () -> {
             ClientInfo.reload();
             Application.reload();

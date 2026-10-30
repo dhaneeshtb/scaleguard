@@ -68,10 +68,10 @@ Full reference: `docs/API.md` + `docs/openapi.yaml` (OpenAPI 3.0). **Update both
 - UI-editable settings persist in `system_properties` via `SystemPropertyDB` (id = name), e.g. `ratelimit.*`,
   `waf.policy.<sourceId>`, `waf.customRules`. Load once at startup, keep in memory, write-through on change.
 - Notable keys: `port`/`sport` (HTTP/HTTPS, default 80/443), `scaleguard.transport` (auto|io_uring|epoll|kqueue|nio),
-  `scaleguard.acceptors`, `scaleguard.rateLimit` (first-run default, per min), `scaleguard.adminRateLimit` (3000/min),
+  `scaleguard.acceptors`, `scaleguard.ioThreads` (default = cores), `scaleguard.rateLimit` (first-run default, per min), `scaleguard.adminRateLimit` (3000/min),
   `scaleguard.trustedProxies`, `scaleguard.http2` (default true), `scaleguard.http2.maxConcurrentStreams` (250),
   `scaleguard.http3` (default true) + `scaleguard.http3.{retry,maxStreams,idleTimeoutSeconds,congestion,sockets}`,
-  `scaleguard.analytics` (false disables) + `.path/.retentionDays/.threads/.memory/.queue`, `scaleguard.traceHeaders`,
+  `scaleguard.analytics` (false disables) + `.path/.retentionDays/.threads/.memory/.queue/.flushMs/.batch`, `scaleguard.traceHeaders`,
   `scaleguard.nodeName`, `scaleguard.cluster` (false opts out), `scaleguard.cluster.{advertise,pollMs,heartbeatMs,rateSyncMs}`,
   `scaleguard.waf.{guard,matchBudgetMicros,cacheEntries}`, `dnsServer=true` + `dns*` keys (documented in DnsConfig.java).
 
@@ -110,6 +110,35 @@ Data (SQLite DB, certs, licence) lives in `~/.scaleguard` (LicenceUtil.dataDir()
   request still arrives over a disabled protocol. Upstream settings live on TargetSystem (`connectTimeoutMs`, `readTimeoutSeconds`
   → `ResponseTimeoutHandler` 504, `retries`, `tlsVerify`, `tlsServerName` via `UpstreamTls`) and HostGroup (`maxConns`,
   `maxFails`, `failTimeoutSeconds`, `active`=down, `type` Standby=backup). Optional numbers use -1 for "default".
+- IP access lists: `AccessLists` (gateway-wide `blocked` / `exempt`, stored as JSON in `ratelimit.blocked` / `ratelimit.exempt`,
+  reloaded with the `system_properties/ratelimit` cluster scope) and `SourceSystem.ipAllow/ipDeny`. Checked in the frontend and
+  `GrpcProxyHandler` for routed traffic only (never the admin API); exempt is checked inside `RateLimitManager.check`.
+- Hot path (every request) has been profiled with async-profiler (`asprof -e cpu -i 1ms -o collapsed`): no streams, no
+  per-route string building, no work for features no route uses (see `RouteTable.hasKeyLookupRoutes`), no timer
+  schedule/cancel per keep-alive request (`ResponseTimeoutHandler` leaves its timer running). Netty leak detection is off
+  unless `io.netty.leakDetection.level` is set. Calling `read()` on the backend before the client write completes broke
+  keep-alive (6 req/s) — keep read-after-write in `ScaleGuardBackendHandler`.
+- Responses are streamed: `SecureProxyInitializer` adds an `HttpObjectAggregator` on the backend side only for routes with
+  response caching; `ScaleGuardBackendHandler.stream` forwards head + chunks (flushed once per socket read) and reads the
+  backend again only after the client accepted the last write (back-pressure). If the backend fails mid-body the client
+  connection is closed (no second response). Check with `dev-tools/py/edge_backend.py` behind LbHarness (chunked,
+  HEAD/204, redirects, backend dying mid-body, slow backend) plus big files and a rate-limited client against NGINX. `-Dscaleguard.streamResponses=false` restores whole-response buffering.
+- `ResponseTimeoutHandler` reads no clock on the hot path: a counter of reads/writes, checked by a timer every timeout/4
+  (fires between 1× and 1.25× the timeout). Netty buffer checks (`io.netty.buffer.checkAccessible/checkBounds`) default to
+  false in `AppServer`'s static block and on the run.sh / Dockerfile command lines.
+- Analytics storage: `access_log_rows` (repeated text as integer codes into `access_log_dims`, trace id as two BIGINTs)
+  behind the view `access_log_raw` (the original column list) and `access_log`. Pre-upgrade data was renamed
+  `access_log_v1` and is UNIONed in until retention empties it. Query `access_log_raw`/`access_log`, never the tables.
+- Performance work: compare builds with CPU µs per request, alternating old/new builds (A/B), never single runs — this
+  kind of VM varies ±15% run to run. Warm up ≥ 25 s (JIT).
+- OAuth (`security/oauth/`): `OAuthServer` serves `/oauth2/{token,revoke,introspect,jwks}` + RFC 8414 metadata, dispatched
+  in DefaultResponseHandler before admin routes; `InboundMessageHandler.matchTarget` returns null for those paths on hosts
+  whose route has `secappid` (else they'd be proxied). `OAuthGuard.check` runs per request on protected routes (verified
+  tokens cached by string; RS256 only, `typ at+jwt`). Client secrets are `Secrets.hash` (salted SHA-256), shown once;
+  `ClientInfo` hashes legacy plaintext secrets on load. Client OAuth settings live as JSON in `clientinfos.payload`.
+  Refresh tokens: `RefreshTokens` (own table, prepared statements, single-use with family revocation). Keys/settings in
+  system_properties `oauth.*` (cluster scope `system_properties/oauth`); revoked access-token jtis reload on `oauth_revocations`.
+  End-to-end checks: `/tmp`-style script in dev-tools/py/oauth_test.py (44 checks).
 - Logging: never log per request at INFO (throughput). Throttle (see RateLimitManager) or use DEBUG.
 - HTTP/3 streams (`QuicStreamChannel`) have a `QuicStreamAddress` as remote address: get the client with
   `Http3Listener.peer(ch)`, never cast `remoteAddress()` to InetSocketAddress. `closeOnFlush` must not write a ByteBuf to a

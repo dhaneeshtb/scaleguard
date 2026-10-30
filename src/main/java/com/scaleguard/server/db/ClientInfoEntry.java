@@ -7,6 +7,16 @@ public class ClientInfoEntry implements DBObject{
     private String appid;
     private String clientid;
     private long expiry;
+    /** OAuth settings for this client as JSON (scopes, token lifetimes, enabled, notBefore, …). */
+    private String payload;
+
+    public String getPayload() {
+        return payload;
+    }
+
+    public void setPayload(String payload) {
+        this.payload = payload;
+    }
 
     public long getExpiry() {
         return expiry;

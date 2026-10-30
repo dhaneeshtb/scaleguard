@@ -52,7 +52,8 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
     private static final Logger LOG = LoggerFactory.getLogger(GrpcProxyHandler.class);
     private static final InboundMessageHandler INBOUND = new InboundMessageHandler();
 
-    static final int UNIMPLEMENTED = 12, RESOURCE_EXHAUSTED = 8, PERMISSION_DENIED = 7, UNAVAILABLE = 14, INTERNAL = 13;
+    static final int UNIMPLEMENTED = 12, RESOURCE_EXHAUSTED = 8, PERMISSION_DENIED = 7, UNAVAILABLE = 14, INTERNAL = 13,
+            UNAUTHENTICATED = 16;
 
     private final int port;
     private Channel inbound;
@@ -164,11 +165,21 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
                 return;
             }
         }
-        if (!ScaleguardClientAuthHandler.checkClientAuth(rt)) {
+        com.scaleguard.server.security.oauth.OAuthGuard.Result auth = ScaleguardClientAuthHandler.check(rt);
+        if (!auth.ok()) {
             if (rec != null) rec.outcome = com.scaleguard.server.analytics.AccessRecord.AUTH_DENIED;
-            refuse(ctx, PERMISSION_DENIED, "invalid auth credentials");
+            // gRPC: 16 UNAUTHENTICATED for a missing or bad token, 7 PERMISSION_DENIED for a missing scope
+            refuse(ctx, auth.httpStatus() == 403 ? PERMISSION_DENIED : UNAUTHENTICATED,
+                    auth.description() != null ? auth.description() : "missing access token");
             return;
         }
+        // the backend sees who called (and never the client's secret)
+        h2.remove("client_secret");
+        h2.remove("x-scaleguard-client-id");
+        h2.remove("x-scaleguard-scope");
+        h2.set("x-scaleguard-client-id", auth.clientId() != null ? auth.clientId() : "");
+        if (auth.scope() != null && !auth.scope().isEmpty()) h2.set("x-scaleguard-scope", auth.scope());
+        if (auth.clientId() == null) h2.remove("x-scaleguard-client-id");
 
         TargetSystem ts = rt.getTargetSystem();
         HostGroup hg = ts.getHostGroup();

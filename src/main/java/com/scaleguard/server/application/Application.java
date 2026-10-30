@@ -118,10 +118,10 @@ public class Application {
         try {
             Map<String,WrappeApplicationRecord> appIdMap = new HashMap<>();
             applicationsMap.forEach((k,v)->appIdMap.put(v.id,v));
-            LOGGER.info("loading entries from db");
+            appIdMap.values().forEach(a -> a.getClients().clear());
             ClientInfo.get().values().forEach(c->{
                 WrappeApplicationRecord ar=  appIdMap.get(c.getAppid());
-                ar.getClients().add(c);
+                if (ar != null) ar.getClients().add(c);   // a client whose app was deleted is simply not listed
             });
         }catch (Exception e){
             LOGGER.error("error loading client entries from db", e);
@@ -158,6 +158,10 @@ public class Application {
             WrappeApplicationRecord rec =  wrappeApplicationRecords.get(0);
             if(rec!=null) {
                 try {
+                    // its OAuth clients go with it (their tokens are revoked)
+                    for (ClientInfo.WrappeClientInfoRecord c : new java.util.ArrayList<>(ClientInfo.get().values())) {
+                        if (rec.getId().equalsIgnoreCase(c.getAppid())) ClientInfo.remove(c.getId());
+                    }
                     ApplicationEntriesDB.getInstance().delete(rec.getId());
                     applicationsMap.remove(rec.getName());
                 } catch (Exception e) {

@@ -334,7 +334,7 @@ function AccessListsCard({ access, onChanged }: { access: Access; onChanged: (v:
                 ]} />
                 <p className="text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-300">
                     {list === "blocked"
-                        ? <>Requests get <b>403</b> (gRPC: PERMISSION_DENIED). Matches the real client address <i>and</i> the connection's source, so blocking a CDN edge or proxy here cuts off everything it forwards. The admin API is never blocked, so you can't lock yourself out. <span className="font-mono text-[11.5px]">nginx: deny</span></>
+                        ? <>Refused on every connection — HTTP/1.1, HTTP/2, HTTP/3, gRPC and WebSocket. Matches the real client address <i>and</i> the connection's source, so blocking a CDN edge or proxy here cuts off everything it forwards. The admin API is never blocked, so you can't lock yourself out.</>
                         : <>These clients are never rate limited — monitoring, office networks, partners. Matched against the real client address only (X-Forwarded-For is believed only from trusted proxies), so it can't be faked with a header.</>}
                 </p>
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">

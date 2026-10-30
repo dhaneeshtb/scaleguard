@@ -67,6 +67,19 @@ public class RequestRoutingResponse {
         return r;
     }
 
+    /** Extra response headers (e.g. Cache-Control: no-store on OAuth responses, WWW-Authenticate on 401). */
+    private java.util.Map<String, String> headers;
+
+    public java.util.Map<String, String> getHeaders() {
+        return headers;
+    }
+
+    public RequestRoutingResponse header(String name, String value) {
+        if (headers == null) headers = new java.util.LinkedHashMap<>();
+        headers.put(name, value);
+        return this;
+    }
+
     public static RequestRoutingResponse succes(String body){
         return new RequestRoutingResponse(body);
     }

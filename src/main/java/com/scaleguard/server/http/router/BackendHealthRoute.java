@@ -110,6 +110,10 @@ public class BackendHealthRoute implements RequestRoute {
             h.put("lastFailure", p.lastFailure);
             h.put("lastFailureAt", p.lastFailureMillis == 0 ? null : p.lastFailureMillis);
             h.put("activeConnections", hg.getActiveConnections().get());
+            h.put("enabled", hg.isActive());            // false = nginx "down": takes no traffic
+            h.put("backup", hg.isBackup());
+            h.put("maxConns", hg.getMaxConns() != null && hg.getMaxConns() > 0 ? hg.getMaxConns() : null);
+            h.put("atCapacity", hg.isAtCapacity());
             hosts.add(h);
         }
         Map<String, Object> out = new LinkedHashMap<>();

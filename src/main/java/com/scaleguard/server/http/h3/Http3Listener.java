@@ -56,7 +56,6 @@ public final class Http3Listener {
     static final long ALT_SVC_MAX_AGE = 86_400;
 
     private static final Set<Integer> PORTS = ConcurrentHashMap.newKeySet();
-    private static final QuicSniContexts SNI = new QuicSniContexts();
     private static volatile String unavailable;
 
     private Http3Listener() {}
@@ -128,7 +127,7 @@ public final class Http3Listener {
         long idle = Long.parseLong(setting("scaleguard.http3.idleTimeoutSeconds", "60"));
         boolean retry = Boolean.parseBoolean(setting("scaleguard.http3.retry", "false"));
         QuicTokenHandler tokens = retry ? new RetryTokenHandler() : NO_RETRY;
-        io.netty.handler.codec.quic.QuicSslContext ssl = QuicSslContextBuilder.buildForServerWithSni(SNI);
+        io.netty.handler.codec.quic.QuicSslContext ssl = QuicSslContextBuilder.buildForServerWithSni(new QuicSniContexts(port));
         // Several UDP sockets on the port (SO_REUSEPORT) spread QUIC across I/O threads; the dispatcher encodes the
         // socket in each connection id so packets of one connection always reach the codec that owns it.
         int sockets = NettyTransport.supportsReusePort()

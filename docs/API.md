@@ -82,6 +82,12 @@ Changes take effect immediately; no restart.
 | `jwtKeylookup`, `headerLookup`, `keyLookupMap` | | Route by JWT claim or header value |
 | `tunnel` | boolean | Route served through an SSH tunnel |
 | `rateLimit` | integer | Requests/min per client for this route. Omit or `-1` = use the default, `0` = unlimited |
+| `http2` | boolean | Default `true`. HTTP/2 for this host: ALPN `h2` on HTTPS (decided per SNI name), h2c on HTTP. nginx `http2 on` |
+| `http3` | boolean | Default `true`, HTTPS only. HTTP/3 over QUIC on the same UDP port, advertised with `Alt-Svc`. When off, the QUIC handshake for this name is refused and no `Alt-Svc` is sent. nginx `listen … quic` + `http3 on` |
+| `grpc` | boolean | Default `true` (needs HTTP/2). Proxy `application/grpc` calls end to end over HTTP/2. When off, gRPC calls get status `12 UNIMPLEMENTED`. nginx `grpc_pass` |
+
+A request that arrives over a protocol its route has turned off (e.g. HTTP/2 to a name that shares a connection with
+another host) gets `421 Misdirected Request`, which makes clients retry on a fresh connection.
 
 ### Target system
 
@@ -95,6 +101,15 @@ Changes take effect immediately; no restart.
 | `lbStrategy` | `ROUND_ROBIN` \| `LEAST_CONNECTIONS` \| `WEIGHTED` \| `ACTIVE_STANDBY` | Default `ROUND_ROBIN` |
 | `enableCache`, `cachedResources` | boolean, list | Response caching (`cachedResources[].ttl` in seconds) |
 | `includeHeaders` / `excludeHeaders` | object | Headers to add to / remove from proxied requests |
+| `connectTimeoutMs` | integer | Connect timeout per backend. `-1` = default (`scaleguard.connectTimeoutMs`, 5000). nginx `proxy_connect_timeout` |
+| `readTimeoutSeconds` | integer | How long a backend that owes a response may stay silent before the client gets `504`. `-1` = default (`scaleguard.readTimeoutSeconds`, 60). nginx `proxy_read_timeout` |
+| `retries` | integer | Connect failures retried on another backend. `-1` = default (`scaleguard.connectRetries`, 1), `0` = off. nginx `proxy_next_upstream` |
+| `tlsVerify` | boolean | `https` targets: verify the backend certificate against the JVM trust store and the server name. Default `false` (nginx `proxy_ssl_verify off`) |
+| `tlsServerName` | string | `https` targets: SNI name sent and verified, instead of each backend's host (nginx `proxy_ssl_name`). Empty = backend host |
+
+Backends receive HTTP/1.1 with keep-alive whatever the client used (HTTP/1.1, HTTP/2 or HTTP/3); gRPC goes to the
+backends over HTTP/2 (h2c for `http`, h2 over TLS for `https`) — the nginx `proxy_pass` + `grpc_pass` model. TLS
+handshake failures and backends that close before answering return `502` with the reason.
 
 ### Host group (backend)
 
@@ -107,6 +122,11 @@ Changes take effect immediately; no restart.
 | `weight` | integer | For `WEIGHTED` (default 1) |
 | `type` | `Active` \| `Standby` | For `ACTIVE_STANDBY` |
 | `priority` | integer | Lower = preferred within a tier |
+| `active` | boolean | Default `true`. `false` = takes no traffic (nginx `down`) |
+| `type` | `Active` \| `Standby` | `Standby` servers are backups: used only when no active server can take the request, with any strategy (nginx `backup`) |
+| `maxConns` | integer | Max open connections from ScaleGuard to this server; when reached, requests go elsewhere (or `503` if all are full). `0`/`-1` = unlimited. nginx `max_conns` |
+| `maxFails` | integer | Failed requests in a row before passive health checking ejects this server. `-1` = the [Backend health](#backend-health) setting. nginx `max_fails` |
+| `failTimeoutSeconds` | integer | First ejection length for this server (doubles on repeats). `-1` = the Backend health setting. nginx `fail_timeout` |
 
 ```bash
 curl -s -X POST "$SG/config/hostgroups?scaleguard=true" -H "Authorization: $TOKEN" \

@@ -186,6 +186,36 @@ public class HostGroup {
         activeConnections.decrementAndGet();
     }
 
+    /*
+     * Per-server limits, after nginx's "server" parameters in an upstream block. null or <= 0 = default.
+     *   maxConns            max_conns    open connections from ScaleGuard to this server (0 = unlimited)
+     *   maxFails            max_fails    failed requests in a row before ejecting (default: Backend health setting)
+     *   failTimeoutSeconds  fail_timeout first ejection length (default: Backend health setting; doubles on repeats)
+     * "down" is active=false, "backup" is type=Standby.
+     */
+    private Integer maxConns;
+    private Integer maxFails;
+    private Integer failTimeoutSeconds;
+
+    public Integer getMaxConns() { return maxConns; }
+    public void setMaxConns(Integer v) { this.maxConns = v; }
+    public Integer getMaxFails() { return maxFails; }
+    public void setMaxFails(Integer v) { this.maxFails = v; }
+    public Integer getFailTimeoutSeconds() { return failTimeoutSeconds; }
+    public void setFailTimeoutSeconds(Integer v) { this.failTimeoutSeconds = v; }
+
+    /** True when max_conns is set and reached. */
+    @JsonIgnore
+    public boolean isAtCapacity() {
+        return maxConns != null && maxConns > 0 && activeConnections.get() >= maxConns;
+    }
+
+    /** Backup server: only used when no primary server can take the request (nginx "backup"). */
+    @JsonIgnore
+    public boolean isBackup() {
+        return "Standby".equalsIgnoreCase(type);
+    }
+
     private float loadFactor;
     @JsonIgnore
     private boolean isReachable=true;

@@ -70,6 +70,40 @@ public class TargetSystem {
 
   private String lbStrategy;
 
+  /*
+   * Upstream behaviour, after nginx's proxy_* directives. null or <= 0 = the server default.
+   *   connectTimeoutMs   proxy_connect_timeout       (default scaleguard.connectTimeoutMs, 5000)
+   *   readTimeoutSeconds proxy_read_timeout          (default scaleguard.readTimeoutSeconds, 60) → 504 when exceeded
+   *   retries            proxy_next_upstream_tries−1 (connect failures retried on another backend; default 1)
+   *   tlsVerify          proxy_ssl_verify            (default false, as in nginx)
+   *   tlsServerName      proxy_ssl_name              (SNI / verified name; default the backend's host)
+   */
+  private Integer connectTimeoutMs;
+  private Integer readTimeoutSeconds;
+  private Integer retries;
+  private Boolean tlsVerify;
+  private String tlsServerName;
+
+  public Integer getConnectTimeoutMs() { return connectTimeoutMs; }
+  public void setConnectTimeoutMs(Integer v) { this.connectTimeoutMs = v; }
+  public Integer getReadTimeoutSeconds() { return readTimeoutSeconds; }
+  public void setReadTimeoutSeconds(Integer v) { this.readTimeoutSeconds = v; }
+  public Integer getRetries() { return retries; }
+  public void setRetries(Integer v) { this.retries = v; }
+  public Boolean getTlsVerify() { return tlsVerify; }
+  public void setTlsVerify(Boolean v) { this.tlsVerify = v; }
+  public String getTlsServerName() { return tlsServerName; }
+  public void setTlsServerName(String v) { this.tlsServerName = v; }
+
+  private static final int DEFAULT_CONNECT_MS = Integer.getInteger("scaleguard.connectTimeoutMs", 5_000);
+  private static final int DEFAULT_READ_S = Integer.getInteger("scaleguard.readTimeoutSeconds", 60);
+  private static final int DEFAULT_RETRIES = Integer.getInteger("scaleguard.connectRetries", 1);
+
+  public int connectTimeoutMillis() { return connectTimeoutMs != null && connectTimeoutMs > 0 ? connectTimeoutMs : DEFAULT_CONNECT_MS; }
+  public long readTimeoutMillis() { return (readTimeoutSeconds != null && readTimeoutSeconds > 0 ? readTimeoutSeconds : DEFAULT_READ_S) * 1000L; }
+  /** Connect retries on another backend; a negative value means the default, 0 turns retries off. */
+  public int connectRetries() { return retries != null && retries >= 0 ? retries : DEFAULT_RETRIES; }
+
   public String getLbStrategy() {
     return lbStrategy;
   }

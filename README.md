@@ -106,7 +106,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 |---|---|
 | **Layer-7 load balancing** | Round-robin, least-connections, weighted and active/standby (multi-cluster disaster recovery), per target |
 | **Routing** | By host name, port, path prefix, header value or JWT claim |
-| **HTTP/2, HTTP/3 and gRPC** | ALPN `h2` on TLS, h2c on plain HTTP, and HTTP/3 over QUIC on every HTTPS port (advertised with `Alt-Svc`, same certificates, multi-core UDP listeners). gRPC unary, client-, server- and bidirectional streaming proxied message by message, trailers intact, over pooled HTTP/2 backend connections |
+| **HTTP/2, HTTP/3 and gRPC** | ALPN `h2` on TLS, h2c on plain HTTP, and HTTP/3 over QUIC on every HTTPS port (advertised with `Alt-Svc`, same certificates, multi-core UDP listeners). Each can be switched per route, like nginx's per-server `http2` / `http3` / `grpc_pass`. gRPC unary, client-, server- and bidirectional streaming proxied message by message, trailers intact, over pooled HTTP/2 backend connections |
 | **WebSockets and TCP** | WebSocket upgrade proxying and raw TCP routes |
 | **Caching** | Per-route response cache with TTLs |
 | **Async delivery** | Hand requests to Kafka or an embedded durable queue, with retries and an event audit API |
@@ -125,6 +125,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 | **Active health checks** | Every backend's health URL polled in parallel, every 10 s by default |
 | **Passive health checks** | Watches real requests. A backend that fails 5 in a row is ejected within seconds, then probed back with real traffic and exponential back-off. If a whole service is ejected it keeps serving rather than failing everything |
 | **Connect retries** | A request whose backend refuses the connection is retried on another backend before the client sees an error |
+| **Upstream controls** | Per service: connect and response timeouts (`504` on a silent backend), retry count, backend TLS verification and SNI name. Per server: max connections, failures before ejection, ejection time, backup and drain (down) — the nginx `proxy_*` and `server` parameters, editable in the UI |
 | **gRPC-native errors** | When the gateway refuses a call, gRPC clients get a proper status (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`, `PERMISSION_DENIED`, `UNIMPLEMENTED`), not an HTML error page |
 
 ### Edge services

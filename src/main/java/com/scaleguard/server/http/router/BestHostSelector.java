@@ -65,14 +65,21 @@ public class BestHostSelector {
             return null;
         }
 
-        List<HostGroup> reachable = hostGroups.stream()
-                .filter(HostGroup::isReachable)
+        // Servers marked down (active=false) never get traffic; servers at max_conns are skipped.
+        List<HostGroup> usable = hostGroups.stream().filter(HostGroup::isActive).collect(Collectors.toList());
+        List<HostGroup> reachable = usable.stream()
+                .filter(h -> h.isReachable() && !h.isAtCapacity())
                 .collect(Collectors.toList());
 
         if (reachable.isEmpty()) {
             // Panic mode: if hosts are out only because passive health checking ejected them, keep using the
             // actively-healthy ones rather than failing every request (outlier detection must never black out a service).
-            reachable = hostGroups.stream().filter(HostGroup::isActivelyHealthy).collect(Collectors.toList());
+            reachable = usable.stream().filter(h -> h.isActivelyHealthy() && !h.isAtCapacity()).collect(Collectors.toList());
+        }
+        if (strategy != LoadBalanceStrategy.ACTIVE_STANDBY && reachable.size() > 1) {
+            // Backup servers (type Standby) only take traffic when no primary can (nginx "backup")
+            List<HostGroup> primaries = reachable.stream().filter(h -> !h.isBackup()).collect(Collectors.toList());
+            if (!primaries.isEmpty()) reachable = primaries;
         }
         if (reachable.isEmpty()) {
             // All hosts are down — log (at most every 30 s, this runs per request) so operators can act

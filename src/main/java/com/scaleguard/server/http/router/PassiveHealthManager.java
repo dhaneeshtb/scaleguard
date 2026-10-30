@@ -169,7 +169,8 @@ public final class PassiveHealthManager {
         // Half-open: a host that was ejected before and fails again is re-ejected immediately.
         boolean probing = p.ejections > 0;
         int streak = p.consecutiveFailures.incrementAndGet();
-        if (probing || streak >= s.consecutiveFailures()) eject(hg, s, reason, streak);
+        int maxFails = hg.getMaxFails() != null && hg.getMaxFails() > 0 ? hg.getMaxFails() : s.consecutiveFailures();
+        if (probing || streak >= maxFails) eject(hg, s, reason, streak);
     }
 
     private void eject(HostGroup hg, Settings s, String reason, int streak) {
@@ -177,7 +178,8 @@ public final class PassiveHealthManager {
         synchronized (p) {
             if (hg.isEjected()) return;
             int n = Math.min(p.ejections + 1, 20);
-            long seconds = Math.min((long) s.baseEjectionSeconds() << (n - 1), s.maxEjectionSeconds());
+            int base = hg.getFailTimeoutSeconds() != null && hg.getFailTimeoutSeconds() > 0 ? hg.getFailTimeoutSeconds() : s.baseEjectionSeconds();
+            long seconds = Math.min((long) base << (n - 1), Math.max(base, s.maxEjectionSeconds()));
             p.ejections = n;
             p.ejectedAtMillis = System.currentTimeMillis();
             p.ejectedUntilNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);

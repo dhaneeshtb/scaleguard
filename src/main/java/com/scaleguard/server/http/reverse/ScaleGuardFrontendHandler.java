@@ -135,6 +135,21 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       AccessRecord rec = startRecord(ctx, msg, ts, inAddress);
       current = rec;
 
+      // Per-route protocols (nginx "http2 off" / "http3 off" on a server): a request that arrived over a protocol
+      // its route turned off gets 421 Misdirected Request, which tells the client to retry on a new connection —
+      // where ALPN / Alt-Svc no longer offer that protocol for this host.
+      if (ts != null && ts.getSourceSystem() != null) {
+        boolean h2 = ctx.channel() instanceof io.netty.handler.codec.http2.Http2StreamChannel;
+        boolean h3 = com.scaleguard.server.http.h3.Http3Listener.isHttp3(ctx.channel());
+        if ((h2 && !ts.getSourceSystem().http2Enabled()) || (h3 && !ts.getSourceSystem().http3Enabled())) {
+          if (rec != null) rec.finish(421, AccessRecord.MISDIRECTED);
+          DefaultResponseHandler.getInstance().handleFailure(ctx,
+                  (h3 ? "HTTP/3" : "HTTP/2") + " is turned off for this route; retry over " + (h3 ? "HTTP/2 or HTTP/1.1" : "HTTP/1.1"),
+                  HttpResponseStatus.MISDIRECTED_REQUEST);
+          return;
+        }
+      }
+
       RateLimitManager.Decision decision = rateLimitManager.check(ts, inAddress);
       if (!decision.allowed()) {
         // Logged (throttled) inside RateLimitManager — no per-request log line here.
@@ -240,7 +255,6 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
   }
 
   /** Connect retries: nothing has been sent yet, so a failed connect is retried once on a different backend. */
-  private static final int CONNECT_RETRIES = Integer.getInteger("scaleguard.connectRetries", 1);
 
   private void handleNewOutboundChannel(RouteTarget ts, final ChannelHandlerContext ctx, Object msg, String messageKey,
                                         java.util.Set<HostGroup> failed, AccessRecord rec) {
@@ -250,7 +264,8 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         .channel(com.scaleguard.server.http.utils.NettyTransport.socketChannel())   // HTTP/2 stream channels aren't socket types
         .handler(new SecureProxyInitializer(ts, inboundChannel,
                 "https".equalsIgnoreCase(ts.getTargetSystem().getScheme()), messageKey))
-        .option(ChannelOption.AUTO_READ, false);
+        .option(ChannelOption.AUTO_READ, false)
+        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, ts.getTargetSystem().connectTimeoutMillis());   // proxy_connect_timeout
 
     HostGroup hg = ts.getTargetSystem().getHostGroup();
     if (failed != null) {
@@ -279,7 +294,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
       // fallback address of its own: a clean 503 — not a NumberFormatException with a stack trace per request.
       if (rec != null) rec.finish(503, AccessRecord.NO_BACKEND);
       DefaultResponseHandler.getInstance().handleFailure(ctx,
-              "No healthy backend for " + ts.getTargetSystem().getGroupId(), HttpResponseStatus.SERVICE_UNAVAILABLE);
+              "No backend available for " + ts.getTargetSystem().getGroupId() + " (all down, ejected or at their connection limit)", HttpResponseStatus.SERVICE_UNAVAILABLE);
       io.netty.util.ReferenceCountUtil.release(msg);
       return;
     } else {
@@ -325,7 +340,7 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         java.util.Set<HostGroup> tried = failed == null ? new java.util.HashSet<>() : failed;
         if (chosen != null) tried.add(chosen);
         AccessLog.withdraw(future.channel(), rec);
-        if (chosen != null && tried.size() <= CONNECT_RETRIES && inboundChannel.isActive()) {
+        if (chosen != null && tried.size() <= ts.getTargetSystem().connectRetries() && inboundChannel.isActive()) {
           handleNewOutboundChannel(ts, ctx, msg, messageKey, tried, rec);
           return;
         }

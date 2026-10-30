@@ -226,6 +226,34 @@ public class RouteTable {
     return null;
   }
 
+  /** Routes listening on this host name and port (any path). Used to choose protocols before a request is read. */
+  public List<SourceSystem> routesFor(String host, int port){
+    if (host == null) return List.of();
+    String p = String.valueOf(port);
+    List<SourceSystem> out = new ArrayList<>();
+    for (SourceSystem s : sourceSystsems) {
+      if (s.getHost() == null) continue;
+      String h = s.getHost();
+      String sp = s.getPort();
+      int colon = h.indexOf(':');
+      if (colon > 0) { sp = h.substring(colon + 1); h = h.substring(0, colon); }
+      if (h.equalsIgnoreCase(host) && p.equals(sp)) out.add(s);
+    }
+    return out;
+  }
+
+  /** HTTP/2 may be negotiated for this host name on this port: true unless every route for it turned HTTP/2 off. */
+  public boolean http2Allowed(String host, int port){
+    List<SourceSystem> rs = routesFor(host, port);
+    return rs.isEmpty() || rs.stream().anyMatch(SourceSystem::http2Enabled);
+  }
+
+  /** HTTP/3 may be used for this host name on this port: true unless every route for it turned HTTP/3 off. */
+  public boolean http3Allowed(String host, int port){
+    List<SourceSystem> rs = routesFor(host, port);
+    return rs.isEmpty() || rs.stream().anyMatch(SourceSystem::http3Enabled);
+  }
+
   public List<SourceSystem> getSourceSystsems(){
     return  sourceSystsems;
   }

@@ -11,7 +11,10 @@ const hostgroupSchema = {
     "type": "active",
     "groupId": "hostgroup1",
     "loadFactor": 0.0,
-    "active": true
+    "active": true,
+    "maxConns": -1,
+    "maxFails": -1,
+    "failTimeoutSeconds": -1
 }
 
 
@@ -109,7 +112,10 @@ const sourceSystemSchema = {
     "jwtKeylookup": null,
     "autoProcure":true,
     "asyncEngine":null,
-    "rateLimit":-1
+    "rateLimit":-1,
+    "http2":true,
+    "http3":true,
+    "grpc":true
 }
 const targetSystemSchemaDef = {
     "scheme": {
@@ -235,6 +241,11 @@ const targetSchema = {
     "excludeHeaders": {},
     "cachedResources": [],
     "enableCache": true,
+    "connectTimeoutMs": -1,
+    "readTimeoutSeconds": -1,
+    "retries": -1,
+    "tlsVerify": false,
+    "tlsServerName": "",
 }
 
 export const getBaseSchema = (type) => {

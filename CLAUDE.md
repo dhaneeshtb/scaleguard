@@ -104,6 +104,12 @@ Data (SQLite DB, certs, licence) lives in `~/.scaleguard` (LicenceUtil.dataDir()
   `RouteTarget.getSelectedHost()` for the backend of a request; calling `getHostGroup()` again picks a *new* host.
   Connect failures are retried once on another host (`scaleguard.connectRetries`).
 - `ConfigManager.copy()` skips static/transient fields, so runtime state on HostGroup (passive health) survives edits.
+- Per-route protocols (`SourceSystem.http2/http3/grpc`, null = on): ALPN is chosen per SNI in `SSLServerInitializer`
+  (`RouteTable.http2Allowed`), QUIC refuses names with HTTP/3 off in `QuicSniContexts` (a context without h3 ALPN — returning
+  null would fall back to the default certificate), `AltSvcHandler` advertises per Host, and the frontend answers 421 when a
+  request still arrives over a disabled protocol. Upstream settings live on TargetSystem (`connectTimeoutMs`, `readTimeoutSeconds`
+  → `ResponseTimeoutHandler` 504, `retries`, `tlsVerify`, `tlsServerName` via `UpstreamTls`) and HostGroup (`maxConns`,
+  `maxFails`, `failTimeoutSeconds`, `active`=down, `type` Standby=backup). Optional numbers use -1 for "default".
 - Logging: never log per request at INFO (throughput). Throttle (see RateLimitManager) or use DEBUG.
 - HTTP/3 streams (`QuicStreamChannel`) have a `QuicStreamAddress` as remote address: get the client with
   `Http3Listener.peer(ch)`, never cast `remoteAddress()` to InetSocketAddress. `closeOnFlush` must not write a ByteBuf to a

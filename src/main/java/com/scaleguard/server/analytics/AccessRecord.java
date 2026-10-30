@@ -8,7 +8,8 @@ public final class AccessRecord {
 
     /** Why the request ended the way it did. */
     public static final String PROXIED = "proxied", RATE_LIMITED = "rate_limited", WAF_BLOCKED = "waf_blocked",
-            AUTH_DENIED = "auth_denied", NO_BACKEND = "no_backend", NO_ROUTE = "no_route", ERROR = "error";
+            AUTH_DENIED = "auth_denied", NO_BACKEND = "no_backend", NO_ROUTE = "no_route", ERROR = "error",
+            TIMEOUT = "timeout", MISDIRECTED = "misdirected";
 
     public long tsMillis = System.currentTimeMillis();
     public final long startNanos = System.nanoTime();

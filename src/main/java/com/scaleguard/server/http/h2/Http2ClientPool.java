@@ -66,9 +66,18 @@ public final class Http2ClientPool {
     }
 
     /** Opens a new stream to {@code host:port}; {@code handler} receives the backend's frames. */
+    /** Per-target TLS and connect settings (grpc_ssl_verify, grpc_ssl_name, grpc_connect_timeout). */
+    public record Options(boolean verify, String serverName, int connectTimeoutMs) {
+        static final Options DEFAULT = new Options(false, null, CONNECT_TIMEOUT_MS);
+    }
+
     public Future<Http2StreamChannel> openStream(EventLoop loop, String host, int port, boolean tls, ChannelHandler handler) {
+        return openStream(loop, host, port, tls, Options.DEFAULT, handler);
+    }
+
+    public Future<Http2StreamChannel> openStream(EventLoop loop, String host, int port, boolean tls, Options opts, ChannelHandler handler) {
         Promise<Http2StreamChannel> result = loop.newPromise();
-        connection(loop, host, port, tls).addListener(cf -> {
+        connection(loop, host, port, tls, opts == null ? Options.DEFAULT : opts).addListener(cf -> {
             if (!cf.isSuccess()) {
                 result.tryFailure(cf.cause());
                 return;
@@ -82,10 +91,11 @@ public final class Http2ClientPool {
         return result;
     }
 
-    private Future<Channel> connection(EventLoop loop, String host, int port, boolean tls) {
+    private Future<Channel> connection(EventLoop loop, String host, int port, boolean tls, Options opts) {
         // One connection per backend per event loop: the client stream and its backend stream then share a
         // thread, so the relay needs no locking and frames never hop between threads.
-        String key = host + ":" + port + (tls ? ":tls" : ":h2c") + "@" + System.identityHashCode(loop);
+        String key = host + ":" + port + (tls ? ":tls" + (opts.verify() ? "+verify" : "") + ":" + opts.serverName() : ":h2c")
+                + "@" + System.identityHashCode(loop);
         while (true) {
             Future<Channel> f = connections.get(key);
             if (f != null) {
@@ -96,7 +106,7 @@ public final class Http2ClientPool {
             }
             Promise<Channel> p = loop.newPromise();
             if (connections.putIfAbsent(key, p) != null) continue;
-            connect(loop, host, port, tls, key, p);
+            connect(loop, host, port, tls, opts, key, p);
             return p;
         }
     }
@@ -105,16 +115,21 @@ public final class Http2ClientPool {
         return ch.isActive() && !Boolean.TRUE.equals(ch.attr(GoAwayWatcher.GOAWAY).get());
     }
 
-    private void connect(EventLoop loop, String host, int port, boolean tls, String key, Promise<Channel> p) {
+    private void connect(EventLoop loop, String host, int port, boolean tls, Options opts, String key, Promise<Channel> p) {
         Bootstrap b = new Bootstrap()
                 .group(loop)
                 .channel(NettyTransport.socketChannel())
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECT_TIMEOUT_MS)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, opts.connectTimeoutMs() > 0 ? opts.connectTimeoutMs() : CONNECT_TIMEOUT_MS)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .handler(new ChannelInitializer<Channel>() {
                     @Override
                     protected void initChannel(Channel ch) {
-                        if (tls) ch.pipeline().addLast(tlsContext.newHandler(ch.alloc(), host, port));
+                        if (tls) {
+                            String sni = opts.serverName() != null ? opts.serverName() : host;
+                            ch.pipeline().addLast(opts.verify() || opts.serverName() != null
+                                    ? com.scaleguard.server.http.reverse.UpstreamTls.http2(opts.verify(), sni, ch.alloc(), port)
+                                    : tlsContext.newHandler(ch.alloc(), host, port));
+                        }
                         ch.pipeline().addLast(Http2FrameCodecBuilder.forClient()
                                 .initialSettings(Http2Settings.defaultSettings().initialWindowSize(1 << 20).pushEnabled(false))
                                 .build());

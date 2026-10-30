@@ -39,6 +39,8 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     private CacheManager cacheManager = CacheManagers.get();
 
     private RouteTarget rt;
+    private boolean timedOut;
+    private String tlsFailure;
     /** The backend this connection goes to (fixed for the connection's lifetime). */
     private final HostGroup host;
 
@@ -144,7 +146,49 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     public void channelInactive(ChannelHandlerContext ctx) {
         // backend closed before answering: those requests failed
         com.scaleguard.server.analytics.AccessLog.failPending(ctx.channel(), 502, com.scaleguard.server.analytics.AccessRecord.ERROR);
-        ScaleGuardFrontendHandler.closeOnFlush(inboundChannel);
+        ResponseTimeoutHandler rth = ctx.pipeline().get(ResponseTimeoutHandler.class);
+        if (!timedOut && rth != null && rth.outstanding() > 0 && inboundChannel.isActive()) {
+            // The backend went away (or its TLS handshake failed) before answering: tell the client with a 502
+            // instead of dropping its connection.
+            PassiveHealthManager.getInstance().recordFailure(host, tlsFailure != null ? "TLS handshake failed: " + tlsFailure : "connection closed before a response");
+            sendError(io.netty.handler.codec.http.HttpResponseStatus.BAD_GATEWAY, tlsFailure != null
+                    ? "TLS handshake with the upstream server failed: " + tlsFailure
+                    : "The upstream server closed the connection before responding");
+            return;
+        }
+        if (!timedOut) ScaleGuardFrontendHandler.closeOnFlush(inboundChannel);   // after a 504 the client connection stays usable
+    }
+
+    /** proxy_read_timeout reached: answer 504 for the overdue request and drop this backend connection. */
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        if (evt instanceof io.netty.handler.ssl.SslHandshakeCompletionEvent hs && !hs.isSuccess()) {
+            Throwable c = hs.cause();
+            while (c != null && c.getCause() != null && c.getCause() != c) c = c.getCause();
+            tlsFailure = c == null ? "unknown error" : c.getMessage();
+        }
+        if (evt != ResponseTimeoutHandler.TIMEOUT) {
+            super.userEventTriggered(ctx, evt);
+            return;
+        }
+        timedOut = true;
+        PassiveHealthManager.getInstance().recordFailure(host, "response timeout");
+        com.scaleguard.server.analytics.AccessRecord rec = com.scaleguard.server.analytics.AccessLog.nextResponse(ctx.channel());
+        if (rec != null) rec.finish(504, com.scaleguard.server.analytics.AccessRecord.TIMEOUT);
+        logger.debug("Backend {} didn't answer in time", host == null ? ctx.channel().remoteAddress() : host.getHost() + ":" + host.getPort());
+        sendError(io.netty.handler.codec.http.HttpResponseStatus.GATEWAY_TIMEOUT, "The upstream server didn't respond in time");
+        ctx.close();
+    }
+
+    private void sendError(io.netty.handler.codec.http.HttpResponseStatus status, String message) {
+        if (!inboundChannel.isActive()) return;
+        io.netty.buffer.ByteBuf body = io.netty.buffer.Unpooled.copiedBuffer(
+                com.scaleguard.utils.JSON.toString(java.util.Map.of("message", message)), io.netty.util.CharsetUtil.UTF_8);
+        io.netty.handler.codec.http.FullHttpResponse r = new io.netty.handler.codec.http.DefaultFullHttpResponse(
+                io.netty.handler.codec.http.HttpVersion.HTTP_1_1, status, body);
+        r.headers().set(io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE, "application/json");
+        r.headers().set(io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH, body.readableBytes());
+        inboundChannel.writeAndFlush(r);
     }
 
     @Override

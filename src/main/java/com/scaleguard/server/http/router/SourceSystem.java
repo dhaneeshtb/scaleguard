@@ -131,6 +131,28 @@ public class SourceSystem {
    */
   private Integer rateLimit;
 
+  /*
+   * Client-facing protocols for this route, like nginx's per-server "http2 on", "http3 on" and "grpc_pass".
+   * null = on (the default); false = off. HTTP/1.1 is always available.
+   */
+  private Boolean http2;
+  private Boolean http3;
+  private Boolean grpc;
+
+  public Boolean getHttp2() { return http2; }
+  public void setHttp2(Boolean http2) { this.http2 = http2; }
+  public Boolean getHttp3() { return http3; }
+  public void setHttp3(Boolean http3) { this.http3 = http3; }
+  public Boolean getGrpc() { return grpc; }
+  public void setGrpc(Boolean grpc) { this.grpc = grpc; }
+
+  /** HTTP/2 (ALPN h2 over TLS, h2c with prior knowledge on plain HTTP) is accepted for this route. */
+  public boolean http2Enabled() { return !Boolean.FALSE.equals(http2); }
+  /** HTTP/3 over QUIC is offered (Alt-Svc) and accepted for this route; HTTPS routes only. */
+  public boolean http3Enabled() { return !Boolean.FALSE.equals(http3) && "https".equalsIgnoreCase(scheme); }
+  /** gRPC calls are proxied end to end over HTTP/2; needs HTTP/2. */
+  public boolean grpcEnabled() { return !Boolean.FALSE.equals(grpc) && http2Enabled(); }
+
   public Integer getRateLimit() {
     return rateLimit;
   }

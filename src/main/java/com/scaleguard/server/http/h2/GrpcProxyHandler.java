@@ -143,6 +143,10 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
             refuse(ctx, UNIMPLEMENTED, "no route for " + h2.authority() + h2.path());
             return;
         }
+        if (rt.getSourceSystem() != null && !rt.getSourceSystem().grpcEnabled()) {   // like a server without grpc_pass
+            refuse(ctx, UNIMPLEMENTED, "gRPC is turned off for this route");
+            return;
+        }
         if (rt.getSourceSystem() != null) {
             FullHttpRequest probe = new DefaultFullHttpRequest(req.protocolVersion(), req.method(), req.uri(),
                     Unpooled.EMPTY_BUFFER, req.headers(), io.netty.handler.codec.http.EmptyHttpHeaders.INSTANCE);
@@ -191,7 +195,10 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
         inbound.config().setAutoRead(false);    // hold client DATA until the backend stream is open
 
         Http2ClientPool.getInstance()
-                .openStream(inbound.eventLoop(), host, backendPort, tls, new BackendRelay())
+                .openStream(inbound.eventLoop(), host, backendPort, tls,
+                        new Http2ClientPool.Options(com.scaleguard.server.http.reverse.UpstreamTls.verify(ts),
+                                com.scaleguard.server.http.reverse.UpstreamTls.serverName(ts, host), ts.connectTimeoutMillis()),
+                        new BackendRelay())
                 .addListener(f -> {
                     if (f.isSuccess()) {
                         onOutboundOpen((Http2StreamChannel) f.getNow());

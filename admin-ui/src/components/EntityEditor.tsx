@@ -5,7 +5,7 @@ import { Switch, useToast } from "@chakra-ui/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     FiAlertCircle, FiArrowLeft, FiArrowRight, FiCheck, FiChevronDown, FiCornerDownLeft, FiLayers,
-    FiLock, FiPlus, FiRotateCcw, FiServer, FiShield, FiTrash2, FiZap, FiGitBranch,
+    FiLock, FiPlus, FiRotateCcw, FiServer, FiShield, FiTrash2, FiZap, FiGitBranch, FiRadio, FiClock,
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { formatData, getBaseSchema, updateSource } from "./sourceupdate";
@@ -21,6 +21,11 @@ const META: Record<EntityType, { noun: string; icon: IconType; tint: string; blu
 
 // ---------- value helpers ----------
 const isTrue = (v: any) => v === true || v === "true";
+/** Protocol switches default to on: only an explicit false turns them off. */
+const isOn = (v: any) => v !== false && v !== "false";
+/** Optional numbers: blank and negative mean "use the default" (sent as -1 so a saved override can be cleared). */
+const NUMERIC_DEFAULTS = ["connectTimeoutMs", "readTimeoutSeconds", "retries", "maxConns", "maxFails", "failTimeoutSeconds"];
+const numText = (v: any) => (v === null || v === undefined || v === "" || Number(v) < 0 ? "" : String(v));
 const asText = (v: any) => (v === null || v === undefined ? "" : String(v));
 const parseMaybeJSON = (v: any, fallback: any) => {
     if (v === null || v === undefined || v === "") return fallback;
@@ -81,15 +86,32 @@ function Segmented<T extends string>({ value, options, onChange, id }: { value: 
     );
 }
 
-function Toggle({ id, label, description, checked, onChange }: { id: string; label: string; description?: string; checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ id, label, description, checked, onChange, disabled, badge }: { id: string; label: string; description?: React.ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; badge?: React.ReactNode }) {
     return (
-        <label htmlFor={id} className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white/60 p-3.5 transition-colors hover:border-teal-400/40 dark:border-white/10 dark:bg-white/[0.02] sm:col-span-2">
+        <label htmlFor={id} className={`flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white/60 p-3.5 transition-colors dark:border-white/10 dark:bg-white/[0.02] sm:col-span-2 ${disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer hover:border-teal-400/40"}`}>
             <span className="min-w-0">
-                <span className="block text-[13.5px] font-medium text-slate-800 dark:text-slate-100">{label}</span>
+                <span className="flex flex-wrap items-center gap-2 text-[13.5px] font-medium text-slate-800 dark:text-slate-100">{label}{badge}</span>
                 {description && <span className="mt-0.5 block text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">{description}</span>}
             </span>
-            <Switch id={id} isChecked={checked} onChange={e => onChange(e.target.checked)} colorScheme="teal" size="md" mt={0.5} />
+            <Switch id={id} isChecked={checked} isDisabled={disabled} onChange={e => onChange(e.target.checked)} colorScheme="teal" size="md" mt={0.5} />
         </label>
+    );
+}
+
+/** Small monospace tag, e.g. the nginx directive a setting corresponds to. */
+function Tag({ children }: { children: React.ReactNode }) {
+    return <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-px font-mono text-[10.5px] font-medium text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">{children}</span>;
+}
+
+/** Optional number with a default shown as the placeholder; blank = default. */
+function OptionalNumber({ id, value, onChange, placeholder, unit }: { id: string; value: any; onChange: (v: number | null) => void; placeholder: string; unit?: string }) {
+    return (
+        <div className="flex items-center gap-2">
+            <input id={id} inputMode="numeric" value={numText(value)} placeholder={placeholder} autoComplete="off"
+                onChange={e => { const t = e.target.value.replace(/[^\d]/g, ""); onChange(t === "" ? null : parseInt(t, 10)); }}
+                className={`${inputCls} ${okBorder} font-mono text-[13px]`} />
+            {unit && <span className="shrink-0 text-[12px] text-slate-500">{unit}</span>}
+        </div>
     );
 }
 
@@ -322,7 +344,16 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
             const out = { ...draft };
             ["includeHeaders", "excludeHeaders"].forEach(k => { if (k in out) out[k] = parseMaybeJSON(out[k], {}); });
             if ("cachedResources" in out) out.cachedResources = (parseMaybeJSON(out.cachedResources, []) || []).filter((r: any) => asText(r?.pattern).trim());
-            if (type === "sourcesystems") out.async = isTrue(out.async);
+            if (type === "sourcesystems") {
+                out.async = isTrue(out.async);
+                ["http2", "http3", "grpc"].forEach(k => { out[k] = isOn(out[k]); });
+            }
+            // Blank optional numbers go out as -1 so the server falls back to its default (null wouldn't clear a saved value).
+            NUMERIC_DEFAULTS.forEach(k => { if (k in out) out[k] = out[k] === null || out[k] === "" || out[k] === undefined ? -1 : Number(out[k]); });
+            if (type === "targetsystems") {
+                out.tlsVerify = isTrue(out.tlsVerify);
+                out.tlsServerName = asText(out.tlsServerName).trim();
+            }
             if (type === "hostgroups") {
                 out.priority = parseInt(asText(out.priority) || "0", 10) || 0;
                 out.loadFactor = parseFloat(asText(out.loadFactor) || "0") || 0;
@@ -386,6 +417,12 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
     const rlNum = draft.rateLimit === null || draft.rateLimit === undefined || draft.rateLimit === "" ? -1 : Number(draft.rateLimit);
     const rlMode: "default" | "custom" | "unlimited" = rlNum < 0 ? "default" : rlNum === 0 ? "unlimited" : "custom";
     const isHttp = scheme === "http" || scheme === "https";
+    const h2On = isOn(draft.http2);
+    const h3On = scheme === "https" && isOn(draft.http3);
+    const grpcOn = h2On && isOn(draft.grpc);
+    const protocolChips = [
+        { label: "HTTP/1.1", on: true }, { label: "HTTP/2", on: h2On }, { label: "HTTP/3", on: h3On }, { label: "gRPC", on: grpcOn },
+    ];
     const title = asText(draft.name) || (type === "hostgroups" && draft.host ? `${draft.host}${draft.port ? ":" + draft.port : ""}` : "") || `New ${meta.noun.toLowerCase()}`;
 
     // ---------- section content per type ----------
@@ -431,6 +468,28 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                     <TextInput id="f-group" value={draft.groupId} onChange={v => set("groupId", v)} placeholder="s-public" mono />
                 </Field>
             </Section>
+
+            {isHttp && (
+                <Section id="sec-protocols" icon={FiRadio} title="Protocols" description="What clients can speak to this route. HTTP/1.1 always works; the rest follow nginx's per-server switches.">
+                    <div className="flex flex-wrap gap-1.5 sm:col-span-2" aria-label="Enabled protocols">
+                        {protocolChips.map(c => (
+                            <span key={c.label} className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold ${c.on ? "border-teal-400/40 bg-teal-400/10 text-teal-700 dark:text-teal-300" : "border-slate-200 text-slate-400 line-through dark:border-white/10"}`}>{c.label}</span>
+                        ))}
+                    </div>
+                    <Toggle id="f-http2" label="HTTP/2" badge={<Tag>http2 {h2On ? "on" : "off"}</Tag>} checked={h2On} onChange={v => set("http2", v)}
+                        description={scheme === "https"
+                            ? "Negotiated during the TLS handshake (ALPN h2). Browsers get multiplexed requests on one connection; required for gRPC."
+                            : "h2c with prior knowledge on plain HTTP, as used by gRPC clients without TLS. Browsers only use HTTP/2 over HTTPS."} />
+                    <Toggle id="f-http3" label="HTTP/3 (QUIC)" badge={<Tag>{h3On ? `listen ${asText(draft.port) || "443"} quic · http3 on` : "http3 off"}</Tag>} checked={h3On} disabled={scheme !== "https"} onChange={v => set("http3", v)}
+                        description={scheme !== "https"
+                            ? "HTTP/3 always runs over TLS: switch the listener to HTTPS to offer it."
+                            : <>Served over UDP on port {asText(draft.port) || "443"} with the same certificate, and advertised with <span className="font-mono">Alt-Svc: h3=":{asText(draft.port) || "443"}"</span> so browsers switch on their next request. Faster on lossy and mobile networks. Open UDP {asText(draft.port) || "443"} in your firewall.</>} />
+                    <Toggle id="f-grpc" label="gRPC" badge={<Tag>{grpcOn ? "grpc_pass" : "no grpc_pass"}</Tag>} checked={grpcOn} disabled={!h2On} onChange={v => set("grpc", v)}
+                        description={!h2On
+                            ? "gRPC needs HTTP/2. Turn HTTP/2 on to proxy gRPC calls."
+                            : "Requests with content-type application/grpc are relayed message by message to the target over HTTP/2 (h2c, or h2 over TLS for an HTTPS target): unary and streaming calls, trailers intact. When off, gRPC clients get UNIMPLEMENTED."} />
+                </Section>
+            )}
 
             {isHttp && (
                 <Section id="sec-tls" icon={FiLock} title="TLS certificate" description="How ScaleGuard proves this hostname to clients.">
@@ -535,6 +594,33 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
             </Section>
 
             {isHttp && (
+                <Section id="sec-upstream" icon={FiClock} title="Upstream connection" description="How ScaleGuard talks to the servers in the host group — the nginx proxy_* and grpc_* settings.">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-[12.5px] leading-relaxed text-slate-600 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-300 sm:col-span-2">
+                        Requests reach the servers over <b>HTTP/1.1 with keep-alive</b>, whatever the client used (HTTP/1.1, HTTP/2 or HTTP/3) — nginx's <span className="font-mono">proxy_http_version 1.1</span>.
+                        {" "}gRPC calls go over <b>HTTP/2</b>: {scheme === "https" ? <><span className="font-mono">h2</span> over TLS</> : <>cleartext <span className="font-mono">h2c</span></>}, like <span className="font-mono">grpc_pass {scheme === "https" ? "grpcs" : "grpc"}://</span>.
+                    </div>
+                    <Field label="Connect timeout" htmlFor="f-cto" hint={<>Give up on a server that doesn't accept the connection. <Tag>proxy_connect_timeout</Tag></>}>
+                        <OptionalNumber id="f-cto" value={draft.connectTimeoutMs} onChange={v => set("connectTimeoutMs", v)} placeholder="5000 (default)" unit="ms" />
+                    </Field>
+                    <Field label="Response timeout" htmlFor="f-rto" hint={<>Answer 504 when a server goes quiet mid-request. <Tag>proxy_read_timeout</Tag></>}>
+                        <OptionalNumber id="f-rto" value={draft.readTimeoutSeconds} onChange={v => set("readTimeoutSeconds", v)} placeholder="60 (default)" unit="seconds" />
+                    </Field>
+                    <Field label="Retries on another server" htmlFor="f-retries" hint={<>When a server refuses the connection, try the next one. 0 turns it off. <Tag>proxy_next_upstream</Tag></>}>
+                        <OptionalNumber id="f-retries" value={draft.retries} onChange={v => set("retries", v)} placeholder="1 (default)" />
+                    </Field>
+                    {scheme === "https" && (
+                        <>
+                            <Toggle id="f-tlsverify" label="Verify the server's certificate" badge={<Tag>proxy_ssl_verify</Tag>} checked={isTrue(draft.tlsVerify)} onChange={v => set("tlsVerify", v)}
+                                description="Reject servers whose certificate isn't trusted or doesn't match the name below. Off by default (as in nginx) so self-signed internal certificates work." />
+                            <Field label="TLS server name (SNI)" htmlFor="f-sni" span={2} hint={<>Sent in the TLS handshake and checked against the certificate. Leave blank to use each server's host. Set it when servers are addressed by IP. <Tag>proxy_ssl_name</Tag></>}>
+                                <TextInput id="f-sni" value={draft.tlsServerName} onChange={v => set("tlsServerName", v)} placeholder="api.internal.example.com" mono />
+                            </Field>
+                        </>
+                    )}
+                </Section>
+            )}
+
+            {isHttp && (
                 <Section id="sec-headers" icon={FiCornerDownLeft} title="Request headers" description="Add or strip headers on requests forwarded to the upstream.">
                     <Field label="Add these headers" htmlFor="f-inc-k0" span={2}>
                         <KeyValueEditor key={`inc-${formVersion}`} id="f-inc" value={draft.includeHeaders} onChange={v => set("includeHeaders", v)} />
@@ -586,11 +672,27 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                 </Field>
                 <Field label="Role" required htmlFor="f-type" span={2}>
                     <Segmented id="f-type" value={(asText(draft.type) || "active").toLowerCase()} onChange={v => set("type", v)} options={[
-                        { value: "active", label: "Active", sub: "Takes traffic" }, { value: "standby", label: "Standby", sub: "Used on failover" },
+                        { value: "active", label: "Active", sub: "Takes traffic" }, { value: "standby", label: "Backup", sub: "Only when actives can't" },
                     ]} />
                 </Field>
-                <Toggle id="f-active" label="Enabled" description="Turn off to drain this server without deleting it." checked={draft.active !== false && draft.active !== "false"} onChange={v => set("active", v)} />
+                <Toggle id="f-active" label="Enabled" badge={draft.active === false || draft.active === "false" ? <Tag>down</Tag> : undefined}
+                    description="Turn off to drain this server without deleting it (nginx down). Backup servers take traffic only when no active server can (nginx backup)."
+                    checked={draft.active !== false && draft.active !== "false"} onChange={v => set("active", v)} />
             </Section>
+
+            {scheme !== "tcp" && (
+                <Section id="sec-limits" icon={FiShield} title="Limits & failure handling" description="Protect this server from overload and decide when it's taken out of rotation — nginx's server parameters.">
+                    <Field label="Max connections" htmlFor="f-maxconns" hint={<>Open connections from ScaleGuard to this server. When reached, requests go to other servers. Blank = unlimited. <Tag>max_conns</Tag></>}>
+                        <OptionalNumber id="f-maxconns" value={draft.maxConns} onChange={v => set("maxConns", v)} placeholder="unlimited" />
+                    </Field>
+                    <Field label="Failures before ejecting" htmlFor="f-maxfails" hint={<>Failed requests in a row (errors, 502/503/504, timeouts). Blank = the Backend health setting. <Tag>max_fails</Tag></>}>
+                        <OptionalNumber id="f-maxfails" value={draft.maxFails} onChange={v => set("maxFails", v)} placeholder="5 (default)" />
+                    </Field>
+                    <Field label="Ejection time" htmlFor="f-failtimeout" span={2} hint={<>How long the server stays out after being ejected; doubles if it fails again right away. Blank = the Backend health setting. <Tag>fail_timeout</Tag></>}>
+                        <OptionalNumber id="f-failtimeout" value={draft.failTimeoutSeconds} onChange={v => set("failTimeoutSeconds", v)} placeholder="10 (default)" unit="seconds" />
+                    </Field>
+                </Section>
+            )}
 
             <Section id="sec-balance" icon={FiZap} title="Load balancing" description="How much traffic this server gets compared with the rest of its group.">
                 <Field label="Load factor" htmlFor="f-lf" error={err("loadFactor")} span={2} hint="Share of the group's traffic, from 0 to 1.">
@@ -600,7 +702,7 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                         <span className="w-16 rounded-lg border border-slate-200 py-1.5 text-center font-mono text-[13px] tabular-nums text-slate-800 dark:border-white/10 dark:text-slate-100">{lf.toFixed(2)}</span>
                     </div>
                 </Field>
-                <Field label="Priority" htmlFor="f-prio" error={err("priority")} hint="Higher is preferred.">
+                <Field label="Priority" htmlFor="f-prio" error={err("priority")} hint="Lower numbers are tried first within a role (active/standby strategy).">
                     <TextInput id="f-prio" value={draft.priority} onChange={v => set("priority", v.replace(/[^\d-]/g, ""))} placeholder="0" inputMode="numeric" mono error={!!err("priority")} />
                 </Field>
             </Section>
@@ -615,10 +717,10 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
             : `${scheme}://<${asText(draft.hostGroupId) || "host group"}>${isHttp ? asText(draft.basePath) || "/" : ""}`;
 
     const flow = type === "sourcesystems"
-        ? [{ k: "Clients", v: listenUrl }, { k: "ScaleGuard", v: isTrue(draft.async) ? `queued via ${asText(draft.asyncEngine) || "engine"}` : "route & balance" }, { k: "Target", v: asText(draft.target) || "not set" }]
+        ? [{ k: "Clients", v: isHttp ? `${listenUrl}  ·  ${protocolChips.filter(c => c.on).map(c => c.label).join(", ")}` : listenUrl }, { k: "ScaleGuard", v: isTrue(draft.async) ? `queued via ${asText(draft.asyncEngine) || "engine"}` : "route & balance" }, { k: "Target", v: asText(draft.target) || "not set" }]
         : type === "targetsystems"
-            ? [{ k: "Sources", v: asText(draft.groupId) ? `route to ${draft.groupId}` : "group ID not set" }, { k: "ScaleGuard", v: isTrue(draft.enableCache) ? "cache + balance" : "balance" }, { k: "Host group", v: asText(draft.hostGroupId) || "not set" }]
-            : [{ k: "Host group", v: asText(draft.groupId) || "not set" }, { k: "This server", v: listenUrl }, { k: "Role", v: `${(asText(draft.type) || "active")}${draft.active === false ? " · disabled" : ""}` }];
+            ? [{ k: "Sources", v: asText(draft.groupId) ? `route to ${draft.groupId}` : "group ID not set" }, { k: "ScaleGuard", v: isTrue(draft.enableCache) ? "cache + balance" : "balance" }, { k: "Host group", v: `${asText(draft.hostGroupId) || "not set"}${isHttp ? `  ·  HTTP/1.1, gRPC over ${scheme === "https" ? "h2" : "h2c"}${isTrue(draft.tlsVerify) && scheme === "https" ? ", TLS verified" : ""}` : ""}` }]
+            : [{ k: "Host group", v: asText(draft.groupId) || "not set" }, { k: "This server", v: listenUrl }, { k: "Role", v: `${(asText(draft.type) || "active").toLowerCase() === "standby" ? "backup" : "active"}${draft.active === false ? " · down" : ""}${Number(draft.maxConns) > 0 ? ` · max ${draft.maxConns} conns` : ""}` }];
 
     return (
         <div className="mx-auto max-w-6xl pb-24">

@@ -54,14 +54,23 @@ public class SecureProxyInitializer extends ChannelInitializer<SocketChannel> {
 
 		pipeline.addLast(new LoggingHandler(LogLevel.DEBUG));
 		if (isSecureBackend) {
-
-			pipeline.addLast(sslContext.newHandler(ch.alloc()));
+			// SNI + optional certificate verification per target (nginx proxy_ssl_server_name / proxy_ssl_verify)
+			com.scaleguard.server.http.router.TargetSystem t = rt != null ? rt.getTargetSystem() : null;
+			com.scaleguard.server.http.router.HostGroup hg = rt != null ? rt.getSelectedHost() : null;
+			String host = hg != null ? hg.getHost() : t != null ? t.getHost() : null;
+			int port = 443;
+			try { port = Integer.parseInt(hg != null ? hg.getPort() : t.getPort()); } catch (Exception ignored) { }
+			pipeline.addLast(host != null ? UpstreamTls.http1(t, ch.alloc(), host, port) : sslContext.newHandler(ch.alloc()));
 		}
 		// Match the inbound cap so large backend responses are also bounded.
 		// Default 10 MB; tune via -Dscaleguard.maxBodyBytes.
 		int maxBody = Integer.getInteger("scaleguard.maxBodyBytes", 10 * 1024 * 1024);
 		pipeline.addLast(new HttpClientCodec());
 		pipeline.addLast(new HttpObjectAggregator(maxBody));
+		// proxy_read_timeout: 504 when a backend that owes a response goes quiet
+		long readTimeout = rt != null && rt.getTargetSystem() != null ? rt.getTargetSystem().readTimeoutMillis()
+				: Integer.getInteger("scaleguard.readTimeoutSeconds", 60) * 1000L;
+		pipeline.addLast("response-timeout", new ResponseTimeoutHandler(readTimeout));
 		pipeline.addLast(new ScaleGuardBackendHandler(rt,inbound,cacheKey));
 	}
 }

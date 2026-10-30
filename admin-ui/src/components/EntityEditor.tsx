@@ -25,6 +25,13 @@ const isTrue = (v: any) => v === true || v === "true";
 const isOn = (v: any) => v !== false && v !== "false";
 /** Optional numbers: blank and negative mean "use the default" (sent as -1 so a saved override can be cleared). */
 const NUMERIC_DEFAULTS = ["connectTimeoutMs", "readTimeoutSeconds", "retries", "maxConns", "maxFails", "failTimeoutSeconds"];
+/** Loose IPv4/IPv6 address or CIDR check (the server validates precisely). */
+const isCidr = (x: string) => {
+    const [ip, bits, extra] = x.split("/");
+    if (extra !== undefined || (bits !== undefined && !/^\d{1,3}$/.test(bits))) return false;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return ip.split(".").every(n => Number(n) <= 255) && (bits === undefined || Number(bits) <= 32);
+    return /^[0-9a-fA-F:]+(\.\d{1,3}){0,4}$/.test(ip) && ip.includes(":") && (bits === undefined || Number(bits) <= 128);
+};
 const numText = (v: any) => (v === null || v === undefined || v === "" || Number(v) < 0 ? "" : String(v));
 const asText = (v: any) => (v === null || v === undefined ? "" : String(v));
 const parseMaybeJSON = (v: any, fallback: any) => {
@@ -235,7 +242,12 @@ function validate(type: EntityType, o: any): Record<string, string> {
         if (!p) e[k] = "Enter a port.";
         else if (!/^\d+$/.test(p) || +p < 1 || +p > 65535) e[k] = "Use a number between 1 and 65535.";
     };
+    const cidrList = (k: string) => {
+        const bad = asText(o[k]).split(/[,\s]+/).filter(x => x && !isCidr(x));
+        if (bad.length) e[k] = `Not an IP or CIDR range: ${bad.join(", ")}`;
+    };
     if (type === "sourcesystems") {
+        cidrList("ipAllow"); cidrList("ipDeny");
         need("name", "Give this source a name.");
         if (scheme !== "tcp") need("host", "Enter the hostname clients will call.");
         port("port");
@@ -346,6 +358,7 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
             if ("cachedResources" in out) out.cachedResources = (parseMaybeJSON(out.cachedResources, []) || []).filter((r: any) => asText(r?.pattern).trim());
             if (type === "sourcesystems") {
                 out.async = isTrue(out.async);
+                ["ipAllow", "ipDeny"].forEach(k => { out[k] = asText(out[k]).split(/[,\s]+/).filter(Boolean).join(","); });
                 ["http2", "http3", "grpc"].forEach(k => { out[k] = isOn(out[k]); });
             }
             // Blank optional numbers go out as -1 so the server falls back to its default (null wouldn't clear a saved value).
@@ -517,7 +530,7 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                 </Field>
             </Section>
 
-            <Section id="sec-protect" icon={FiShield} title="Rate limit & firewall" description="Protect this route from floods and common attacks.">
+            <Section id="sec-protect" icon={FiShield} title="Rate limit, access & firewall" description="Protect this route from floods, unwanted clients and common attacks.">
                 <Field label="Requests per client" htmlFor="f-rl" span={2}
                     hint={rlMode === "default" ? "Follows the default on the Rate limiting page." : rlMode === "unlimited" ? "No limit for this route." : `About ${(Math.max(1, Number(draft.rateLimit) || 0) / 60).toFixed(1)} requests per second per client.`}>
                     <div className="flex flex-wrap items-center gap-2">
@@ -532,6 +545,14 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                             </span>
                         )}
                     </div>
+                </Field>
+                <Field label="Allow only these clients" htmlFor="f-ipAllow" error={err("ipAllow")}
+                    hint={<>IPs or CIDR ranges, comma-separated. Everyone else gets 403. Blank = open to all. <span className="font-mono">nginx: allow … ; deny all</span></>}>
+                    <TextInput id="f-ipAllow" value={draft.ipAllow} onChange={v => set("ipAllow", v)} placeholder="10.0.0.0/8, 192.168.1.20" mono error={!!err("ipAllow")} />
+                </Field>
+                <Field label="Always refuse" htmlFor="f-ipDeny" error={err("ipDeny")}
+                    hint={<>Refused on this route only (the Rate limiting page has a gateway-wide blocklist). <span className="font-mono">nginx: deny</span></>}>
+                    <TextInput id="f-ipDeny" value={draft.ipDeny} onChange={v => set("ipDeny", v)} placeholder="203.0.113.0/24" mono error={!!err("ipDeny")} />
                 </Field>
                 {!isNew && (
                     <RouterLink to={`/firewall?route=${id}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/60 p-3.5 text-[13.5px] font-medium text-slate-800 transition-colors hover:border-teal-400/40 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-100 sm:col-span-2">

@@ -115,7 +115,9 @@ const sourceSystemSchema = {
     "rateLimit":-1,
     "http2":true,
     "http3":true,
-    "grpc":true
+    "grpc":true,
+    "ipAllow":"",
+    "ipDeny":""
 }
 const targetSystemSchemaDef = {
     "scheme": {

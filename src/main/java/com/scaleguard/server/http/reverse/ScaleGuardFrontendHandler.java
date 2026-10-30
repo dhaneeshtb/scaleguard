@@ -19,6 +19,7 @@ import com.scaleguard.server.analytics.AccessLog;
 import com.scaleguard.server.analytics.AccessLogStore;
 import com.scaleguard.server.analytics.AccessRecord;
 import com.scaleguard.server.analytics.TraceContext;
+import com.scaleguard.server.http.router.AccessLists;
 import com.scaleguard.server.http.router.ClientIpResolver;
 import com.scaleguard.server.http.router.HostGroup;
 import com.scaleguard.server.http.router.PassiveHealthManager;
@@ -148,6 +149,15 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
                   HttpResponseStatus.MISDIRECTED_REQUEST);
           return;
         }
+      }
+
+      // IP access lists: the gateway blocklist (Rate limiting page), then the route's own allow/deny. Routed traffic only —
+      // the admin API isn't subject to them, so an operator can't lock themselves out.
+      if (ts != null && (AccessLists.get().isBlocked(peerIp, inAddress)
+              || (ts.getSourceSystem() != null && ts.getSourceSystem().refusesClient(peerIp, inAddress)))) {
+        if (rec != null) rec.finish(403, AccessRecord.IP_BLOCKED);
+        DefaultResponseHandler.getInstance().handleFailure(ctx, "Access denied", HttpResponseStatus.FORBIDDEN, withTrace(rec, java.util.Map.of()));
+        return;
       }
 
       RateLimitManager.Decision decision = rateLimitManager.check(ts, inAddress);

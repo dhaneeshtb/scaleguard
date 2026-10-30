@@ -248,6 +248,10 @@ public class RateLimitManager {
             return Decision.ALLOW;
         }
         String ip = ip(rt, clientIp);
+        if (AccessLists.get().isExempt(ip)) {   // exempt networks are never limited
+            allowed.increment();
+            return Decision.ALLOW;
+        }
         if (isBlocked(ip)) {
             rejected.increment();
             return new Decision(false, 60);

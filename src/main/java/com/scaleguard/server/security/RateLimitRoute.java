@@ -3,6 +3,7 @@ package com.scaleguard.server.security;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.scaleguard.server.http.reverse.RequestRoute;
 import com.scaleguard.server.http.reverse.RequestRoutingResponse;
+import com.scaleguard.server.http.router.AccessLists;
 import com.scaleguard.server.http.router.RateLimitManager;
 import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;
@@ -32,6 +33,30 @@ public class RateLimitRoute implements RequestRoute {
     public RequestRoutingResponse handle(String method, String uri, String body) throws Exception {
         RateLimitManager rl = RateLimitManager.getInstance();
         if ("get".equalsIgnoreCase(method)) {
+            return RequestRoutingResponse.succes(JSON.toString(view(rl)));
+        }
+        String[] parts = uri.split("\\?")[0].replaceAll("^/+|/+$", "").split("/");
+        if ("post".equalsIgnoreCase(method) && parts.length >= 2 && "access".equals(parts[1])) {
+            // POST /ratelimit/access          {"list":"blocked"|"exempt","values":"203.0.113.7, 10.0.0.0/8","note":"…","ttlSeconds":3600}
+            // POST /ratelimit/access/remove   {"list":"blocked"|"exempt","value":"10.0.0.0/8"}
+            JsonNode n = JSON.parse(body);
+            if (n == null) return error("Request body must be JSON.");
+            String list = n.path("list").asText("");
+            AccessLists acl = AccessLists.get();
+            try {
+                if (parts.length == 3 && "remove".equals(parts[2])) {
+                    if (!acl.remove(list, n.path("value").asText(""))) return RequestRoutingResponse.response(404, JSON.toString(Map.of("message", "Not on the list.")));
+                } else if (parts.length == 2) {
+                    String values = n.hasNonNull("values") ? n.get("values").asText("") : n.path("value").asText("");
+                    long ttl = n.path("ttlSeconds").asLong(0);
+                    if (ttl < 0 || ttl > 3650L * 86400) return error("ttlSeconds must be between 0 (permanent) and 10 years.");
+                    acl.add(list, values, n.hasNonNull("note") ? n.get("note").asText() : null, ttl);
+                } else {
+                    return RequestRoutingResponse.response(404, "{}");
+                }
+            } catch (IllegalArgumentException e) {
+                return error(e.getMessage());
+            }
             return RequestRoutingResponse.succes(JSON.toString(view(rl)));
         }
         if ("post".equalsIgnoreCase(method)) {
@@ -73,6 +98,7 @@ public class RateLimitRoute implements RequestRoute {
         settings.put("clusterMode", s.clusterMode());
         out.put("settings", settings);
         out.put("stats", rl.stats());
+        out.put("access", AccessLists.get().view());
         List<Map<String, Object>> routes = new ArrayList<>();
         for (SourceSystem ss : RouteTable.getInstance().getSourceSystsems()) {
             Map<String, Object> r = new LinkedHashMap<>();
@@ -80,6 +106,8 @@ public class RateLimitRoute implements RequestRoute {
             r.put("name", ss.getName());
             r.put("host", ss.getHost());
             r.put("rateLimit", ss.getRateLimit() == null || ss.getRateLimit() < 0 ? null : ss.getRateLimit());
+            r.put("ipAllow", ss.getIpAllow() == null || ss.getIpAllow().isBlank() ? null : ss.getIpAllow());
+            r.put("ipDeny", ss.getIpDeny() == null || ss.getIpDeny().isBlank() ? null : ss.getIpDeny());
             routes.add(r);
         }
         out.put("routes", routes);

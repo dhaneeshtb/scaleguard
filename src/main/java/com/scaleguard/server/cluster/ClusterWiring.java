@@ -39,7 +39,10 @@ public final class ClusterWiring {
         cm.on("target_systems", routes);
         cm.on("host_groups", routes);
 
-        cm.on("system_properties/ratelimit", () -> RateLimitManager.getInstance().reloadSettings());
+        cm.on("system_properties/ratelimit", () -> {
+            RateLimitManager.getInstance().reloadSettings();
+            com.scaleguard.server.http.router.AccessLists.get().reload();
+        });
         cm.on("system_properties/waf", () -> WafEngine.getInstance().reload());
         cm.on("system_properties/health", () -> PassiveHealthManager.getInstance().reload());
         cm.on("system_properties/analytics", () -> AccessLogStore.getInstance().reloadSettings());

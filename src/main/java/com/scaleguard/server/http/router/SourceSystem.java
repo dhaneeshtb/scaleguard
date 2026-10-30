@@ -153,6 +153,35 @@ public class SourceSystem {
   /** gRPC calls are proxied end to end over HTTP/2; needs HTTP/2. */
   public boolean grpcEnabled() { return !Boolean.FALSE.equals(grpc) && http2Enabled(); }
 
+  /*
+   * Per-route IP access, like nginx "allow …; deny …;" in a server block. Comma-separated IPs / CIDRs.
+   * ipAllow non-empty = only these clients may use the route; ipDeny = refused. Checked after the gateway blocklist.
+   */
+  private String ipAllow;
+  private String ipDeny;
+  private transient volatile String compiledAllowSrc, compiledDenySrc;
+  private transient volatile com.scaleguard.server.http.utils.CidrSet compiledAllow, compiledDeny;
+
+  public String getIpAllow() { return ipAllow; }
+  public void setIpAllow(String v) { this.ipAllow = v; }
+  public String getIpDeny() { return ipDeny; }
+  public void setIpDeny(String v) { this.ipDeny = v; }
+
+  /** True when this route's allow/deny lists refuse the client (or the connecting peer, for deny). */
+  public boolean refusesClient(String peerIp, String clientIp) {
+    String d = ipDeny;
+    if (d != null && !d.isBlank()) {
+      if (!d.equals(compiledDenySrc)) { compiledDeny = com.scaleguard.server.http.utils.CidrSet.parse(d); compiledDenySrc = d; }
+      if (compiledDeny.contains(clientIp) || (peerIp != null && compiledDeny.contains(peerIp))) return true;
+    }
+    String a = ipAllow;
+    if (a != null && !a.isBlank()) {
+      if (!a.equals(compiledAllowSrc)) { compiledAllow = com.scaleguard.server.http.utils.CidrSet.parse(a); compiledAllowSrc = a; }
+      if (!compiledAllow.isEmpty() && !compiledAllow.contains(clientIp)) return true;
+    }
+    return false;
+  }
+
   public Integer getRateLimit() {
     return rateLimit;
   }

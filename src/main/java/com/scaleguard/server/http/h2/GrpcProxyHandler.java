@@ -134,6 +134,11 @@ final class GrpcProxyHandler extends ChannelInboundHandlerAdapter {
             }
         }
 
+        if (rt != null && (com.scaleguard.server.http.router.AccessLists.get().isBlocked(peer, clientIp)
+                || (rt.getSourceSystem() != null && rt.getSourceSystem().refusesClient(peer, clientIp)))) {
+            refuse(ctx, PERMISSION_DENIED, "access denied");
+            return;
+        }
         RateLimitManager.Decision d = RateLimitManager.getInstance().check(rt, clientIp);
         if (!d.allowed()) {
             refuse(ctx, RESOURCE_EXHAUSTED, "rate limit exceeded; retry after " + d.retryAfterSeconds() + "s");

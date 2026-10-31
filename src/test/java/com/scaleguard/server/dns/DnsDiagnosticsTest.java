@@ -30,6 +30,8 @@ public class DnsDiagnosticsTest {
             DNSAddressBook.add("www." + zone + ".", "192.0.2.7", "a", 60);
             Map<String, Object> r = DnsDiagnostics.run("www." + zone);
             assertTrue((Boolean) check(r, "Local server answers for www." + zone).get("ok"));
+            assertTrue((Boolean) check(r, "Domain resolves to an address").get("ok")); // has an A record
+            assertFalse((Boolean) check(DnsDiagnostics.run(zone), "Domain resolves to an address").get("ok")); // nothing at the bare name
             assertFalse((Boolean) r.get("ok")); // no public delegation in a test
             assertEquals(5, ((List<?>) r.get("instructions")).size());
         } finally {

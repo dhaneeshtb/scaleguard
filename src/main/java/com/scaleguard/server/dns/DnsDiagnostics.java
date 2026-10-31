@@ -51,6 +51,15 @@ final class DnsDiagnostics {
             check(checks, "Local server answers for " + shown, false, e.getMessage());
         }
 
+        // 1b. it also resolves to an address: a declared domain answers with the connected nodes' IPs
+        try {
+            List<String> a = lookup("127.0.0.1", port, domain, "A");
+            check(checks, "Domain resolves to an address", !a.isEmpty(),
+                    a.isEmpty() ? "no A answer for " + shown + ": add an A record, or declare it under Domains served (needs the latest build)" : String.join(", ", a));
+        } catch (Exception e) {
+            check(checks, "Domain resolves to an address", false, e.getMessage());
+        }
+
         // 2. the public DNS delegates the domain to us
         try {
             List<String> delegated = lookup(PUBLIC_RESOLVER, 53, domain, "NS").stream().map(DnsWire::normalize).toList();

@@ -12,6 +12,9 @@ public class FileStorage {
     private static final Logger LOG = LoggerFactory.getLogger(FileStorage.class);
 
     static {
+        com.scaleguard.server.cluster.LedgerTables.register(new com.scaleguard.server.cluster.LedgerTables.Spec("cert_files",
+                java.util.List.of("certificate_id", "filename"), java.util.Set.of("id"), "id DESC",
+                ids -> java.util.List.of("cert_files"), () -> {}));
         try {
             createTable();
         } catch (Exception e) {
@@ -59,6 +62,7 @@ public class FileStorage {
                 insStmt.executeUpdate();
             }
             LOG.info("Cert file '{}' stored successfully for certificate '{}'", filename, certificateId);
+            com.scaleguard.server.cluster.LedgerTables.captureKeys("cert_files", java.util.List.of(java.util.List.of(certificateId, filename)));
             com.scaleguard.server.cluster.ClusterManager.changed("cert_files");
         } catch (Exception e) {
             LOG.error("Failed to store cert file '{}' for certificate '{}'", filename, certificateId, e);
@@ -83,10 +87,21 @@ public class FileStorage {
 
     public static void deleteFiles(String certificateId) {
         String sql = "DELETE FROM cert_files WHERE certificate_id = ?";
+        java.util.List<java.util.List<String>> gone = new java.util.ArrayList<>();
+        try (Connection conn = ConnectionUtil.getConnection();
+             PreparedStatement names = conn.prepareStatement("SELECT DISTINCT filename FROM cert_files WHERE certificate_id = ?")) {
+            names.setString(1, certificateId);
+            try (ResultSet rs = names.executeQuery()) {
+                while (rs.next()) gone.add(java.util.List.of(certificateId, rs.getString(1)));
+            }
+        } catch (Exception e) {
+            LOG.debug("Could not list cert files of {}: {}", certificateId, e.toString());
+        }
         try (Connection conn = ConnectionUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, certificateId);
             int deleted = pstmt.executeUpdate();
+            com.scaleguard.server.cluster.LedgerTables.captureKeys("cert_files", gone);
             LOG.info("Deleted {} cert file(s) for certificate '{}'", deleted, certificateId);
             com.scaleguard.server.cluster.ClusterManager.changed("cert_files");
         } catch (Exception e) {

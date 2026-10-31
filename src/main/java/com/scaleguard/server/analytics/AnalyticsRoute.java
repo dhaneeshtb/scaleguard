@@ -58,11 +58,34 @@ public class AnalyticsRoute implements RequestRoute {
         String action = parts.length > 1 ? parts[1] : "summary";
         AccessLogStore store = AccessLogStore.getInstance();
 
-        // Each node keeps its own access log; ?node=<name> reads another cluster member's.
+        // Peers pull this node's own rows from here (cluster analytics replication).
+        if ("replicate".equals(action)) {
+            long after = q.containsKey("after") ? Long.parseLong(q.get("after")) : 0;
+            int limit = Math.max(1, Math.min(50_000, intParam(q, "limit", 20_000)));
+            String origin = q.getOrDefault("origin", store.node());
+            return RequestRoutingResponse.later(() -> {
+                AccessLogStore.Table t = store.exportRows(origin, after, limit);
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("node", origin);
+                out.put("servedBy", store.node());
+                out.put("latestSeq", store.replicatedUpTo(origin));
+                Map<String, Long> cursors = new java.util.TreeMap<>(store.originCursors());
+                cursors.put(store.node(), store.replicatedUpTo(store.node()));
+                out.put("cursors", cursors);
+                out.put("columns", t.columns());
+                out.put("rows", t.rows());
+                return ok(out);
+            });
+        }
+
+        // With replication every node holds the whole cluster's access log: ?node=<name> just filters it.
+        // Without (replication off), each node keeps only its own and ?node=<name> reads that member's.
         String node = q.get("node");
-        if (node != null && !node.isBlank() && !node.equals(store.node())) {
+        boolean replicated = AnalyticsReplicator.active();
+        if (!replicated && node != null && !node.isBlank() && !node.equals(store.node())) {
             return com.scaleguard.server.cluster.NodeForwarder.forward(node, method, uri, body);
         }
+        if (!replicated) q.remove("node");   // single node / own log only: nothing to filter
 
         if ("settings".equals(action)) {
             if ("post".equalsIgnoreCase(method)) {
@@ -101,7 +124,7 @@ public class AnalyticsRoute implements RequestRoute {
 
         String range = RANGES.containsKey(q.get("range")) ? q.get("range") : "1h";
         return switch (action) {
-            case "summary" -> RequestRoutingResponse.later(() -> ok(summary(store, range, q.get("route"))));
+            case "summary" -> RequestRoutingResponse.later(() -> ok(summary(store, range, q.get("route"), q.get("node"))));
             case "logs" -> RequestRoutingResponse.later(() -> ok(logs(store, range, q, Math.min(500, Math.max(1, intParam(q, "limit", 100))))));
             case "export" -> RequestRoutingResponse.later(() -> export(store, range, q));
             default -> RequestRoutingResponse.response(404, JSON.toString(Map.of("message", "Unknown analytics endpoint")));
@@ -110,7 +133,7 @@ public class AnalyticsRoute implements RequestRoute {
 
     // ------------------------------------------------------------------ summary
 
-    static Map<String, Object> summary(AccessLogStore store, String range, String route) throws Exception {
+    static Map<String, Object> summary(AccessLogStore store, String range, String route, String node) throws Exception {
         long[] rb = RANGES.get(range);
         long now = System.currentTimeMillis();
         long from = now - rb[0];
@@ -120,6 +143,10 @@ public class AnalyticsRoute implements RequestRoute {
         if (route != null && !route.isBlank()) {
             where.append(" AND route_id = ?");
             p.add(route);
+        }
+        if (node != null && !node.isBlank()) {
+            where.append(" AND node = ?");
+            p.add(node);
         }
         String w = where.toString();
         Map<String, Object> out = new LinkedHashMap<>();
@@ -196,6 +223,7 @@ public class AnalyticsRoute implements RequestRoute {
         p.add(System.currentTimeMillis() - RANGES.get(range)[0]);
         if (notBlank(q.get("before"))) { w.append(" AND ts_ms < ?"); p.add(Long.parseLong(q.get("before"))); }
         if (notBlank(q.get("route"))) { w.append(" AND route_id = ?"); p.add(q.get("route")); }
+        if (notBlank(q.get("node"))) { w.append(" AND node = ?"); p.add(q.get("node")); }
         if (notBlank(q.get("ip"))) { w.append(" AND client_ip = ?"); p.add(q.get("ip").trim()); }
         if (notBlank(q.get("trace"))) { w.append(" AND trace_id = ?"); p.add(q.get("trace").trim().toLowerCase(Locale.ROOT)); }
         if (notBlank(q.get("method"))) { w.append(" AND method = ?"); p.add(q.get("method").trim().toUpperCase(Locale.ROOT)); }
@@ -264,6 +292,8 @@ public class AnalyticsRoute implements RequestRoute {
         m.put("enabled", s.enabled());
         m.put("retentionDays", s.retentionDays());
         m.put("status", store.status());
+        m.put("node", store.node());
+        m.put("replication", AnalyticsReplicator.status());
         return m;
     }
 

@@ -116,7 +116,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 |---|---|
 | **Web application firewall** | 21 built-in rules (SQL injection, XSS, path traversal, command injection, SSRF, Log4Shell, scanners and more) plus your own regex rules, plus **OWASP Core Rule Set import** with CRS-style anomaly scoring and paranoia levels. Enable per route; block, score or detect-only; tune each rule; dry-run any request. Inputs are normalised (multi-pass URL decoding, HTML entities, SQL comments) and patterns are ReDoS-safe |
 | **IP blocking & allow-lists** | Block IPs, networks or a whole proxy/CDN edge gateway-wide (permanently or for a set time, one click from the list of rate-limited clients), exempt monitoring and office networks from limits, and give any route its own allow/deny list |
-| **Rate limiting** | Token bucket per client per route, smooth across minute boundaries, `429` + `Retry-After`. Per-route overrides; trusted-proxy aware, so spoofed `X-Forwarded-For` can't dodge it. In a cluster, one budget across all nodes |
+| **Rate limiting** | Token bucket per client per route, smooth across minute boundaries, `429` + `Retry-After`. Per-route overrides; trusted-proxy aware, so spoofed `X-Forwarded-For` can't dodge it. In a cluster, one budget across all nodes (`strict` mode: never exceeded, steady per-client throughput) |
 | **OAuth 2.0 for APIs** | Built-in authorization server: client credentials and rotating refresh tokens, RS256 JWT access tokens checked at the edge, per-route required scopes, revocation, introspection, JWKS and discovery. Secrets are stored hashed and downloadable once at creation, with ready-to-run samples. [Guide](docs/OAUTH.md) |
 | **Admin API safety** | Token auth, separate admin rate limit so a strict setting can't lock you out |
 
@@ -142,7 +142,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 | **Admin UI** | Live traffic, analytics, routes, backend health, firewall, rate limits, cluster, certificates and DNS, all editable |
 | **REST API** | Everything in the UI is scriptable. [Reference](docs/API.md) and [OpenAPI 3 spec](docs/openapi.yaml) |
 | **Request analytics** | Every request recorded in a built-in DuckDB: live dashboards (traffic, status classes, p50/p95 latency, top routes, paths, clients, blocked attacks), searchable access logs with CSV/NDJSON export, and a read-only SQL console. W3C `traceparent` support and an `X-Trace-Id` on every response. No external log stack |
-| **High availability** | Point nodes at one PostgreSQL database and they form a cluster: config changes reach every node in under a second, a leader runs certificate renewal with automatic fail-over, and a Cluster page shows every node live |
+| **High availability** | Nodes form a cluster with no shared database: they elect a master by majority vote (Raft-style), keep identical configuration through a SHA-256-chained DuckDB ledger (changes go to the master and reach every node in milliseconds; tampered copies are refused), re-elect in about 3–6 s if the master dies, route analytics through the master to every node, and support a **DR standby site** that is promoted with one call. See [docs/CLUSTER.md](docs/CLUSTER.md) |
 | **Observability** | Prometheus `/metrics`, `/healthz` (503 when no backend is reachable), per-route `/stats`, firewall and rate-limit event feeds |
 | **Zero-reload config** | Every change applies instantly; settings persist to SQLite or Postgres |
 | **Fast I/O** | Netty 4.2 with io_uring, epoll or kqueue picked automatically, SO_REUSEPORT multi-acceptor listeners |
@@ -216,7 +216,7 @@ What you get **out of the box**, without extra modules, plugins or paid tiers. C
 | Web application firewall | ✅ built-in, per route | module | ❌ (Enterprise) | plugin | plugin | paid add-on (AWS WAF) |
 | OWASP CRS with anomaly scoring | ✅ import in the UI | module (ModSecurity, EOL) | ❌ (Enterprise) | ❌ (Hub) | plugin | managed rules (paid) |
 | Request analytics + SQL, built in | ✅ DuckDB | ❌ logs only | ❌ logs only | ❌ | ❌ | CloudWatch / Athena |
-| Multi-node config sync + shared rate limits | ✅ via PostgreSQL | ❌ (NGINX Plus) | partial (peers) | ❌ (Hub) | ❌ | ✅ managed |
+| Multi-node config sync + shared rate limits | ✅ built in (no database) | ❌ (NGINX Plus) | partial (peers) | ❌ (Hub) | ❌ | ✅ managed |
 | Per-client rate limiting | ✅ | ✅ | ✅ | ✅ | plugin | via AWS WAF |
 | Authoritative DNS server | ✅ | ❌ | ❌ | ❌ | ❌ | separate (Route 53) |
 | Self-hosted tunnels (ngrok-style) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |

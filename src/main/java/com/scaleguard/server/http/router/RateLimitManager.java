@@ -41,8 +41,12 @@ public class RateLimitManager {
     static final String P_TRUSTED = "ratelimit.trustedProxies";
     static final String P_CLUSTER_MODE = "ratelimit.clusterMode";
 
-    /** Cluster modes: each node limits on its own; nodes share one budget; or each node gets limit ÷ live nodes. */
-    public static final String MODE_LOCAL = "local", MODE_SHARED = "shared", MODE_DIVIDED = "divided";
+    /**
+     * Cluster modes: each node limits on its own (local); nodes share one budget, syncing twice a second (shared);
+     * each node gets limit ÷ live nodes (divided); or one budget that is never exceeded (strict: every 100 ms each
+     * node gets a slice of the client's remaining budget in proportion to where its requests arrive, and spends only that).
+     */
+    public static final String MODE_LOCAL = "local", MODE_SHARED = "shared", MODE_DIVIDED = "divided", MODE_STRICT = "strict";
 
     public static final String DEFAULT_TRUSTED = "127.0.0.0/8,::1/128";
     private static final long IDLE_EVICT_NANOS = TimeUnit.MINUTES.toNanos(5);
@@ -64,8 +68,9 @@ public class RateLimitManager {
             burstSeconds = Math.max(1, Math.min(3600, burstSeconds));
             trustedProxies = trustedProxies == null || trustedProxies.isBlank() ? DEFAULT_TRUSTED : trustedProxies.trim();
             clusterMode = clusterMode == null || clusterMode.isBlank() ? MODE_SHARED : clusterMode.trim().toLowerCase(java.util.Locale.ROOT);
-            if (!clusterMode.equals(MODE_LOCAL) && !clusterMode.equals(MODE_SHARED) && !clusterMode.equals(MODE_DIVIDED)) {
-                throw new IllegalArgumentException("clusterMode must be local, shared or divided");
+            if (!clusterMode.equals(MODE_LOCAL) && !clusterMode.equals(MODE_SHARED) && !clusterMode.equals(MODE_DIVIDED)
+                    && !clusterMode.equals(MODE_STRICT)) {
+                throw new IllegalArgumentException("clusterMode must be local, shared, divided or strict");
             }
         }
 
@@ -75,7 +80,7 @@ public class RateLimitManager {
     }
 
     /** Tokens one node spent on a key, as published to the other nodes (cumulative since the bucket was created). */
-    public record Usage(String key, double consumed, int limitPerMinute) {}
+    public record Usage(String key, double consumed, int limitPerMinute, double demand) {}
 
     /** Outcome of a rate check. */
     public record Decision(boolean allowed, long retryAfterSeconds) {
@@ -97,6 +102,15 @@ public class RateLimitManager {
         double unpublished;      // spent here since the last cluster publish
         double publishedTotal;   // spent here since this bucket was created, as last published
         boolean republish;       // the last publish failed
+        // strict mode
+        double attempts;         // requests seen here (allowed + refused): this node's demand, cumulative
+        double publishedAttempts;
+        double attemptsAtRebalance;
+        double localRate = -1;   // EWMA of attempts per tick here; -1 = not measured yet
+        java.util.Map<String, double[]> remote;   // node -> {EWMA attempts per tick, attempts since last rebalance}
+        double share = -1;       // this node's fraction of the budget; -1 = not assigned yet
+        double quota;            // tokens this node may still spend before the next rebalance
+        long quotaRefill;
 
         Bucket(String client, String route) { this.client = client; this.route = route; }
     }
@@ -269,8 +283,14 @@ public class RateLimitManager {
         });
         synchronized (b) {
             refill(b, now, limit);
-            if (b.tokens >= 1) {
+            boolean strict = !b.admin && clusterStrict();
+            if (strict) {
+                b.attempts += 1;
+                refillQuota(b, now, limit);
+            }
+            if (b.tokens >= 1 && (!strict || b.quota >= 1)) {
                 b.tokens -= 1;
+                if (strict) b.quota -= 1;
                 if (!b.admin && clusterShared()) b.unpublished += 1;
                 allowed.increment();
                 return Decision.ALLOW;
@@ -315,22 +335,96 @@ public class RateLimitManager {
 
     // ------------------------------------------------------------------ cluster-wide limits
 
-    /** True when buckets are shared with the other cluster nodes. */
+    /** True when buckets are shared with the other cluster nodes (shared or strict mode). */
     public boolean clusterShared() {
-        return MODE_SHARED.equals(settings.clusterMode()) && com.scaleguard.server.cluster.ClusterManager.enabled();
+        String m = settings.clusterMode();
+        return (MODE_SHARED.equals(m) || MODE_STRICT.equals(m)) && com.scaleguard.server.cluster.ClusterManager.enabled();
+    }
+
+    /** True when each node may spend only its slice of a client's budget (never exceeded cluster-wide). */
+    public boolean clusterStrict() {
+        return MODE_STRICT.equals(settings.clusterMode()) && com.scaleguard.server.cluster.ClusterManager.enabled();
+    }
+
+    /** Strict: the slice refills with this node's share of the rate; unassigned buckets start at 1 / live nodes. */
+    private void refillQuota(Bucket b, long now, int limitPerMinute) {
+        if (b.share < 0) {
+            b.share = 1.0 / Math.max(1, com.scaleguard.server.cluster.ClusterManager.liveNodes());
+            b.quota = b.share * Math.max(0, b.tokens);
+            b.quotaRefill = now;
+            return;
+        }
+        double elapsed = (now - b.quotaRefill) / 1e9;
+        if (elapsed > 0) {
+            double cap = b.share * burst(limitPerMinute, false);
+            b.quota = Math.min(Math.max(cap, 1), b.quota + elapsed * b.share * limitPerMinute / 60.0);
+            b.quotaRefill = now;
+        }
+    }
+
+    /** Strict: another node's demand (requests it saw, allowed or not) on a key since the last tick. */
+    public void applyRemoteDemand(String key, String node, double attempts) {
+        if (attempts <= 0 || key == null) return;
+        Bucket b = buckets.get(key);
+        if (b == null) return;           // created by applyRemote first when that node spent tokens
+        synchronized (b) {
+            if (b.remote == null) b.remote = new java.util.HashMap<>();
+            b.remote.computeIfAbsent(node, k -> new double[]{-1, 0})[1] += attempts;
+        }
+    }
+
+    private static final double EWMA = 0.5;     // weight of the newest tick in demand rates
+
+    /**
+     * Strict: after each sync tick, give every active key's budget out again — this node's slice is its share of the
+     * recent demand for that client (allowed + refused requests, so a node that is refusing claims more), times the
+     * tokens the client has left cluster-wide. The slices add up to the budget, so the limit is never exceeded.
+     */
+    public void rebalance() {
+        long now = System.nanoTime();
+        int live = Math.max(1, com.scaleguard.server.cluster.ClusterManager.liveNodes());
+        for (Bucket b : buckets.values()) {
+            if (b.admin) continue;
+            synchronized (b) {
+                double localDelta = b.attempts - b.attemptsAtRebalance;
+                b.attemptsAtRebalance = b.attempts;
+                b.localRate = b.localRate < 0 ? localDelta : EWMA * localDelta + (1 - EWMA) * b.localRate;
+                double remoteRate = 0;
+                int remoteActive = 0;
+                if (b.remote != null) {
+                    for (java.util.Iterator<double[]> it = b.remote.values().iterator(); it.hasNext(); ) {
+                        double[] r = it.next();
+                        r[0] = r[0] < 0 ? r[1] : EWMA * r[1] + (1 - EWMA) * r[0];
+                        r[1] = 0;
+                        if (r[0] < 0.01) it.remove();
+                        else { remoteRate += r[0]; remoteActive++; }
+                    }
+                }
+                if (b.localRate < 0.01 && remoteRate == 0) {
+                    if (b.share >= 0) b.share = 1.0 / live;    // idle client: back to an even split
+                    continue;
+                }
+                double eps = 0.05;
+                b.share = (b.localRate + eps) / (b.localRate + remoteRate + eps * (1 + remoteActive));
+                refill(b, now, b.limitPerMinute);
+                b.quota = b.share * Math.max(0, b.tokens);
+                b.quotaRefill = now;
+            }
+        }
     }
 
     /** Takes the per-key spend accumulated since the last call (at most {@code max} keys; the rest wait a tick). */
     public List<Usage> drainUsage(int max) {
         List<Usage> out = new ArrayList<>();
         for (Bucket b : buckets.values()) {
-            if (b.admin || (b.unpublished <= 0 && !b.republish)) continue;
+            if (b.admin || (b.unpublished <= 0 && !b.republish && b.attempts <= b.publishedAttempts)) continue;
             synchronized (b) {
-                if (b.unpublished <= 0 && !b.republish) continue;
+                if (b.unpublished <= 0 && !b.republish && b.attempts <= b.publishedAttempts) continue;
                 b.publishedTotal += b.unpublished;
                 b.unpublished = 0;
                 b.republish = false;
-                out.add(new Usage(b.key, b.publishedTotal, b.limitPerMinute));
+                b.publishedAttempts = b.attempts;
+                out.add(new Usage(b.key, b.publishedTotal, b.limitPerMinute, b.attempts));
             }
             if (out.size() >= max) break;
         }

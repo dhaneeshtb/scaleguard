@@ -29,6 +29,16 @@ public abstract class DBManager<T extends DBObject> {
         this.tableName=tableName;
         this.persistentClass = (Class<T>) ((ParameterizedType) getClass()
                 .getGenericSuperclass()).getActualTypeArguments()[0];
+        // configuration tables are replicated through the cluster ledger (data tables return no scopes and aren't)
+        if (!clusterScopes(List.of("x.y")).isEmpty()) {
+            com.scaleguard.server.cluster.LedgerTables.registerById(tableName, this::clusterScopes, () -> {
+                try {
+                    init();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
     }
 
     protected String ddl(){
@@ -186,6 +196,7 @@ public abstract class DBManager<T extends DBObject> {
     }
 
     private void published(Collection<String> ids) {
+        if (!clusterScopes(ids).isEmpty()) com.scaleguard.server.cluster.LedgerTables.capture(tableName, ids);
         try {
             com.scaleguard.server.cluster.ClusterManager.changed(clusterScopes(ids));
         } catch (Throwable e) {

@@ -60,6 +60,10 @@ public final class ClusterManager {
     static final String NOW_MS = "(extract(epoch from clock_timestamp()) * 1000)::bigint";
 
     private static final long TICK_MS = Math.max(100, Long.getLong("scaleguard.cluster.rateSyncMs", 500));
+    /** Rate-limit sync interval in strict mode, where slices of each client's budget are re-assigned this often. */
+    private static final long STRICT_TICK_MS = Math.max(20, Long.getLong("scaleguard.cluster.strictRateSyncMs", 100));
+    private static final long BASE_TICK_MS = Math.min(TICK_MS, STRICT_TICK_MS);
+    private long lastRateSyncAt;
     private static final long POLL_MS = Math.max(250, Long.getLong("scaleguard.cluster.pollMs", 2000));
     private static final long HEARTBEAT_MS = Math.max(500, Long.getLong("scaleguard.cluster.heartbeatMs", 3000));
     static final long NODE_TIMEOUT_MS = Math.max(3000, Long.getLong("scaleguard.cluster.nodeTimeoutMs", 15000));
@@ -73,7 +77,8 @@ public final class ClusterManager {
         return INSTANCE;
     }
 
-    private final boolean enabled;
+    private final boolean enabled;               // Postgres mode on
+    private final boolean ledger;                // ledger mode: DuckDB ledger + peer-to-peer gossip, no shared database
     private final String disabledReason;
     private final String node = NodeIdentity.name();
     private final String address = NodeIdentity.adminUrl();
@@ -119,33 +124,69 @@ public final class ClusterManager {
         String flag = System.getProperty("scaleguard.cluster");
         if (flag == null || flag.isBlank()) flag = AppProperties.get("scaleguard.cluster");
         boolean off = "false".equalsIgnoreCase(flag == null ? "" : flag.trim());
+        String mode = System.getProperty("scaleguard.cluster.mode");
+        if (mode == null || mode.isBlank()) mode = AppProperties.get("scaleguard.cluster.mode");
+        mode = mode == null ? "" : mode.trim().toLowerCase();
+        boolean peersConfigured = !PeerMesh.get().seeds().isEmpty();
         if (off) {
             enabled = false;
+            ledger = false;
             disabledReason = "Disabled with scaleguard.cluster=false";
-        } else if (!ConnectionUtil.isPostgres()) {
-            enabled = false;
-            disabledReason = "Single node: configuration is stored in the local SQLite database. "
-                    + "Point every node at the same PostgreSQL database (postgres.properties) to form a cluster.";
+        } else if ("postgres".equals(mode) || (mode.isEmpty() && ConnectionUtil.isPostgres() && !peersConfigured)) {
+            if (ConnectionUtil.isPostgres()) {
+                enabled = true;
+                ledger = false;
+                disabledReason = null;
+            } else {
+                enabled = false;
+                ledger = false;
+                disabledReason = "scaleguard.cluster.mode=postgres but no postgres.properties was found.";
+            }
         } else {
-            enabled = true;
-            disabledReason = null;
+            enabled = false;
+            ledger = true;
+            disabledReason = "Single node. To form a cluster start other nodes with -Dscaleguard.cluster.peers=<this node's address> "
+                    + "(every node keeps its own copy of the configuration in a DuckDB ledger; no shared database).";
         }
     }
 
     // ------------------------------------------------------------------ public API
 
-    /** True when this node shares its configuration with other nodes through PostgreSQL. */
+    /** True when this node shares its configuration with other nodes (through PostgreSQL or the ledger). */
     public static boolean enabled() {
-        return INSTANCE.enabled;
+        return INSTANCE.enabled || (INSTANCE.ledger && PeerMesh.get().clustered());
     }
 
-    /** True when this node should run singleton jobs (always true outside a cluster). */
+    /** True in ledger mode (the default without postgres.properties): DuckDB ledger replicated peer to peer. */
+    public static boolean ledgerMode() {
+        return INSTANCE.ledger;
+    }
+
+    /** True when this node is the master and should run singleton jobs (always true outside a cluster). */
     public static boolean isLeader() {
+        if (INSTANCE.ledger) return !PeerMesh.get().clustered() || PeerMesh.get().isLeader();
         return !INSTANCE.enabled || INSTANCE.leader;
+    }
+
+    /** The current master's node name, or null while none is elected (ledger mode) / known (Postgres mode). */
+    public String masterNode() {
+        if (ledger) return PeerMesh.get().clustered() ? PeerMesh.get().leaderNode() : node;
+        if (!enabled) return node;
+        if (leader) return node;
+        try (Connection c = ConnectionUtil.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT node FROM sg_cluster_nodes WHERE leader AND heartbeat_ms > " + NOW_MS + " - ?")) {
+            ps.setLong(1, NODE_TIMEOUT_MS);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Nodes that heartbeated recently (at least 1). */
     public static int liveNodes() {
+        if (INSTANCE.ledger) return PeerMesh.get().liveNodes();
         return INSTANCE.enabled ? Math.max(1, INSTANCE.liveNodes) : 1;
     }
 
@@ -161,6 +202,12 @@ public final class ClusterManager {
     /** Supplies the metrics published with each heartbeat. */
     public void metrics(Supplier<Map<String, Object>> supplier) {
         this.metrics = supplier == null ? Map::of : supplier;
+        PeerMesh.get().metrics(() -> {
+            Map<String, Object> m = new LinkedHashMap<>(this.metrics.get());
+            m.put("configReloads", reloads.sum());
+            m.put("rateLimitSync", rateSync.stats());
+            return m;
+        });
     }
 
     /**
@@ -168,7 +215,7 @@ public final class ClusterManager {
      * No-op outside a cluster.
      */
     public static void changed(Collection<String> scopes) {
-        if (!INSTANCE.enabled || scopes == null || scopes.isEmpty()) return;
+        if (!INSTANCE.enabled || scopes == null || scopes.isEmpty()) return;   // ledger mode: LedgerTables.capture logs the rows
         INSTANCE.bump(scopes);
     }
 
@@ -177,6 +224,10 @@ public final class ClusterManager {
     }
 
     public synchronized void start() {
+        if (ledger) {
+            startLedger();
+            return;
+        }
         if (!enabled) {
             LOG.info("Cluster: off — {}", disabledReason);
             return;
@@ -187,7 +238,7 @@ public final class ClusterManager {
             t.setDaemon(true);
             return t;
         });
-        ticker.scheduleWithFixedDelay(this::tick, 0, TICK_MS, TimeUnit.MILLISECONDS);
+        ticker.scheduleWithFixedDelay(this::tick, 0, BASE_TICK_MS, TimeUnit.MILLISECONDS);
         Runtime.getRuntime().addShutdownHook(new Thread(this::leave, "sg-cluster-leave"));
         LOG.info("Cluster: node '{}' ({}) joining; config poll {} ms, heartbeat {} ms, rate-limit sync {} ms",
                 node, address, POLL_MS, HEARTBEAT_MS, TICK_MS);
@@ -197,6 +248,64 @@ public final class ClusterManager {
     public void resyncAll() {
         Set<String> all = new LinkedHashSet<>(listeners.keySet());
         reloader.submit(() -> fire(all, "manual resync"));
+        if (ledger) PeerMesh.get().schedulePull();
+    }
+
+    /** Ledger mode: entries from other nodes were applied to the local store; reload what they touched. */
+    void fireRemote(Set<String> scopes, String from) {
+        if (scopes == null || scopes.isEmpty()) return;
+        Set<String> copy = new LinkedHashSet<>(scopes);
+        reloader.submit(() -> fire(copy, from));
+    }
+
+    /** Waits until reloads queued so far have run (read-your-writes after a forwarded change). */
+    void awaitReloads(long timeoutMs) {
+        try {
+            reloader.submit(() -> { }).get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (Exception ignored) {
+            // best effort
+        }
+    }
+
+    // ------------------------------------------------------------------ ledger mode
+
+    private long lastGossipAt;
+
+    private void startLedger() {
+        if (!started.compareAndSet(false, true)) return;
+        try {
+            Ledger.get().open();
+        } catch (Exception e) {
+            LOG.error("Cluster: could not open the ledger ({}); this node runs alone", e.toString());
+            return;
+        }
+        PeerMesh.get().start(this::ledgerTick, BASE_TICK_MS);
+    }
+
+    private void ledgerTick() {
+        long now = System.currentTimeMillis();
+        PeerMesh mesh = PeerMesh.get();
+        try {
+            mesh.electionTick();
+            if (now - lastGossipAt >= PeerMesh.HEARTBEAT_MS) {
+                lastGossipAt = now;
+                mesh.heartbeat();
+            }
+            if (mesh.clustered()) {
+                long rateEvery = com.scaleguard.server.http.router.RateLimitManager.getInstance().clusterStrict() ? STRICT_TICK_MS : TICK_MS;
+                if (now - lastRateSyncAt >= rateEvery - 5) {
+                    rateSync.peerTick(node, mesh);
+                    lastRateSyncAt = now;
+                }
+            }
+        } catch (Throwable e) {
+            error("cluster tick failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** Ledger mode: a peer pushed its rate-limit totals. */
+    public void receiveRates(com.fasterxml.jackson.databind.JsonNode msg) {
+        rateSync.receive(msg);
     }
 
     // ------------------------------------------------------------------ cluster thread
@@ -205,7 +314,11 @@ public final class ClusterManager {
         long now = System.currentTimeMillis();
         try {
             Connection c = connection();
-            rateSync.sync(c, node);
+            long rateEvery = com.scaleguard.server.http.router.RateLimitManager.getInstance().clusterStrict() ? STRICT_TICK_MS : TICK_MS;
+            if (now - lastRateSyncAt >= rateEvery - 5) {
+                rateSync.sync(c, node);
+                lastRateSyncAt = now;
+            }
             if (now - lastPollAt >= POLL_MS || notified(c)) {
                 poll(c);
                 lastPollAt = now;
@@ -448,7 +561,9 @@ public final class ClusterManager {
                     "CREATE TABLE IF NOT EXISTS sg_cluster_nodes (node text PRIMARY KEY, address text, started_ms bigint, heartbeat_ms bigint, leader boolean, info text)",
                     "CREATE TABLE IF NOT EXISTS sg_ratelimit_usage (rkey text NOT NULL, node text NOT NULL, consumed double precision NOT NULL, "
                             + "lim integer, uts bigint NOT NULL, PRIMARY KEY (rkey, node))",
-                    "CREATE INDEX IF NOT EXISTS sg_ratelimit_usage_uts ON sg_ratelimit_usage (uts)"
+                    "CREATE INDEX IF NOT EXISTS sg_ratelimit_usage_uts ON sg_ratelimit_usage (uts)",
+                    // strict rate limiting: requests each node saw per key (its demand), to split the budget by
+                    "ALTER TABLE sg_ratelimit_usage ADD COLUMN IF NOT EXISTS demand double precision NOT NULL DEFAULT 0"
             };
             Exception last = null;
             for (int attempt = 0; attempt < 3; attempt++) {   // two nodes creating the tables at once can collide
@@ -476,7 +591,9 @@ public final class ClusterManager {
     // ------------------------------------------------------------------ view for the admin API
 
     public Map<String, Object> snapshot() {
+        if (ledger) return ledgerSnapshot();
         Map<String, Object> m = new LinkedHashMap<>();
+        m.put("mode", enabled ? "postgres" : "off");
         m.put("enabled", enabled);
         if (!enabled) m.put("reason", disabledReason);
         Map<String, Object> self = new LinkedHashMap<>();
@@ -533,7 +650,7 @@ public final class ClusterManager {
         Map<String, Object> sync = new LinkedHashMap<>();
         sync.put("pollMs", POLL_MS);
         sync.put("heartbeatMs", HEARTBEAT_MS);
-        sync.put("rateSyncMs", TICK_MS);
+        sync.put("rateSyncMs", com.scaleguard.server.http.router.RateLimitManager.getInstance().clusterStrict() ? STRICT_TICK_MS : TICK_MS);
         sync.put("nodeTimeoutMs", NODE_TIMEOUT_MS);
         sync.put("changesPublished", published.sum());
         sync.put("reloads", reloads.sum());
@@ -552,9 +669,71 @@ public final class ClusterManager {
         return m;
     }
 
+    private Map<String, Object> ledgerSnapshot() {
+        PeerMesh mesh = PeerMesh.get();
+        Map<String, Object> m = new LinkedHashMap<>();
+        boolean on = enabled();
+        m.put("mode", "ledger");
+        m.put("enabled", on);
+        if (!on) m.put("reason", disabledReason);
+        Map<String, Object> self = new LinkedHashMap<>();
+        self.put("node", node);
+        self.put("address", address);
+        self.put("leader", isLeader());
+        if (mesh.isLeader()) self.put("leaderSince", mesh.leaderSince());
+        self.put("startedAt", startedAt);
+        m.put("self", self);
+        m.put("master", masterNode());
+        m.put("liveNodes", liveNodes());
+        m.put("nodes", mesh.memberView());
+        Map<String, Object> sync = new LinkedHashMap<>();
+        sync.put("heartbeatMs", PeerMesh.HEARTBEAT_MS);
+        sync.put("rateSyncMs", com.scaleguard.server.http.router.RateLimitManager.getInstance().clusterStrict() ? STRICT_TICK_MS : TICK_MS);
+        sync.put("nodeTimeoutMs", PeerMesh.NODE_TIMEOUT_MS);
+        sync.put("reloads", reloads.sum());
+        if (lastReloadAt > 0) {
+            sync.put("lastReloadAt", lastReloadAt);
+            sync.put("lastReloadScopes", lastReloadScopes);
+            sync.put("lastReloadFrom", lastReloadFrom);
+        }
+        if (lastError != null && System.currentTimeMillis() - lastErrorAt < TimeUnit.MINUTES.toMillis(10)) {
+            sync.put("lastError", lastError);
+            sync.put("lastErrorAt", lastErrorAt);
+        }
+        sync.put("rateLimit", rateSync.stats());
+        m.put("sync", sync);
+        Map<String, Object> mesh2 = mesh.status();
+        m.put("election", mesh2.remove("election"));
+        Map<String, Object> l = Ledger.get().status();
+        l.putAll(mesh2);
+        m.put("ledger", l);
+        m.put("config", List.of());
+        return m;
+    }
+
+    /** Live members other than this node: name → admin base address. */
+    public Map<String, String> livePeers() {
+        if (ledger) return PeerMesh.get().livePeers();
+        Map<String, String> out = new TreeMap<>();
+        if (!enabled) return out;
+        try (Connection c = ConnectionUtil.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT node, address FROM sg_cluster_nodes WHERE heartbeat_ms > "
+                     + NOW_MS + " - ? AND node <> ?")) {
+            ps.setLong(1, NODE_TIMEOUT_MS);
+            ps.setString(2, node);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) if (rs.getString(2) != null) out.put(rs.getString(1), rs.getString(2));
+            }
+        } catch (Exception e) {
+            LOG.debug("Could not list live cluster members: {}", e.toString());
+        }
+        return out;
+    }
+
     /** Address of a live member, or null. Used to forward per-node admin queries (e.g. analytics). */
     public String addressOf(String nodeName) {
         if (nodeName == null || nodeName.equals(node)) return null;
+        if (ledger) return PeerMesh.get().addressOf(nodeName);
         if (!enabled) return null;
         try (Connection c = ConnectionUtil.getConnection();
              PreparedStatement ps = c.prepareStatement("SELECT address FROM sg_cluster_nodes WHERE node = ? AND heartbeat_ms > "

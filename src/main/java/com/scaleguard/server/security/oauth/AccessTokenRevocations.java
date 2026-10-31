@@ -25,6 +25,14 @@ public final class AccessTokenRevocations {
     private AccessTokenRevocations() {}
 
     static {
+        com.scaleguard.server.cluster.LedgerTables.register(new com.scaleguard.server.cluster.LedgerTables.Spec("oauth_revoked_tokens",
+                java.util.List.of("jti"), java.util.Set.of(), null, ids -> java.util.List.of(SCOPE), () -> {
+                    try (Connection c = conn()) {
+                        // creates the table
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }));
         reload();
     }
 
@@ -46,6 +54,7 @@ public final class AccessTokenRevocations {
             ins.executeUpdate();
         }
         revoked.put(jti, exp);
+        com.scaleguard.server.cluster.LedgerTables.capture("oauth_revoked_tokens", java.util.List.of(jti));
         try {
             com.scaleguard.server.cluster.ClusterManager.changed(java.util.List.of(SCOPE));
         } catch (Throwable ignored) {

@@ -68,8 +68,8 @@ public class RateLimitRoute implements RequestRoute {
             int burst = n.has("burstSeconds") ? n.get("burstSeconds").asInt(-1) : cur.burstSeconds();
             String trusted = n.has("trustedProxies") ? n.get("trustedProxies").asText("") : cur.trustedProxies();
             String clusterMode = n.has("clusterMode") ? n.get("clusterMode").asText("") : cur.clusterMode();
-            if (!List.of("local", "shared", "divided").contains(clusterMode)) {
-                return error("clusterMode must be local, shared or divided.");
+            if (!List.of("local", "shared", "divided", "strict").contains(clusterMode)) {
+                return error("clusterMode must be local, shared, divided or strict.");
             }
 
             if (perMinute < 1 || perMinute > 10_000_000) return error("Requests per minute must be between 1 and 10,000,000.");

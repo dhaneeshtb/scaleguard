@@ -124,6 +124,12 @@ public class DefaultResponseHandler {
                     type = "quickmapping";
                 }
 
+                RequestRoutingResponse onMaster = com.scaleguard.server.cluster.MasterRouter.route(request.method().name(), uri,
+                        request.uri(), body, request.headers().get("X-ScaleGuard-Forwarded-By"));
+                if (onMaster != null) {
+                    handleResponse(ctx, onMaster);
+                    return;
+                }
                 com.fasterxml.jackson.databind.JsonNode saved = null;
                 if (request.method().name().equalsIgnoreCase("post")||request.method().name().equalsIgnoreCase("delete")) {
                     try {
@@ -151,6 +157,14 @@ public class DefaultResponseHandler {
                         return;
                     }
 
+                    if (isValidToken) {
+                        RequestRoutingResponse onMaster = com.scaleguard.server.cluster.MasterRouter.route(request.method().name(), uri,
+                                request.uri(), body, request.headers().get("X-ScaleGuard-Forwarded-By"));
+                        if (onMaster != null) {
+                            handleResponse(ctx, onMaster);
+                            return;
+                        }
+                    }
                     try {
                       RequestRoutingResponse resp =   rr.handle(request.method().name(), rr.receivesQueryString() ? request.uri() : uri, body);
                       handleResponse(ctx,resp);

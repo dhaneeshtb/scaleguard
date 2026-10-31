@@ -188,6 +188,8 @@ POST /ratelimit
 - `trustedProxies`: comma-separated IPs or CIDRs. `X-Forwarded-For` is only believed from these peers.
 - Per-route overrides: set `rateLimit` on the source system.
 - `clusterMode` (only matters in a [cluster](#cluster)): `shared` (default) — one budget for the whole cluster, nodes exchange per-client spend every 500 ms;
+  `strict` — one budget that is never exceeded: every 100 ms (`scaleguard.cluster.strictRateSyncMs`) each node takes a slice of the
+  client's remaining tokens in proportion to where its requests arrive; a client that moves node may be refused for up to ~100 ms;
   `divided` — each node allows `limit ÷ live nodes`; `local` — each node counts on its own.
 - `stats`: `allowed`, `rejected`, `trackedClients`, `limitedClients[]` (`client`, `route`, `rejected`, `limitPerMinute`, `lastRejectedSecondsAgo`).
 
@@ -291,10 +293,27 @@ if it sent one) so a request can be found in the log. Disable with `-Dscaleguard
 | `GET` | `/analytics/logs` | Access log rows, newest first, with filters and paging |
 | `GET` | `/analytics/export` | The same rows as CSV or NDJSON (up to 100,000) |
 | `POST` | `/analytics/query` | Read-only SQL over the `access_log` view |
-| `GET`/`POST` | `/analytics/settings` | `{"enabled", "retentionDays"}` plus storage status |
+| `GET`/`POST` | `/analytics/settings` | `{"enabled", "retentionDays"}` plus storage `status`, this `node` and cluster `replication` status |
+| `GET` | `/analytics/replicate` | Used by other cluster nodes: rows of `origin` (default this node) after `after` (seq), up to `limit` (≤ 50,000), plus this node's `cursors` per origin |
 
-Common query parameters: `range` (`15m`, `1h`, `6h`, `24h`, `7d`, `30d`), `route` (source system id) and
-`node` (in a cluster, read another node's log; the request is forwarded to it).
+Common query parameters: `range` (`15m`, `1h`, `6h`, `24h`, `7d`, `30d`), `route` (source system id) and `node`.
+
+**In a cluster every node has every node's requests, and they flow through the master.** Each node writes the
+requests it served to its own DuckDB file and numbers them. Every 2 s (`scaleguard.analytics.replicateMs`):
+- the **master** copies each other node's new rows (`GET /analytics/replicate?origin=<node>&after=<seq>` on that node);
+- every **other node** copies all nodes' rows from the master alone (`origin=<each node>` on the master), so a request
+  served anywhere reaches every node in about two copy intervals;
+- while no master is elected, nodes copy straight from each other so no node goes dark.
+
+No extra database is involved.
+- A node that was offline, or joins later, catches up by itself, back-filling up to the retention window.
+- Requests are never counted twice.
+- `node=<name>` filters to the requests that node served, including nodes that have since left.
+- `GET /analytics/settings` → `replication` shows the `master`, the `route` this node copies by, each origin's rows
+  copied, `via` (the master or the node itself), how far behind it is, the last copy and any error.
+- `-Dscaleguard.analytics.replicate=false` turns it off. Each node then keeps only its own log, and `node=<name>` is
+  forwarded to that node instead.
+- Every node stores the whole cluster's rows, so a node's analytics write load grows with the cluster's total traffic.
 
 - `summary` → `totals` (`requests`, `rps`, `errors4xx`, `errors5xx`, `wafBlocked`, `rateLimited`, `clients`, `bytesIn`, `bytesOut`, `avgMs`, `p50`, `p95`, `p99`),
   `series` (per-bucket counts and latency), `routes`, `paths`, `clients`, `backends`, `statuses`, `outcomes`, `protocols`, `wafRules`, `status`.
@@ -314,27 +333,55 @@ Columns: `ts` (UTC), `trace_id`, `client_ip`, `method`, `host`, `path`, `query`,
 
 ## Cluster
 
-Point every node at the same PostgreSQL database (`~/.scaleguard/postgres.properties` with `driver`, `url`,
-`username`, `password`) and they form a cluster; nothing else to run.
+ScaleGuard nodes form a cluster without any shared database. Full guide: [CLUSTER.md](CLUSTER.md).
 
-- **Shared configuration**: a change saved on any node reaches the others within about half a second
-  (PostgreSQL `LISTEN/NOTIFY`, with a 2 s poll as a fallback). Each node reloads only what changed — routes, WAF,
-  rate limits, health checks, DNS, certificates — keeping backend health and open-connection counts.
-- **Leader**: one node holds a PostgreSQL advisory lock and runs singleton jobs (certificate renewal). If it stops,
-  another node takes over at its next heartbeat (3 s).
-- **Cluster-wide rate limits**: see `clusterMode` under [Rate limiting](#rate-limiting).
-- **Analytics** stay per node; pass `node=` to the analytics endpoints to read another node's.
+```
+# on each node: the other voting nodes (use 3 or more), and how they reach this one
+-Dscaleguard.cluster.peers=10.0.0.11:80,10.0.0.12:80  -Dscaleguard.cluster.advertise=http://10.0.0.10:80
+```
+
+- **Master election**: the voting nodes (this node + `scaleguard.cluster.peers`) elect a master by majority vote,
+  Raft-style (terms, one vote per term, a candidate needs a ledger at least as complete as the voter's). A master that
+  can't reach a majority steps down. With 3 nodes, losing any one re-elects in about 3–6 s.
+- **Configuration ledger**: every change is appended to a DuckDB ledger (`~/.scaleguard/ledger.duckdb`) as the full row,
+  chained by SHA-256 to the previous entry. Admin changes (`POST`/`PUT`/`DELETE`) sent to any node are made on the
+  master; the node answers after it has applied the master's entry, so it reads its own write. Nodes pull missing
+  entries from each other within milliseconds, verify every link and apply rows last-writer-wins by hybrid logical
+  clock. A copy whose hash doesn't match is refused and fetched from another node.
+- **No master** (no majority reachable): changes are refused with `503`; traffic keeps flowing on the current
+  configuration.
+- **Refresh tokens** are issued, redeemed and revoked on the master, so a token can't be used twice on two nodes.
+- **Rate limits**: per-client spend is pushed node to node; see `clusterMode` under [Rate limiting](#rate-limiting).
+- **Analytics**: flow through the master to every node; see [Request analytics](#request-analytics).
+- **Disaster recovery**: nodes started with `scaleguard.cluster.dr=true` (and the primary nodes as peers) are standbys:
+  they copy configuration and analytics, serve traffic, follow the master, but never vote and keep their own
+  rate-limit budgets. `POST /cluster/dr/promote` turns the DR site into the primary.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/cluster` | Members, leader, per-node metrics, configuration versions and sync status |
-| `POST` | `/cluster/resync` | Reload everything on this node from the shared database now |
+| `GET` | `/cluster` | Mode, master, election, members, ledger chains, DR status and sync status |
+| `POST` | `/cluster/resync` | Reload everything on this node from its store now (ledger mode: also pull missing entries) |
+| `GET` | `/cluster/ledger/verify` | Re-hash every chain on this node → `{"ok", "chains": [{"origin", "node", "entries", "ok", "problem"?}], "tookMs"}` |
+| `POST` | `/cluster/dr/promote` | On a DR standby: promote the DR site. `{"force": true}` promotes even while the primary master answers (409 otherwise) |
+| `GET` | `/cluster/ledger?origin=&after=&limit=` | Node to node: entries of one chain |
+| `POST` | `/cluster/gossip`, `/cluster/vote`, `/cluster/rates`, `/cluster/dr/join`, `/cluster/oauth/{issue,redeem,revoke}` | Node to node: membership, election, rate limits, DR promotion, refresh tokens |
 
-`GET /cluster` → `{"enabled", "reason"?, "liveNodes", "self": {"node", "address", "leader", "startedAt"}, "nodes": [{"node", "address", "alive", "leader", "self", "lastSeenMs", "info": {"rps", "requests", "rateLimited", "wafBlocked", "routes", "backends", "backendsHealthy", "activeConnections", "heapUsedMb", "heapMaxMb", "uptimeMs", "http3Ports"}}], "sync": {...}, "config": [{"scope", "version", "updatedBy", "updatedAt"}]}`
+`GET /cluster` (ledger mode) → `{"mode": "ledger", "enabled", "master", "liveNodes", "self", "nodes": [{"node", "address",
+"alive", "leader", "dr", "ledgerEntries", "lastSeenMs", "info": {...}}], "election": {"role", "term", "master", "quorum",
+"voters", "elections", "lastElection"}, "ledger": {"origin", "genesis", "entries", "rows", "chains": [{"origin", "node",
+"seq", "hash"}], "inSync", "diverged": [], "lastPullError"?, "dr": {"standby", "primaryNodes", "standbyNodes",
+"lagEntries", "lastReplicatedAt", "promotedAt"?}}, "sync": {...}}`
 
-Node settings: `scaleguard.nodeName` (default `<hostname>:<http port>`), `scaleguard.cluster.advertise` (URL other
-nodes use to reach this node's admin API), `scaleguard.cluster=false` to opt out. All nodes must use the same admin
-credentials (tokens are signed with them, which is how nodes call each other).
+Settings: `scaleguard.nodeName` (default `<hostname>:<http port>`), `scaleguard.cluster.advertise` (URL other nodes use
+to reach this node's admin API), `scaleguard.cluster.peers`, `scaleguard.cluster.dr`, `scaleguard.cluster.quorum`
+(override the majority, e.g. `1` for a 2-node cluster that accepts split-brain risk), `scaleguard.cluster.heartbeatMs`
+(1000), `scaleguard.cluster.nodeTimeoutMs` (5000), `scaleguard.ledger.path`, `scaleguard.ledger.baseline=true` (merge
+this node's existing configuration into a cluster it joins), `scaleguard.cluster=false` to opt out. All nodes must use
+the same admin credentials (nodes call each other with tokens signed by them).
+
+**PostgreSQL mode** (earlier releases) still works: with `~/.scaleguard/postgres.properties` and no
+`scaleguard.cluster.peers`, nodes share the database, a PostgreSQL advisory lock picks the leader and
+`LISTEN/NOTIFY` spreads changes. Force either mode with `scaleguard.cluster.mode=ledger|postgres`.
 
 ## DNS
 

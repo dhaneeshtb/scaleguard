@@ -168,7 +168,7 @@ components:
         perMinute: { type: integer, minimum: 1, maximum: 10000000 }
         burstSeconds: { type: integer, minimum: 1, maximum: 3600 }
         trustedProxies: { type: string, example: "127.0.0.0/8,::1/128" }
-        clusterMode: { type: string, enum: [shared, divided, local], description: "How limits apply across cluster nodes (default shared)" }
+        clusterMode: { type: string, enum: [shared, strict, divided, local], description: "How limits apply across cluster nodes (default shared)" }
     RateLimitView:
       type: object
       properties:
@@ -474,6 +474,18 @@ paths:
       responses:
         '200': { description: "{columns, rows, truncated, ms}" }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /analytics/replicate:
+    get:
+      tags: [Analytics]
+      summary: "Cluster replication: one origin node's access-log rows after a sequence number (called by peer nodes; the master serves every origin)"
+      parameters:
+        - { $ref: '#/components/parameters/scaleguard' }
+        - { name: origin, in: query, description: "Node whose rows to return (default this node)", schema: { type: string } }
+        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 50000, default: 20000 } }
+      responses:
+        '200':
+          description: '{"node", "servedBy", "latestSeq", "cursors": {node: seq}, "columns": [...], "rows": [[seq, ts_ms, trace_hi, trace_lo, client_ip, ...], ...]}'
   /analytics/settings:
     get:
       tags: [Analytics]
@@ -489,15 +501,71 @@ paths:
   /cluster:
     get:
       tags: [Cluster]
-      summary: Members, leader, per-node metrics, configuration versions and sync status
+      summary: Mode, master, election, members, ledger chains, DR status and sync status
       parameters: [{ $ref: '#/components/parameters/scaleguard' }]
       responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
   /cluster/resync:
     post:
       tags: [Cluster]
-      summary: Reload all configuration on this node from the shared database
+      summary: Reload all configuration on this node (ledger mode also pulls missing entries)
       parameters: [{ $ref: '#/components/parameters/scaleguard' }]
       responses: { '200': { description: OK }, '400': { description: Not part of a cluster } }
+  /cluster/ledger/verify:
+    get:
+      tags: [Cluster]
+      summary: Re-hash every ledger chain on this node
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  tookMs: { type: integer }
+                  chains:
+                    type: array
+                    items: { type: object, properties: { origin: { type: string }, node: { type: string }, entries: { type: integer }, ok: { type: boolean }, problem: { type: string } } }
+  /cluster/ledger:
+    get:
+      tags: [Cluster]
+      summary: "Node to node: entries of one ledger chain after a sequence number (without origin: ledger status)"
+      parameters:
+        - { $ref: '#/components/parameters/scaleguard' }
+        - { name: origin, in: query, schema: { type: string } }
+        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 5000, default: 1000 } }
+      responses:
+        '200': { description: '{"origin", "entries": [{"origin", "seq", "hlc", "node", "tbl", "key", "op", "scopes", "row", "prev", "hash"}]}' }
+  /cluster/dr/promote:
+    post:
+      tags: [Cluster]
+      summary: "On a DR standby: promote the DR site to primary (its nodes elect a master in a new, higher term)"
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { force: { type: boolean, description: "Promote even while the primary master is reachable" } } } } } }
+      responses:
+        '200': { description: '{"ok": true, "message", "nodes": [...]}' }
+        '409': { description: Not a DR standby, or the primary master is still reachable (use force) }
+  /cluster/gossip:
+    post:
+      tags: [Cluster]
+      summary: "Node to node: membership heartbeat (address, term, role, ledger chain heads, known members); answers with the receiver's"
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /cluster/vote:
+    post:
+      tags: [Cluster]
+      summary: "Node to node: request a vote for master ({term, candidate, entries} → {node, term, granted, reason?})"
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /cluster/rates:
+    post:
+      tags: [Cluster]
+      summary: "Node to node: per-client rate-limit totals ({node, rows: [[key, consumed, limit, demand]]})"
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
   /dns:
     parameters: [{ $ref: '#/components/parameters/scaleguard' }]
     get:

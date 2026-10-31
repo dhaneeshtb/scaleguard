@@ -188,18 +188,7 @@ public final class AccessLogStore {
             code(r.method); code(r.host); code(r.protocol); code(r.routeId); code(r.routeName); code(r.backend); code(r.outcome);
         }
         code(node);
-        if (!newDims.isEmpty()) {
-            try (DuckDBAppender d = db.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "access_log_dims")) {
-                for (Map.Entry<String, Integer> e : newDims.entrySet()) {
-                    d.beginRow();
-                    d.append(e.getValue());
-                    d.append(e.getKey());
-                    d.endRow();
-                }
-                d.flush();
-            }
-            newDims.clear();
-        }
+        flushDims();
         int nodeCode = code(node);
         try (DuckDBAppender a = db.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "access_log_rows")) {
             for (AccessRecord r : rows) {
@@ -233,10 +222,12 @@ public final class AccessLogStore {
                 a.append(AccessRecord.cap(r.referer, 1024));
                 a.append(r.tls);
                 a.append(nodeCode);
+                a.append(++ownSeq);
                 a.endRow();
             }
             a.flush();
         }
+        originSeq.put(node, ownSeq);
         written.add(rows.size());
     }
 
@@ -248,7 +239,7 @@ public final class AccessLogStore {
      * and compress than storing every value as text. The view access_log_raw puts the text back, with exactly the
      * columns of the original table, so dashboards, exports and SQL console queries are unchanged.
      */
-    private final Map<String, Integer> dimIds = new java.util.HashMap<>();
+    private final Map<String, Integer> dimIds = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, Integer> newDims = new java.util.LinkedHashMap<>();
     private int nextDim = 1;
 
@@ -273,7 +264,10 @@ public final class AccessLogStore {
                   ts_ms BIGINT, trace_hi BIGINT, trace_lo BIGINT, client_ip VARCHAR, method INTEGER, host INTEGER, path VARCHAR,
                   query VARCHAR, protocol INTEGER, route_id INTEGER, route_name INTEGER, backend INTEGER,
                   status SMALLINT, grpc_status SMALLINT, bytes_in BIGINT, bytes_out BIGINT, duration_ms DOUBLE,
-                  outcome INTEGER, waf_rule VARCHAR, user_agent VARCHAR, referer VARCHAR, tls BOOLEAN, node INTEGER)""");
+                  outcome INTEGER, waf_rule VARCHAR, user_agent VARCHAR, referer VARCHAR, tls BOOLEAN, node INTEGER, seq BIGINT)""");
+        // seq: per-origin sequence number (rows written by a node are numbered 1, 2, 3 … on that node), which is what
+        // cluster replication uses as its cursor. Added to tables created before replication existed.
+        s.execute("ALTER TABLE access_log_rows ADD COLUMN IF NOT EXISTS seq BIGINT");
         // Data written by earlier versions lived in a table called access_log_raw: keep it, under another name.
         boolean legacy = false;
         try (ResultSet rs = s.executeQuery("SELECT table_type FROM information_schema.tables WHERE table_name = 'access_log_raw'")) {
@@ -294,10 +288,139 @@ public final class AccessLogStore {
                 nextDim = Math.max(nextDim, rs.getInt(1) + 1);
             }
         }
+        // replication cursors: highest seq held per origin node (our own included: our next number follows it)
+        try (ResultSet rs = s.executeQuery("SELECT d.value, max(r.seq) FROM access_log_rows r JOIN access_log_dims d ON d.id = r.node"
+                + " WHERE r.seq IS NOT NULL GROUP BY d.value")) {
+            while (rs.next()) originSeq.put(rs.getString(1), rs.getLong(2));
+        }
+        ownSeq = originSeq.getOrDefault(node, 0L);
         hasLegacy = legacy;
     }
 
     private boolean hasLegacy;
+
+    // ------------------------------------------------------------------ cluster replication
+
+    /*
+     * Every node writes its own requests locally and numbers them (seq). AnalyticsReplicator on each node pulls the
+     * rows other nodes wrote — "rows of origin X after seq N" — and appends them here, so every node ends up with the
+     * whole cluster's access log and answers analytics queries locally. Cursors are derived from the stored rows
+     * (max seq per origin), so a restarted or new node simply continues or back-fills; nothing is counted twice.
+     */
+    private final Map<String, Long> originSeq = new java.util.concurrent.ConcurrentHashMap<>();
+    private long ownSeq;
+    private final LongAdder replicatedIn = new LongAdder();
+
+    /** Highest seq stored for rows written by {@code origin}. */
+    public long replicatedUpTo(String origin) {
+        return originSeq.getOrDefault(origin, 0L);
+    }
+
+    static final String EXPORT_COLUMNS = "seq, ts_ms, trace_hi, trace_lo, client_ip, method, host, path, query, protocol, "
+            + "route_id, route_name, backend, status, grpc_status, bytes_in, bytes_out, duration_ms, outcome, waf_rule, "
+            + "user_agent, referer, tls";
+
+    /** Rows this node wrote itself after {@code afterSeq}, oldest first, text columns resolved. */
+    public Table exportOwnRows(long afterSeq, int limit) throws SQLException {
+        return exportRows(node, afterSeq, limit);
+    }
+
+    /**
+     * Rows that {@code origin} wrote, after {@code afterSeq} in its numbering — this node's own, or (on the master)
+     * rows it collected from other nodes, so the master can pass every node's rows on to the others.
+     */
+    public Table exportRows(String origin, long afterSeq, int limit) throws SQLException {
+        Integer self = dimIds.get(origin);
+        if (self == null) return new Table(List.of(EXPORT_COLUMNS.split(", ")), List.of(), false, 0);
+        return query("SELECT r.seq, r.ts_ms, r.trace_hi, r.trace_lo, r.client_ip, dm.value, dh.value, r.path, r.query, dp.value,"
+                + " dr.value, dn.value, db.value, r.status, r.grpc_status, r.bytes_in, r.bytes_out, r.duration_ms, dout.value,"
+                + " r.waf_rule, r.user_agent, r.referer, r.tls FROM access_log_rows r"
+                + " LEFT JOIN access_log_dims dm ON dm.id = r.method LEFT JOIN access_log_dims dh ON dh.id = r.host"
+                + " LEFT JOIN access_log_dims dp ON dp.id = r.protocol LEFT JOIN access_log_dims dr ON dr.id = r.route_id"
+                + " LEFT JOIN access_log_dims dn ON dn.id = r.route_name LEFT JOIN access_log_dims db ON db.id = r.backend"
+                + " LEFT JOIN access_log_dims dout ON dout.id = r.outcome"
+                + " WHERE r.node = ? AND r.seq > ? ORDER BY r.seq LIMIT ?", List.of(self, afterSeq, limit), limit, 60);
+    }
+
+    /** Appends rows written by another node (as returned by its {@link #exportOwnRows}); returns how many were new. */
+    public synchronized int importRows(String origin, com.fasterxml.jackson.databind.JsonNode rows) throws SQLException {
+        if (!available || origin == null || origin.equals(node) || rows == null || !rows.isArray() || rows.size() == 0) return 0;
+        long have = replicatedUpTo(origin);
+        java.util.List<com.fasterxml.jackson.databind.JsonNode> fresh = new java.util.ArrayList<>();
+        for (com.fasterxml.jackson.databind.JsonNode r : rows) if (r.get(0).asLong() > have) fresh.add(r);
+        if (fresh.isEmpty()) return 0;
+        for (com.fasterxml.jackson.databind.JsonNode r : fresh) {
+            for (int i : new int[]{5, 6, 9, 10, 11, 12, 18}) code(text(r, i));
+        }
+        code(origin);
+        flushDims();
+        int originCode = code(origin);
+        long max = have;
+        try (DuckDBAppender a = db.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "access_log_rows")) {
+            for (com.fasterxml.jackson.databind.JsonNode r : fresh) {
+                a.beginRow();
+                a.append(r.get(1).asLong());               // ts_ms
+                a.append(r.get(2).asLong());               // trace_hi
+                a.append(r.get(3).asLong());               // trace_lo
+                a.append(text(r, 4));                      // client_ip
+                a.append(code(text(r, 5)));                // method
+                a.append(code(text(r, 6)));                // host
+                a.append(text(r, 7));                      // path
+                a.append(text(r, 8));                      // query
+                a.append(code(text(r, 9)));                // protocol
+                a.append(code(text(r, 10)));               // route_id
+                a.append(code(text(r, 11)));               // route_name
+                a.append(code(text(r, 12)));               // backend
+                a.append((short) r.get(13).asInt());       // status
+                a.append((short) r.get(14).asInt());       // grpc_status
+                a.append(r.get(15).asLong());              // bytes_in
+                a.append(r.get(16).asLong());              // bytes_out
+                a.append(r.get(17).asDouble());            // duration_ms
+                a.append(code(text(r, 18)));               // outcome
+                a.append(text(r, 19));                     // waf_rule
+                a.append(text(r, 20));                     // user_agent
+                a.append(text(r, 21));                     // referer
+                a.append(r.get(22).asBoolean());           // tls
+                a.append(originCode);
+                long seq = r.get(0).asLong();
+                a.append(seq);
+                a.endRow();
+                max = Math.max(max, seq);
+            }
+            a.flush();
+        }
+        originSeq.put(origin, max);
+        replicatedIn.add(fresh.size());
+        return fresh.size();
+    }
+
+    private static String text(com.fasterxml.jackson.databind.JsonNode r, int i) {
+        com.fasterxml.jackson.databind.JsonNode v = r.get(i);
+        return v == null || v.isNull() ? null : v.asText();
+    }
+
+    /** Writes queued new dimension values (callers hold the store's lock). */
+    private void flushDims() throws SQLException {
+        if (newDims.isEmpty()) return;
+        try (DuckDBAppender d = db.createAppender(DuckDBConnection.DEFAULT_SCHEMA, "access_log_dims")) {
+            for (Map.Entry<String, Integer> e : newDims.entrySet()) {
+                d.beginRow();
+                d.append(e.getValue());
+                d.append(e.getKey());
+                d.endRow();
+            }
+            d.flush();
+        }
+        newDims.clear();
+    }
+
+    public long replicatedIn() {
+        return replicatedIn.sum();
+    }
+
+    public Map<String, Long> originCursors() {
+        return new java.util.TreeMap<>(originSeq);
+    }
 
     /** access_log_raw: the compact rows with their text put back, in the column order of the original table. */
     private static String rawViewSql(boolean legacy) {

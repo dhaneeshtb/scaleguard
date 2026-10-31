@@ -37,8 +37,11 @@ export default function Analytics() {
     const [tab, setTab] = useState<Tab>("overview");
     const [range, setRange] = useState<Range>("1h");
     const [route, setRoute] = useState("");
-    const [node, setNode] = useState("");               // cluster member whose access log to read ("" = this node)
+    // Cluster: with replication every node holds every node's requests, so "" = all nodes and a name filters to the
+    // requests that node served. Without replication each node has only its own log: "" = this node, a name reads that member.
+    const [node, setNode] = useState("");
     const [nodes, setNodes] = useState<{ node: string; self: boolean }[]>([]);
+    const [replicated, setReplicated] = useState(false);
     const [summary, setSummary] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
     const [live, setLive] = useState(true);
@@ -57,10 +60,22 @@ export default function Analytics() {
     }, [host, headers, range, route, node]);
 
     useEffect(() => { if (tab === "overview") load(); }, [load, tab]);
-    useEffect(() => { // in a cluster each node keeps its own access log: offer a node picker
-        axios.get(`${host}/cluster?scaleguard=true`, { headers })
-            .then(r => setNodes(r.data.enabled ? (r.data.nodes || []).filter((n: any) => n.alive).map((n: any) => ({ node: n.node, self: n.self })) : []))
-            .catch(() => setNodes([]));
+    useEffect(() => { // in a cluster: offer a node picker
+        Promise.all([
+            axios.get(`${host}/cluster?scaleguard=true`, { headers }).catch(() => null),
+            axios.get(`${host}/analytics/settings?scaleguard=true`, { headers }).catch(() => null),
+        ]).then(([c, s]) => {
+            const repl = !!s?.data?.replication?.active;
+            const self = s?.data?.node;
+            const live = c?.data?.enabled ? (c.data.nodes || []).filter((n: any) => n.alive).map((n: any) => ({ node: n.node as string, self: !!n.self })) : [];
+            // replicated: also list nodes that are gone but whose requests are still in the log
+            const origins = repl ? Object.keys(s?.data?.replication?.cursors || {}) : [];
+            const all = [...live];
+            origins.forEach(o => { if (!all.some(n => n.node === o)) all.push({ node: o, self: o === self }); });
+            all.sort((a, b) => a.node.localeCompare(b.node));
+            setReplicated(repl);
+            setNodes(all);
+        });
     }, [host, headers]);
     useEffect(() => {
         if (!live || tab !== "overview") return;
@@ -86,10 +101,12 @@ export default function Analytics() {
                     { value: "sql", label: "SQL" }, { value: "settings", label: "Settings" }]} />
                 {(tab === "overview" || tab === "logs" || tab === "sql") && (
                     <div className="flex flex-wrap items-center gap-2">
-                        {nodes.length > 1 && (
-                            <div className="w-44">
-                                <select aria-label="Node" value={node} onChange={e => setNode(e.target.value)} className={`${inputCls} h-9`}>
-                                    {nodes.map(n => <option key={n.node} value={n.self ? "" : n.node}>{n.node}{n.self ? " (this node)" : ""}</option>)}
+                        {nodes.length > 1 && !(replicated && tab === "sql") && (
+                            <div className="w-48">
+                                <select aria-label="Node" value={node} onChange={e => setNode(e.target.value)} className={`${inputCls} h-9`}
+                                    title={replicated ? "Every node holds the whole cluster's requests; pick a node to see only the requests it served" : "Each node keeps its own access log"}>
+                                    {replicated && <option value="">All nodes</option>}
+                                    {nodes.map(n => <option key={n.node} value={replicated ? n.node : n.self ? "" : n.node}>{n.node}{n.self ? " (this node)" : ""}</option>)}
                                 </select>
                             </div>
                         )}
@@ -479,13 +496,56 @@ function Settings({ host, headers }: { host: string; headers: any }) {
             <Card icon={FiDatabase} title="Storage">
                 {!st.available ? <p className="text-[13px] text-amber-600">Unavailable: {st.reason}</p> : (
                     <dl className="space-y-2 text-[12.5px]">
-                        {[["Rows written", fmt(st.written)], ["Dropped (writer behind)", fmt(st.dropped)], ["Waiting to write", fmt(st.queued)], ["File size", bytes(st.fileBytes || 0)]].map(([k, v]) => (
+                        {[[s.replication?.active ? "Requests served by this node" : "Rows written", fmt(st.written)],
+                          ...(s.replication?.active ? [["Copied from other nodes", fmt(s.replication.rowsReplicatedIn || 0)]] : []),
+                          ["Dropped (writer behind)", fmt(st.dropped)], ["Waiting to write", fmt(st.queued)], ["File size", bytes(st.fileBytes || 0)]].map(([k, v]) => (
                             <div key={k} className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">{k}</dt><dd className="font-mono tabular-nums text-slate-800 dark:text-slate-100">{v}</dd></div>
                         ))}
                         <div className="pt-1"><dt className="text-slate-500 dark:text-slate-400">File</dt><dd className="break-all font-mono text-[11.5px] text-slate-700 dark:text-slate-300">{st.path}</dd></div>
                     </dl>
                 )}
             </Card>
+            {s.replication?.active && <Replication repl={s.replication} self={s.node} />}
         </div>
+    );
+}
+
+/** Cluster replication: every node copies the other nodes' requests, so each has the whole cluster's analytics. */
+function Replication({ repl, self }: { repl: any; self: string }) {
+    const peers: [string, any][] = Object.entries(repl.peers || {});
+    return (
+        <Card icon={FiDatabase} title="Cluster replication" className="lg:col-span-2"
+            description={repl.master
+                ? (repl.master === self
+                    ? `This node is the master: it collects every node's requests every ${Math.round((repl.intervalMs || 2000) / 1000)} s, and the other nodes copy the whole cluster's analytics from it.`
+                    : `Requests go to the master (${repl.master}) first; this node copies every node's requests from it every ${Math.round((repl.intervalMs || 2000) / 1000)} s. A node that was offline or joins later catches up on its own.`)
+                : `This node holds every node's requests. It copies new rows from each peer every ${Math.round((repl.intervalMs || 2000) / 1000)} s; a node that was offline or joins later catches up on its own.`}>
+            {peers.length === 0 ? <p className="text-[12.5px] text-slate-500">No other nodes online.</p> : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[12.5px]">
+                        <thead className="text-[11px] uppercase tracking-wide text-slate-400">
+                            <tr><th className="py-1.5 pr-3 font-semibold">Node</th><th className="py-1.5 pr-3 font-semibold">Via</th><th className="py-1.5 pr-3 text-right font-semibold">Rows copied</th><th className="py-1.5 pr-3 text-right font-semibold">Behind</th><th className="py-1.5 pr-3 font-semibold">Last copy</th><th className="py-1.5 font-semibold">Status</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+                            {peers.map(([name, p]) => {
+                                const behind = Math.max(0, (p.theirLatestSeq || 0) - (p.upToSeq || 0));
+                                const age = p.lastPullAt ? Math.round((Date.now() - p.lastPullAt) / 1000) : null;
+                                return (
+                                    <tr key={name}>
+                                        <td className="py-2 pr-3 font-mono text-slate-800 dark:text-slate-100">{name}</td>
+                                        <td className="py-2 pr-3 font-mono text-slate-500 dark:text-slate-400">{p.via && p.via !== name ? p.via : "direct"}</td>
+                                        <td className="py-2 pr-3 text-right font-mono tabular-nums">{fmt(p.rowsCopied || 0)}</td>
+                                        <td className="py-2 pr-3 text-right font-mono tabular-nums">{fmt(behind)}</td>
+                                        <td className="py-2 pr-3 text-slate-500 dark:text-slate-400">{age === null ? "—" : `${age}s ago`}</td>
+                                        <td className="py-2">{p.error ? <Pill tone="bad">{p.error}</Pill> : behind === 0 ? <Pill tone="good">in sync</Pill> : <Pill tone="warn">catching up</Pill>}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            <p className="mt-3 text-[11.5px] text-slate-500 dark:text-slate-400">This node: <span className="font-mono">{self}</span>. The dashboards show all nodes; use the node picker to see one node's requests.</p>
+        </Card>
     );
 }

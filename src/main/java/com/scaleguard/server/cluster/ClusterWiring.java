@@ -73,8 +73,25 @@ public final class ClusterWiring {
         cm.on("certificate_orders", certs);
         cm.on("cert_files", certs);
 
+        // every replicated table must be registered before the ledger records a baseline or applies remote rows
+        LedgerTables.setBuiltIns(() -> {
+            com.scaleguard.server.db.SourceSystemDB.getInstance();
+            com.scaleguard.server.db.TargetSystemDB.getInstance();
+            com.scaleguard.server.db.HostGroupsDB.getInstance();
+            com.scaleguard.server.db.SystemPropertyDB.getInstance();
+            com.scaleguard.server.db.DNSEntriesDB.getInstance();
+            com.scaleguard.server.db.ApplicationEntriesDB.getInstance();
+            com.scaleguard.server.db.ClientInfoEntriesDB.getInstance();
+            com.scaleguard.server.db.CertificateOrdersDB.getInstance();
+            com.scaleguard.server.db.AsyncEngineEntriesDB.getInstance();
+            com.scaleguard.server.db.FileStorage.retrieveFileAsString("", "");
+            com.scaleguard.server.security.oauth.AccessTokenRevocations.isRevoked(null);
+            com.scaleguard.server.security.oauth.RefreshTokens.activeCounts();
+        });
         cm.metrics(ClusterWiring::metrics);
         cm.start();
+        // every node keeps the whole cluster's access log (pulls peers' rows; no-op outside a cluster)
+        com.scaleguard.server.analytics.AnalyticsReplicator.start();
     }
 
     private static synchronized Map<String, Object> metrics() {

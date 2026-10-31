@@ -27,7 +27,12 @@ public final class NodeForwarder {
 
     /** Runs off the I/O thread; answers 502 if the node is gone or unreachable. */
     public static RequestRoutingResponse forward(String node, String method, String uriWithQuery, String body) {
-        return RequestRoutingResponse.later(() -> {
+        return RequestRoutingResponse.later(() -> call(node, method, uriWithQuery, body));
+    }
+
+    /** Blocking: sends the admin request to another member and returns its answer (502 if unreachable). */
+    public static RequestRoutingResponse call(String node, String method, String uriWithQuery, String body) {
+        {
             String base = ClusterManager.get().addressOf(node);
             if (base == null) {
                 return RequestRoutingResponse.response(502, JSON.toString(Map.of("message",
@@ -42,6 +47,8 @@ public final class NodeForwarder {
                 b.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body));
             } else if ("delete".equalsIgnoreCase(method)) {
                 b.DELETE();
+            } else if ("put".equalsIgnoreCase(method) || "patch".equalsIgnoreCase(method)) {
+                b.header("Content-Type", "application/json").method(method.toUpperCase(), HttpRequest.BodyPublishers.ofString(body == null ? "" : body));
             } else {
                 b.GET();
             }
@@ -53,6 +60,6 @@ public final class NodeForwarder {
                 return RequestRoutingResponse.response(502, JSON.toString(Map.of("message",
                         "Couldn't reach node '" + node + "' at " + base + ": " + e.getMessage())));
             }
-        });
+        }
     }
 }

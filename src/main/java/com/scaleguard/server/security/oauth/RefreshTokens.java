@@ -22,6 +22,44 @@ public final class RefreshTokens {
 
     private RefreshTokens() {}
 
+    private static final String TABLE = "oauth_refresh_tokens";
+
+    static {
+        // replicated through the cluster ledger; reads go to the local store, so no reload scope is needed
+        com.scaleguard.server.cluster.LedgerTables.register(new com.scaleguard.server.cluster.LedgerTables.Spec(TABLE,
+                java.util.List.of("id"), java.util.Set.of(), null, ids -> java.util.List.of(), () -> {
+                    try (Connection c = conn()) {
+                        // creates the table
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }));
+    }
+
+    private static void logged(java.util.Collection<String> ids) {
+        com.scaleguard.server.cluster.LedgerTables.capture(TABLE, ids);
+    }
+
+    private static java.util.List<String> idsWhere(Connection c, String where, String value) throws Exception {
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        try (PreparedStatement ps = c.prepareStatement("SELECT id FROM " + TABLE + " WHERE " + where)) {
+            ps.setString(1, value);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getString(1));
+            }
+        }
+        return ids;
+    }
+
+    /** Revokes a token chain on this node and logs it, e.g. after the ledger saw the same token redeemed on two nodes. */
+    public static void revokeFamilyClusterWide(String family) {
+        try (Connection c = conn()) {
+            revokeFamily(c, family);
+        } catch (Exception e) {
+            LOG.warn("Could not revoke refresh token chain: {}", e.toString());
+        }
+    }
+
     /** A redeemed token's grant, to be re-issued. */
     public record Grant(String clientId, String appId, String scope, String family) {}
 
@@ -49,14 +87,46 @@ public final class RefreshTokens {
         return c;
     }
 
+    // In a ledger cluster the master is the single authority for refresh tokens: issuing, redeeming and revoking run
+    // there, so a token can't be redeemed twice on two nodes. Without a reachable master a node does it itself.
+
     /** Stores a new refresh token and returns it (the only time its value exists). */
     public static String issue(String clientId, String appId, String scope, String family, int ttlSeconds) throws Exception {
+        java.util.Map<String, Object> req = new java.util.HashMap<>();
+        req.put("clientId", clientId);
+        req.put("appId", appId);
+        req.put("scope", scope);
+        req.put("family", family);
+        req.put("ttl", ttlSeconds);
+        com.fasterxml.jackson.databind.JsonNode r = com.scaleguard.server.cluster.MasterRouter.callMaster("oauth/issue", req);
+        if (r != null && r.hasNonNull("token")) return r.get("token").asText();
+        return issueLocal(clientId, appId, scope, family, ttlSeconds);
+    }
+
+    public static Grant redeem(String token, String clientId) throws Exception {
+        com.fasterxml.jackson.databind.JsonNode r = com.scaleguard.server.cluster.MasterRouter.callMaster("oauth/redeem",
+                java.util.Map.of("token", token == null ? "" : token, "clientId", clientId));
+        if (r == null) return redeemLocal(token, clientId);
+        if (r.path("reused").asBoolean()) throw new Reused();
+        if (!r.hasNonNull("family")) return null;
+        return new Grant(r.path("clientId").asText(), r.path("appId").asText(null), r.path("scope").asText(null), r.path("family").asText());
+    }
+
+    public static boolean revoke(String token, String clientId) throws Exception {
+        com.fasterxml.jackson.databind.JsonNode r = com.scaleguard.server.cluster.MasterRouter.callMaster("oauth/revoke",
+                java.util.Map.of("token", token == null ? "" : token, "clientId", clientId));
+        return r != null ? r.path("revoked").asBoolean() : revokeLocal(token, clientId);
+    }
+
+    /** The master's side of {@link #issue}. */
+    public static String issueLocal(String clientId, String appId, String scope, String family, int ttlSeconds) throws Exception {
         String token = Secrets.newRefreshToken();
+        String id = Secrets.lookupKey(token);
         long now = System.currentTimeMillis();
         try (Connection c = conn();
              PreparedStatement ps = c.prepareStatement("INSERT INTO oauth_refresh_tokens"
                      + " (id, family, clientid, appid, scope, issued, expires, used, revoked) VALUES (?,?,?,?,?,?,?,0,0)")) {
-            ps.setString(1, Secrets.lookupKey(token));
+            ps.setString(1, id);
             ps.setString(2, family != null ? family : Secrets.random(12));
             ps.setString(3, clientId);
             ps.setString(4, appId);
@@ -65,6 +135,7 @@ public final class RefreshTokens {
             ps.setLong(7, now + ttlSeconds * 1000L);
             ps.executeUpdate();
         }
+        logged(java.util.List.of(id));
         purgeOccasionally();
         return token;
     }
@@ -73,7 +144,8 @@ public final class RefreshTokens {
      * Marks the token used and returns its grant. Returns null when it is unknown, expired, revoked or belongs to another
      * client; throws {@link Reused} (after revoking the family) when it was already used.
      */
-    public static Grant redeem(String token, String clientId) throws Exception {
+    /** The master's side of {@link #redeem}. */
+    public static Grant redeemLocal(String token, String clientId) throws Exception {
         if (token == null || !token.startsWith(Secrets.REFRESH_PREFIX)) return null;
         String id = Secrets.lookupKey(token);
         try (Connection c = conn()) {
@@ -108,12 +180,14 @@ public final class RefreshTokens {
                     throw new Reused();
                 }
             }
+            logged(java.util.List.of(id));
             return g;
         }
     }
 
     /** RFC 7009: revokes the token's whole chain. Returns false when the token is unknown or another client's. */
-    public static boolean revoke(String token, String clientId) throws Exception {
+    /** The master's side of {@link #revoke}. */
+    public static boolean revokeLocal(String token, String clientId) throws Exception {
         if (token == null || !token.startsWith(Secrets.REFRESH_PREFIX)) return false;
         try (Connection c = conn();
              PreparedStatement ps = c.prepareStatement("SELECT family, clientid FROM oauth_refresh_tokens WHERE id = ?")) {
@@ -130,8 +204,11 @@ public final class RefreshTokens {
     public static int revokeClient(String clientId) {
         try (Connection c = conn();
              PreparedStatement ps = c.prepareStatement("UPDATE oauth_refresh_tokens SET revoked = 1 WHERE clientid = ? AND revoked = 0")) {
+            java.util.List<String> ids = idsWhere(c, "clientid = ? AND revoked = 0", clientId);
             ps.setString(1, clientId);
-            return ps.executeUpdate();
+            int n = ps.executeUpdate();
+            logged(ids);
+            return n;
         } catch (Exception e) {
             LOG.warn("Could not revoke refresh tokens of {}: {}", clientId, e.toString());
             return 0;
@@ -155,10 +232,12 @@ public final class RefreshTokens {
     }
 
     private static void revokeFamily(Connection c, String family) throws Exception {
+        java.util.List<String> ids = idsWhere(c, "family = ?", family);
         try (PreparedStatement ps = c.prepareStatement("UPDATE oauth_refresh_tokens SET revoked = 1 WHERE family = ?")) {
             ps.setString(1, family);
             ps.executeUpdate();
         }
+        logged(ids);
     }
 
     /** Drops rows that expired more than a day ago (used tokens are kept that long to detect reuse). */

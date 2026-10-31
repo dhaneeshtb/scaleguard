@@ -7,7 +7,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { updateSource } from "../../components/sourceupdate";
 import { Card, Field, PageHeader, Pill, SaveBar, Segmented, Stat, ToggleRow, ago, fmt, inputCls } from "../../components/ui/controls";
 
-type ClusterMode = "local" | "shared" | "divided";
+type ClusterMode = "local" | "shared" | "divided" | "strict";
 interface Settings { enabled: boolean; perMinute: number; burstSeconds: number; trustedProxies: string; clusterMode?: ClusterMode }
 interface LimitedClient { client: string; route: string; rejected: number; limitPerMinute: number; lastRejectedSecondsAgo: number }
 interface RouteRow { id: string; name: string; host: string; rateLimit: number | null; ipAllow?: string | null; ipDeny?: string | null }
@@ -17,6 +17,7 @@ interface View { settings: Settings; stats: { allowed: number; rejected: number;
 
 const CLUSTER_HELP: Record<ClusterMode, string> = {
     shared: "One budget for the whole cluster: nodes tell each other what every client spent, so a client gets the limit once no matter which node it reaches.",
+    strict: "One budget that is never exceeded: every 100 ms the nodes split each client's remaining allowance by where its requests are arriving. Steadiest per-client throughput; a client that moves to another node may be refused for up to ~100 ms.",
     divided: "Each node allows its share (limit ÷ live nodes). No coordination traffic; accurate when your load balancer spreads clients evenly.",
     local: "Each node counts on its own, so a client can get up to the limit from every node.",
 };
@@ -123,7 +124,7 @@ export default function RateLimiting() {
                     {view.stats.cluster && (
                         <Card icon={FiServer} title="Across the cluster" description={`${view.stats.clusterNodes ?? 1} live node${(view.stats.clusterNodes ?? 1) === 1 ? "" : "s"} share this configuration.`}>
                             <Segmented id="rl-cluster" value={(draft.clusterMode ?? "shared") as ClusterMode} onChange={v => setDraft({ ...draft, clusterMode: v })}
-                                options={[{ value: "shared", label: "Shared" }, { value: "divided", label: "Divided" }, { value: "local", label: "Per node" }]} />
+                                options={[{ value: "shared", label: "Shared" }, { value: "strict", label: "Strict" }, { value: "divided", label: "Divided" }, { value: "local", label: "Per node" }]} />
                             <p className="mt-3 text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-300">{CLUSTER_HELP[(draft.clusterMode ?? "shared") as ClusterMode]}</p>
                         </Card>
                     )}

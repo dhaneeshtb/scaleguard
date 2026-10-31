@@ -18,8 +18,11 @@ src/main/java/com/scaleguard/server/
                     CertificateStore), AltSvcHandler (adds Alt-Svc on TLS HTTP/1.1 + HTTP/2), RetryTokenHandler (opt-in)
   analytics/        AccessLogStore (DuckDB writer + read-only query), AccessRecord, AccessLog (backend response pairing),
                     TraceContext (traceparent / X-Trace-Id), AnalyticsRoute (/analytics/*)
-  cluster/          ClusterManager (Postgres: config versions + LISTEN/NOTIFY, heartbeats, advisory-lock leader), ClusterWiring
-                    (which subsystems reload per scope), RateLimitSync (shared buckets), NodeForwarder, ClusterRoute (/cluster)
+  cluster/          ClusterManager (mode switch; Postgres mode: config versions + LISTEN/NOTIFY, advisory-lock leader),
+                    Ledger (DuckDB hash-chained change log, LWW by HLC), LedgerTables (capture/apply replicated rows),
+                    PeerMesh (gossip membership, Raft-style master election, ledger pulls, DR standby/promotion),
+                    MasterRouter (admin writes → master), ClusterWiring (reload hooks per scope), RateLimitSync (DB or
+                    peer push), NodeForwarder, ClusterRoute (/cluster/*)
   http/router/      RouteTable (in-memory routes), ConfigManager (CRUD for sources/targets/host groups),
                     SourceSystem / TargetSystem / HostGroup, RateLimitManager, ClientIpResolver, HostGroupWatcher (active
                     health polls), PassiveHealthManager (ejects failing backends), BackendHealthRoute (/backends), BestHostSelector
@@ -71,8 +74,9 @@ Full reference: `docs/API.md` + `docs/openapi.yaml` (OpenAPI 3.0). **Update both
   `scaleguard.acceptors`, `scaleguard.ioThreads` (default = cores), `scaleguard.rateLimit` (first-run default, per min), `scaleguard.adminRateLimit` (3000/min),
   `scaleguard.trustedProxies`, `scaleguard.http2` (default true), `scaleguard.http2.maxConcurrentStreams` (250),
   `scaleguard.http3` (default true) + `scaleguard.http3.{retry,maxStreams,idleTimeoutSeconds,congestion,sockets}`,
-  `scaleguard.analytics` (false disables) + `.path/.retentionDays/.threads/.memory/.queue/.flushMs/.batch`, `scaleguard.traceHeaders`,
-  `scaleguard.nodeName`, `scaleguard.cluster` (false opts out), `scaleguard.cluster.{advertise,pollMs,heartbeatMs,rateSyncMs}`,
+  `scaleguard.analytics` (false disables) + `.path/.retentionDays/.threads/.memory/.queue/.flushMs/.batch/.writerPriority/.replicate/.replicateMs`, `scaleguard.traceHeaders`,
+  `scaleguard.nodeName`, `scaleguard.cluster` (false opts out), `scaleguard.cluster.{mode,peers,dr,quorum,advertise,pollMs,heartbeatMs,nodeTimeoutMs,rateSyncMs,strictRateSyncMs}`,
+  `scaleguard.ledger.{path,baseline,testHooks}`,
   `scaleguard.waf.{guard,matchBudgetMicros,cacheEntries}`, `dnsServer=true` + `dns*` keys (documented in DnsConfig.java).
 
 ## Build & run
@@ -129,6 +133,12 @@ Data (SQLite DB, certs, licence) lives in `~/.scaleguard` (LicenceUtil.dataDir()
 - Analytics storage: `access_log_rows` (repeated text as integer codes into `access_log_dims`, trace id as two BIGINTs)
   behind the view `access_log_raw` (the original column list) and `access_log`. Pre-upgrade data was renamed
   `access_log_v1` and is UNIONed in until retention empties it. Query `access_log_raw`/`access_log`, never the tables.
+- Analytics replication (cluster): each node numbers its own rows (`access_log_rows.seq`, per origin = `node` column);
+  `AnalyticsReplicator` (virtual thread, every `scaleguard.analytics.replicateMs`) pulls `GET /analytics/replicate?after=`
+  from `ClusterManager.livePeers()` and `AccessLogStore.importRows` appends them. Cursors = max(seq) per origin from the
+  table, so restarts/new nodes catch up and nothing is duplicated. With replication on, `?node=` filters locally
+  (`node = ?`) instead of forwarding. Test: `clustertest/repl_test.py`-style (2 nodes sharing a route port, kill one,
+  add a third).
 - Performance work: compare builds with CPU µs per request, alternating old/new builds (A/B), never single runs — this
   kind of VM varies ±15% run to run. Warm up ≥ 25 s (JIT).
 - OAuth (`security/oauth/`): `OAuthServer` serves `/oauth2/{token,revoke,introspect,jwks}` + RFC 8414 metadata, dispatched
@@ -143,7 +153,19 @@ Data (SQLite DB, certs, licence) lives in `~/.scaleguard` (LicenceUtil.dataDir()
 - HTTP/3 streams (`QuicStreamChannel`) have a `QuicStreamAddress` as remote address: get the client with
   `Http3Listener.peer(ch)`, never cast `remoteAddress()` to InetSocketAddress. `closeOnFlush` must not write a ByteBuf to a
   stream channel (its codec only takes HTTP objects).
-- Clustering: every `DBManager` write bumps a scope in `sg_cluster_config` (SystemPropertyDB: `system_properties/<id prefix>`);
+- Cluster rate-limit modes (`ratelimit.clusterMode`): shared (sync cumulative spend, 500 ms; can overshoot by up to one
+  sync interval and then pays it back), strict (every `strictRateSyncMs`=100 ms, `RateLimitSync` also publishes per-bucket
+  attempts as `sg_ratelimit_usage.demand`; `RateLimitManager.rebalance()` gives each node `quota = share × tokens`, share ∝
+  EWMA of local vs remote attempts; a check needs a token AND a quota token), divided, local. Test: `dev-tools/cluster/rl_test.py`.
+- Ledger cluster (default without postgres.properties; docs/CLUSTER.md): a persisted write must be captured —
+  `DBManager.published` → `LedgerTables.capture(table, ids)` (reads the row back, appends upsert/delete). Tables written
+  with raw SQL register a `LedgerTables.Spec` (static block) and call `capture`/`captureKeys` after the write (see
+  FileStorage, RefreshTokens, AccessTokenRevocations) and must be listed in `ClusterWiring`'s `setBuiltIns`. Remote
+  entries are applied by delete+insert by key, then `ClusterManager.fireRemote(scopes)` runs the reload hooks. Admin
+  non-GET requests are forwarded to the master by `MasterRouter` (hooked in DefaultResponseHandler; `cluster`/`signin`/
+  analytics queries stay local); refresh tokens go through `MasterRouter.callMaster`. Election state (term, vote),
+  origin, genesis and DR promotion live in `ledger_meta`. Tests: dev-tools/cluster (README there).
+- Clustering (Postgres mode): every `DBManager` write bumps a scope in `sg_cluster_config` (SystemPropertyDB: `system_properties/<id prefix>`);
   other nodes run the reloads registered in `ClusterWiring`. A new persisted setting needs a reload hook there, and its reload
   must replace (not merge) in-memory state. `RouteTable.reload()` keeps HostGroup objects (health, connection counts).
   Singleton jobs must check `ClusterManager.isLeader()`.

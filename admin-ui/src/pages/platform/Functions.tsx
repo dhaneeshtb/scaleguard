@@ -23,6 +23,15 @@ const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 const lines = (s: string) => s.split("\n").map(x => x.trim()).filter(Boolean);
 const errText = (e: any, fb: string) => e?.response?.data?.message || fb;
+const EXAMPLES: { name: string; code: string }[] = [
+    { name: "Hello world", code: "// Whatever you return is the response (a Map or List becomes JSON).\nreturn [message: 'Hello from ScaleGuard', path: path, method: method]\n" },
+    { name: "Echo the request", code: "// headers, query, body, method, path are ready-made variables.\nreturn [\n    method: method,\n    path: path,\n    query: query,                 // ?a=1&b=2  ->  [a:'1', b:'2']\n    userAgent: headers['user-agent'],\n    body: body                    // JSON -> Map/List, form -> Map, otherwise text\n]\n" },
+    { name: "JSON API (GET + POST)", code: "if (method == 'GET') {\n    return [items: [[id: 1, name: 'one'], [id: 2, name: 'two']]]\n}\nif (method == 'POST') {\n    if (!body?.name) {\n        return res.status(400).json([error: 'name is required'])\n    }\n    return res.status(201).json([id: ctx.uuid(), name: body.name])\n}\nreturn res.status(405).json([error: 'use GET or POST'])\n" },
+    { name: "Path parameter + headers", code: "// route /users/42  ->  id = 42\ndef id = path.tokenize('/').last()\nres.header('Cache-Control', 'max-age=60')\nreturn [user: id, requestedBy: headers['x-api-key'] ? 'api key' : 'anonymous']\n" },
+    { name: "Redirect or plain text", code: "if (query.go) {\n    return res.redirect('https://example.com/' + ctx.urlEncode(query.go))\n}\nreturn res.text('ok\\n')\n" },
+    { name: "Signed webhook (secret)", code: "// Tick the secret under Permissions first. Reads ctx.secret('WEBHOOK_KEY').\ndef expected = ctx.hmacSha256(ctx.secret('WEBHOOK_KEY'), rawBody)\nif (headers['x-signature'] != expected) {\n    log.warn('bad signature from ' + req.clientIp)\n    return res.status(401).json([error: 'bad signature'])\n}\nreturn [received: body]\n" },
+    { name: "Call another API (needs network)", code: "// Turn on outbound network under Permissions.\ndef r = http.get('https://api.example.com/items/' + (query.id ?: '1'), [Accept: 'application/json'])\nif (!r.ok) {\n    return res.status(502).json([error: 'upstream ' + r.status])\n}\nreturn [upstream: r.json()]\n" },
+];
 const isDark = () => document.documentElement.classList.contains("dark");
 
 export default function Functions() {
@@ -207,12 +216,16 @@ export default function Functions() {
                         </div>
                         <div className="mt-4"><ToggleRow id="fn-enabled" label="Enabled" description="A disabled function answers 503 on every route that uses it." checked={current.enabled} onChange={v => set({ enabled: v })} /></div>
                         <div className="mt-4">
-                            <Field label="Code (Groovy)" hint={<>Available: <code>req</code>, <code>res</code>, <code>ctx</code>, <code>log</code>, <code>http</code>, <code>config</code>. Return a Map/List (JSON) or text, or use <code>res.status(201).json(…)</code>. Imports, classes, annotations, reflection, files, threads and System are not allowed.</>}>
+                            <Field label="Code (Groovy)" hint={<>Ready-made variables: <code>method</code>, <code>path</code>, <code>headers</code>, <code>query</code>, <code>body</code> (JSON/form parsed), <code>rawBody</code>; plus <code>req</code>, <code>res</code>, <code>ctx</code>, <code>log</code>, <code>http</code>, <code>config</code>. Return a Map/List (JSON) or text, or use <code>res.status(201).json(…)</code>. Imports, classes, annotations, reflection, files, threads and System are not allowed.</>}>
                                 <div className="overflow-hidden rounded-xl border border-slate-200 text-[13px] dark:border-white/10">
                                     <CodeMirror value={current.code} height="320px" theme={isDark() ? "dark" : "light"} onChange={v => set({ code: v })} />
                                 </div>
                             </Field>
-                            <div className="mt-2 flex items-center gap-3">
+                            <div className="mt-2 flex flex-wrap items-center gap-3">
+                                <select aria-label="Load an example" className="h-9 rounded-xl border border-slate-200 bg-transparent px-2 text-[12.5px] dark:border-white/10" value="" onChange={e => { const ex = EXAMPLES.find(x => x.name === e.target.value); if (ex && (current.code.trim() === "" || window.confirm("Replace the code with this example?"))) set({ code: ex.code }); }}>
+                                    <option value="">Load an example…</option>
+                                    {EXAMPLES.map(x => <option key={x.name} value={x.name}>{x.name}</option>)}
+                                </select>
                                 <button type="button" onClick={runCheck} className="h-9 rounded-xl border border-slate-200 px-3 text-[12.5px] font-semibold dark:border-white/10">Check code</button>
                                 {check && (check.ok ? <Pill tone="good"><FiCheckCircle /> compiles</Pill> : <span className="text-[12.5px] text-rose-600">{check.error}</span>)}
                             </div>

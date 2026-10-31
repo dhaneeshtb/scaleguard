@@ -176,4 +176,44 @@ public class FunctionLifecycleTest {
         assertEquals(503, send(d, HttpMethod.POST, new byte[0]).status().code());
         rt.delete(d.id);
     }
+
+    @Test
+    public void requestIsAvailableAsPlainVariables() throws Exception {
+        FunctionRuntime rt = FunctionRuntime.get();
+        FunctionDef d = def("vars-" + UUID.randomUUID(),
+                "return [m: method, p: path, ua: headers['user-agent'], q: query.a, name: body.name, items: body.items.size(), raw: rawBody.length()]");
+        assertNull(rt.save(d));
+        var r = rt.invoke(d.id, new FunctionRuntime.Request("POST", "/x/y", "a=1&b=2", "1.1.1.1", "h",
+                Map.of("user-agent", "curl", "content-type", "application/json"), "{\"name\":\"n\",\"items\":[1,2,3]}".getBytes())).get();
+        assertEquals(r.detail, "{\"m\":\"POST\",\"p\":\"/x/y\",\"ua\":\"curl\",\"q\":\"1\",\"name\":\"n\",\"items\":3,\"raw\":28}", text(r));
+        FunctionDef f = def("form-" + UUID.randomUUID(), "return [a: body?.a, none: body == null]");
+        assertNull(rt.save(f));
+        r = rt.invoke(f.id, new FunctionRuntime.Request("POST", "/", "", "1.1.1.1", "h", Map.of("content-type", "application/x-www-form-urlencoded"), "a=hello+world".getBytes())).get();
+        assertEquals("{\"a\":\"hello world\",\"none\":false}", text(r));
+        assertEquals("{\"a\":null,\"none\":true}", text(rt.invoke(f.id, new FunctionRuntime.Request("GET", "/", "", "1.1.1.1", "h", Map.of(), new byte[0])).get()).replace("\"a\":null", "\"a\":null"));
+        rt.delete(d.id);
+        rt.delete(f.id);
+    }
+
+    @Test
+    public void quickMappingCanTargetAFunction() throws Exception {
+        FunctionRuntime rt = FunctionRuntime.get();
+        FunctionDef d = def("qm-" + UUID.randomUUID(), "return 'x'");
+        assertNull(rt.save(d));
+        String name = "qm-" + UUID.randomUUID().toString().substring(0, 8);
+        var req = FunctionApi.JSON.readTree("{\"name\":\"" + name + "\",\"sourceURL\":\"http://" + name + ".test:8099/api\",\"functionId\":\"" + d.id + "\"}");
+        var out = com.scaleguard.server.http.router.QuickSystemMapper.mapSystem(req);
+        assertEquals("function", out.get("targetSystem").get("scheme").asText());
+        assertEquals(d.id, out.get("targetSystem").get("host").asText());
+        assertEquals(out.get("targetSystem").get("groupId").asText(), out.get("sourceSystem").get("target").asText());
+        assertEquals(1, new FunctionRoute().handle("GET", "/functions/" + d.id, null).getBody().split("\"sourceId\"").length - 1);
+        var bad = FunctionApi.JSON.readTree("{\"name\":\"" + name + "x\",\"sourceURL\":\"http://x.test/\",\"functionId\":\"nope\"}");
+        try {
+            com.scaleguard.server.http.router.QuickSystemMapper.mapSystem(bad);
+            org.junit.Assert.fail();
+        } catch (IllegalArgumentException expected) {
+            // unknown function
+        }
+        com.scaleguard.server.http.router.QuickSystemMapper.deleteSystem(name);
+    }
 }

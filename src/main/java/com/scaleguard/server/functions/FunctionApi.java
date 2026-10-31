@@ -148,6 +148,27 @@ final class FunctionApi {
         }
     }
 
+    /** The `body` variable: JSON → Map/List, form posts → Map, otherwise the text (null when empty). Never throws. */
+    static Object parseBody(Req rq) {
+        String text = rq.getBody();
+        if (text.isEmpty()) return null;
+        String type = String.valueOf(rq.header("content-type")).toLowerCase(Locale.ROOT);
+        try {
+            if (type.contains("json") || text.stripLeading().startsWith("{") || text.stripLeading().startsWith("[")) return parseJson(text);
+            if (type.contains("x-www-form-urlencoded")) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                for (String kv : text.split("&")) {
+                    int i = kv.indexOf('=');
+                    m.putIfAbsent(URLDecoder.decode(i < 0 ? kv : kv.substring(0, i), StandardCharsets.UTF_8), i < 0 ? "" : URLDecoder.decode(kv.substring(i + 1), StandardCharsets.UTF_8));
+                }
+                return m;
+            }
+        } catch (RuntimeException ignored) {
+            // not valid after all: fall back to the text
+        }
+        return text;
+    }
+
     // ------------------------------------------------------------------ res
 
     public static final class Res implements SandboxApi {

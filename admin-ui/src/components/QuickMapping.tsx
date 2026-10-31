@@ -1,6 +1,6 @@
 import { Button, IconButton, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text, useDisclosure, useToast } from "@chakra-ui/react";
 import axios from "axios";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { FaLink, FaPlusCircle, FaRocket } from "react-icons/fa";
 import {
@@ -19,6 +19,14 @@ export default function QuickMapping({ onMappingComplete }) {
     const [source, setSource] = useState("");
     const [targets, setTargets] = useState([""]);
     const toast = useToast();
+    const [kind, setKind] = useState<"url" | "function">("url");
+    const [functionId, setFunctionId] = useState("");
+    const [functions, setFunctions] = useState<{ id: string; name: string }[]>([]);
+    useEffect(() => {
+        if (!isOpen) return;
+        axios.get(auth.data.host + "/functions?scaleguard=true", { headers: { Authorization: auth.data.token } })
+            .then(r => setFunctions(r.data.functions || [])).catch(() => setFunctions([]));
+    }, [isOpen]);
 
     const handleAddTarget = () => { setTargets([...targets, ""]); };
     const handleRemoveTarget = (index) => { setTargets(targets.filter((_, i) => i !== index)); };
@@ -34,7 +42,7 @@ export default function QuickMapping({ onMappingComplete }) {
             await axios.post(auth.data.host + "/config/quickmapping?scaleguard=true", {
                 "name": systemName,
                 "sourceURL": source,
-                "targets": targets
+                ...(kind === "function" ? { "functionId": functionId } : { "targets": targets })
             }, {
                 headers: { Authorization: auth.data.token }
             })
@@ -116,8 +124,24 @@ export default function QuickMapping({ onMappingComplete }) {
                                 <p className="text-[11px] text-slate-400 pl-1">The incoming source system URL</p>
                             </div>
 
+                            <div className="flex gap-2" role="radiogroup" aria-label="Target type">
+                                <Button size="sm" rounded="full" variant={kind === "url" ? "solid" : "outline"} colorScheme="teal" onClick={() => setKind("url")}>Backend URLs</Button>
+                                <Button size="sm" rounded="full" variant={kind === "function" ? "solid" : "outline"} colorScheme="teal" onClick={() => setKind("function")}>Cloud function</Button>
+                            </div>
+
+                            {kind === "function" && (
+                                <div className="space-y-1">
+                                    <label htmlFor="qm-fn" className="text-sm font-medium text-slate-700 dark:text-slate-300">Function <span className="text-red-400 text-xs">*</span></label>
+                                    <select id="qm-fn" value={functionId} onChange={e => setFunctionId(e.target.value)} className="w-full h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800">
+                                        <option value="">Choose a function…</option>
+                                        {functions.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                    </select>
+                                    <p className="text-[11px] text-slate-400 pl-1">Define functions under Platform → Cloud functions. No backend is needed.</p>
+                                </div>
+                            )}
+
                             {/* Targets */}
-                            <div className="space-y-2">
+                            {kind === "url" && <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                                         Target URLs <span className="text-red-400 text-xs">*</span>
@@ -158,7 +182,7 @@ export default function QuickMapping({ onMappingComplete }) {
                                         />
                                     </HStack>
                                 ))}
-                            </div>
+                            </div>}
                         </VStack>
                     </ModalBody>
 
@@ -174,6 +198,7 @@ export default function QuickMapping({ onMappingComplete }) {
                             isLoading={saving}
                             colorScheme='teal'
                             onClick={onSave}
+                            isDisabled={kind === "function" && !functionId}
                             rounded="xl"
                             size="sm"
                             px={5}

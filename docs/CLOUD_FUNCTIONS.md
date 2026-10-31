@@ -15,9 +15,49 @@ if (req.method == 'POST') {
 return [path: req.path, q: req.param('q'), region: config.region]
 ```
 
+## Tutorial
+
+Every function starts with these ready-made variables, so most scripts never need `req`:
+
+| Variable | What it is |
+|---|---|
+| `method`, `path` | `"POST"`, `"/users/42"` (the path as requested, including the route's base path) |
+| `headers` | Map, lower-case keys: `headers['content-type']`, `headers['x-api-key']` |
+| `query` | Map of query parameters: `?a=1&b=2` → `query.a == '1'` |
+| `body` | JSON → Map/List, `application/x-www-form-urlencoded` → Map, anything else → text, empty → `null` (use `body?.name`) |
+| `rawBody` | the body as text, unparsed (for signatures) |
+
+1. **Hello world.** Create a function with `return [message: 'hello', path: path]`, press *Create function*. Open *Routes*, choose a
+   route (or use **Quick Mapping → Cloud function** to create the route and attach in one step) and press *Use for this route*.
+   `curl https://your-route/anything` now returns JSON.
+2. **Read the request.**
+   ```groovy
+   return [who: query.name ?: 'stranger', agent: headers['user-agent'], got: body]
+   ```
+3. **Answer by method and set the status.**
+   ```groovy
+   if (method == 'POST') {
+       if (!body?.email) return res.status(400).json([error: 'email is required'])
+       return res.status(201).json([id: ctx.uuid(), email: body.email])
+   }
+   return res.status(405).json([error: 'POST only'])
+   ```
+   (Or tick the methods under *Request & limits* and let the gateway answer 405 for you.)
+4. **Path parameters.** For a route `/users` and a request `/users/42`: `def id = path.tokenize('/').last()`.
+5. **Headers and redirects.** `res.header('Cache-Control', 'max-age=60')`, `return res.redirect('https://example.com')`.
+6. **Config and secrets.** Put non-secret values under *Config* (`region=eu`) and read `config.region`. Create a secret (write-only), tick it
+   under *Permissions*, read `ctx.secret('WEBHOOK_KEY')`, e.g. to verify `headers['x-signature'] == ctx.hmacSha256(ctx.secret('WEBHOOK_KEY'), rawBody)`.
+7. **Call another API** (after enabling the network under *Permissions*):
+   ```groovy
+   def r = http.get('https://api.example.com/items/' + query.id, [Accept: 'application/json'])
+   if (!r.ok) return res.status(502).json([error: 'upstream ' + r.status])
+   return r.json()
+   ```
+8. **Debug.** `log.info('got ' + method)`, then use the *Test* panel and *Recent runs*. The editor's *Load an example…* menu has these snippets.
+
 ## The script API
 
-Scripts get `req`, `res`, `ctx`, `log`, `http`, `config` and nothing else.
+Scripts get `method`, `path`, `headers`, `query`, `body`, `rawBody` (see the tutorial), the objects below, and nothing else.
 
 | Object | Members |
 |---|---|

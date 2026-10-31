@@ -76,8 +76,9 @@ public class QuickSystemMapper {
         String sourceURL = node.get("sourceURL").asText();
         String systemName = node.has("name") ? node.get("name").asText() : getDigest(sourceURL);
         boolean isTunnel = node.has("tunnel") && node.get("tunnel").asBoolean();
-        ArrayNode targets = (ArrayNode) node.get("targets");
         String gid =systemName!=null?systemName: generateShortUUID();
+        if (node.hasNonNull("functionId")) return mapFunction(node.get("functionId").asText(), sourceURL, systemName, gid);
+        ArrayNode targets = (ArrayNode) node.get("targets");
         String hostGroupId = "h-" + gid;
         String targetGroupId = "t-" + gid;
         String sourceGroupId = "s-" + gid;
@@ -113,6 +114,32 @@ public class QuickSystemMapper {
             throw new RuntimeException(e);
         }
         return outNode;
+    }
+
+    /** Quick mapping to a cloud function: just a source and a target with scheme "function" (no host group). */
+    private static JsonNode mapFunction(String functionId, String sourceURL, String systemName, String gid) throws MalformedURLException {
+        com.scaleguard.server.functions.FunctionDef fn = com.scaleguard.server.functions.FunctionRuntime.get().find(functionId);
+        if (fn == null) throw new IllegalArgumentException("function " + functionId + " not found");
+        try {
+            if (!SourceSystemDB.getInstance().readItems("name", systemName).isEmpty()) throw new RuntimeException(systemName + " already exists");
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        TargetSystem target = new TargetSystem();
+        target.setName("function: " + fn.name);
+        target.setGroupId("t-" + gid);
+        target.setScheme("function");
+        target.setHost(functionId);
+        SourceSystem source = createSource(sourceURL, target, "s-" + gid);
+        source.setName(systemName);
+        ConfigManager.update(target);
+        ConfigManager.update(source);
+        ObjectNode out = SystemManager.getMapper().createObjectNode();
+        out.set("targetSystem", SystemManager.getMapper().valueToTree(target));
+        out.set("sourceSystem", SystemManager.getMapper().valueToTree(source));
+        return out;
     }
 
     private static String generateShortUUID() {

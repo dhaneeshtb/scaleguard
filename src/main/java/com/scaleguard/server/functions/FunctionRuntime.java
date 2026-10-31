@@ -371,6 +371,13 @@ public final class FunctionRuntime {
         b.setVariable("log", log);
         b.setVariable("http", http);
         b.setVariable("config", ctx.getConfig());
+        // the request as plain variables
+        b.setVariable("method", req.method());
+        b.setVariable("path", req.path());
+        b.setVariable("headers", rq.getHeaders());
+        b.setVariable("query", rq.getParams());
+        b.setVariable("rawBody", rq.getBody());
+        b.setVariable("body", FunctionApi.parseBody(rq));
         try {
             Script script = InvokerHelper.createScript(c.cls, b);
             Object ret;

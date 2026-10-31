@@ -487,7 +487,7 @@ Function fields: `name`, `description`, `code`, `enabled`, `methods` (empty = an
 `maxResponseBytes`, `maxConcurrent`, `maxMemoryMb`, `networkEnabled` (default false), `allowedHosts`
 (`[http://|https://]host[:port]`, `*.` wildcard), `allowPrivateNetworks`, `maxHttpCalls`, `maxHttpBytes`, `secrets[]`, `config{}`.
 
-A route is attached with `attach` (or by setting a route's `target` to a target system whose `scheme` is `function` and
+A route is attached with `attach`, with `POST /config/quickmapping` (`{"name", "sourceURL", "functionId"}` instead of `targets`), or by setting a route's `target` to a target system whose `scheme` is `function` and
 `host` is the function id). Settings: `scaleguard.functions` (false = off), `.threads`, `.maxTimeoutMs`, `.maxBodyBytes`.
 Failures seen by clients: 405 (method), 413 (request too large), 502 (response too large), 503 (disabled / busy), 504 (time limit), 500.
 

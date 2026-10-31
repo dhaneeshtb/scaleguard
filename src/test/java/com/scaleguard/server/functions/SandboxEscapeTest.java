@@ -113,7 +113,7 @@ public class SandboxEscapeTest {
         denied("def c = {}; def k = 'meta' + 'Class'; return c[k].methods");
         denied("return [1, 2].collect { it.getClass() }");
         denied("return 'http://127.0.0.1/'.toURL().text");
-        denied("return new URL('http://127.0.0.1/').text");
+        denied("return new URL('http://127.0.0.1/').toURI()");
         denied("return java.net.InetAddress.getByName('localhost')");
         denied("return java.lang.Class.forName('java.lang.Runtime')");
         denied("def l = [1]; l.metaClass.invokeMethod = { }; return 1");
@@ -146,7 +146,8 @@ public class SandboxEscapeTest {
         assertNull(r.detail, r.error);
         denied("import java.io.File\nreturn 1");
         denied("import java.io.*\nreturn 1");
-        denied("import java.net.URL\nreturn 1");
+        denied("import java.net.URLClassLoader\nreturn 1");
+        denied("import java.net.Socket\nreturn 1");
         denied("import java.lang.reflect.Method\nreturn 1");
         denied("import java.nio.file.*\nreturn 1");
         denied("import java.lang.Runtime as R\nreturn 1");

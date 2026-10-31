@@ -34,6 +34,7 @@ public class SandboxHttpTest {
         b = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         a.createContext("/hello", ex -> reply(ex, 200, "hi " + ex.getRequestMethod()));
         a.createContext("/echo", ex -> reply(ex, 200, new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+        a.createContext("/json", ex -> reply(ex, 200, "{\"current\": {\"t\": 21.5}}"));
         a.createContext("/big", ex -> reply(ex, 200, "x".repeat(10_000)));
         a.createContext("/to-b", ex -> { ex.getResponseHeaders().add("Location", "http://127.0.0.1:" + pb + "/secret"); reply(ex, 302, ""); });
         a.createContext("/to-meta", ex -> { ex.getResponseHeaders().add("Location", "http://169.254.169.254/latest/meta-data/"); reply(ex, 302, ""); });
@@ -227,5 +228,68 @@ public class SandboxHttpTest {
         d.networkEnabled = false;
         r = rt.invoke(d.id, new FunctionRuntime.Request("GET", "/", "", "1.1.1.1", "h", Map.of(), new byte[0])).get(10, TimeUnit.SECONDS);
         assertTrue(r.detail, r.detail.contains("disabled"));
+    }
+
+    private FunctionRuntime.Result runScript(String code, boolean network, boolean priv) throws Exception {
+        FunctionDef d = new FunctionDef();
+        d.id = UUID.randomUUID().toString();
+        d.name = "url";
+        d.code = code.replace("PORT", String.valueOf(pa));
+        d.networkEnabled = network;
+        d.allowPrivateNetworks = priv;
+        FunctionRuntime.get().putForTest(d);
+        return FunctionRuntime.get().invoke(d.id, new FunctionRuntime.Request("GET", "/", "", "1.1.1.1", "h", Map.of(), new byte[0])).get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    public void javaNetUrlWorksButOnlyThroughTheCheckedClient() throws Exception {
+        String classic = "import groovy.json.JsonSlurper\n"
+                + "def url = new URL('http://127.0.0.1:PORT/json')\n"
+                + "def connection = url.openConnection()\n"
+                + "connection.setRequestMethod('GET')\nconnection.setConnectTimeout(5000)\nconnection.setReadTimeout(5000)\n"
+                + "if (connection.responseCode != 200) { return [status: 'error', code: connection.responseCode] }\n"
+                + "def data = new JsonSlurper().parse(connection.inputStream)\n"
+                + "return [status: 'success', t: data.current.t]";
+        FunctionRuntime.Result r = runScript(classic, true, true);
+        assertNull(r.detail, r.error);
+        assertEquals("{\"status\":\"success\",\"t\":21.5}", new String(r.body, StandardCharsets.UTF_8));
+        r = runScript("return new URL('http://127.0.0.1:PORT/hello').text", true, true);
+        assertEquals("hi GET", new String(r.body, StandardCharsets.UTF_8).replace("\"", ""));
+        r = runScript("def u = new URL('http://127.0.0.1:PORT/hello?x=1'); return [h: u.host, p: u.port, q: u.query, path: u.path]", false, false);
+        assertNull(r.detail, r.error);      // parsing needs no network
+
+        // same rules as http.*: switch, private ranges
+        assertTrue(runScript("return new URL('http://127.0.0.1:PORT/hello').text", false, false).detail.contains("disabled"));
+        assertTrue(runScript("return new URL('http://127.0.0.1:PORT/hello').text", true, false).detail.contains("private"));
+        assertTrue(runScript("return new URL('http://169.254.169.254/latest/meta-data/').text", true, true).detail.contains("blocked"));
+    }
+
+    @Test
+    public void fileAndOtherSchemesAreRefusedAndUrlCannotBypassTheClient() throws Exception {
+        for (String code : new String[]{
+                "return new URL('file:///etc/passwd').text",
+                "return new URL('file:///etc/passwd').openConnection().responseCode",
+                "return new URL('jar:file:///tmp/x.jar!/a').text",
+                "return new URL('ftp://127.0.0.1/x').text"}) {
+            FunctionRuntime.Result r = runScript(code, true, true);
+            assertNotNull(code, r.error);
+            assertTrue(code + " -> " + r.detail, r.detail.contains("only http"));
+        }
+        for (String code : new String[]{
+                "return new URL('file:///etc/passwd').openStream()",
+                "return new URL('http://127.0.0.1:PORT/hello').content",
+                "return new URL('http://127.0.0.1:PORT/hello').getContent()",
+                "return new URL('http://127.0.0.1:PORT/hello').toURI()",
+                "return new URL('http://127.0.0.1:PORT/hello').class",
+                "return new URL('http://127.0.0.1:PORT/hello').openConnection().class",
+                "import groovy.json.JsonSlurper\nreturn new JsonSlurper().parse(new URL('http://127.0.0.1:PORT/json'))",
+                "import groovy.json.JsonSlurper\nreturn new JsonSlurper().parse(new File('/etc/passwd'))",
+                "return new File('/etc/passwd').text",
+                "return new URL('http://127.0.0.1:PORT/hello').openConnection().inputStream.text",
+                "return new URL('http://127.0.0.1:PORT/hello').openConnection().inputStream.getClass()"}) {
+            FunctionRuntime.Result r = runScript(code, true, true);
+            assertNotNull(code, r.error);
+            assertTrue(code + " -> " + r.detail, r.detail.contains("not allowed"));
+        }
     }
 }

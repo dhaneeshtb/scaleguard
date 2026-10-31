@@ -290,6 +290,60 @@ final class FunctionApi {
         }
     }
 
+    // ------------------------------------------------------------------ url.openConnection()
+
+    /** Stands in for HttpURLConnection: the request is made (lazily, once) by the function's checked client. */
+    public static final class UrlConn implements SandboxApi {
+        private final java.net.URL url;
+        private String method = "GET";
+        private final Map<String, String> headers = new LinkedHashMap<>();
+        private SandboxHttp.Response resp;
+
+        UrlConn(java.net.URL url) { this.url = url; }
+
+        public void setRequestMethod(String m) { method = m; }
+        public void setRequestProperty(String k, String v) { headers.put(k, v); }
+        public void addRequestProperty(String k, String v) { headers.put(k, v); }
+        public void setConnectTimeout(int ms) { /* the function's time limit applies */ }
+        public void setReadTimeout(int ms) { /* the function's time limit applies */ }
+        public void setDoOutput(boolean b) { /* bodies: use http.post */ }
+        public void setDoInput(boolean b) { /* always */ }
+        public void setInstanceFollowRedirects(boolean b) { /* redirects are always re-checked */ }
+        public void disconnect() { /* nothing to close */ }
+
+        private SandboxHttp.Response response() {
+            if (resp == null) {
+                SandboxHttp client = SandboxPolicy.HTTP.get();
+                if (client == null) throw new IllegalStateException("no network access in this context");
+                try {
+                    resp = client.execute(method, url.toString(), headers, null);
+                } catch (SandboxHttp.HttpException e) {
+                    throw new IllegalStateException(e.getMessage());
+                }
+            }
+            return resp;
+        }
+
+        public int getResponseCode() { return response().status(); }
+        public String getResponseMessage() { return ""; }
+        public String getContentType() { return response().headers().get("content-type"); }
+        public String getHeaderField(String name) { return name == null ? null : response().headers().get(name.toLowerCase(Locale.ROOT)); }
+
+        public java.io.InputStream getInputStream() {
+            if (response().status() >= 400) throw new IllegalStateException("HTTP " + response().status());
+            return new java.io.ByteArrayInputStream(response().body());
+        }
+
+        public java.io.InputStream getErrorStream() {
+            return response().status() >= 400 ? new java.io.ByteArrayInputStream(response().body()) : null;
+        }
+
+        public String getText() {
+            if (response().status() >= 400) throw new IllegalStateException("HTTP " + response().status());
+            return new String(response().body(), StandardCharsets.UTF_8);
+        }
+    }
+
     // ------------------------------------------------------------------ ctx
 
     public static final class Ctx implements SandboxApi {

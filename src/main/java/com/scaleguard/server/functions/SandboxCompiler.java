@@ -49,7 +49,7 @@ final class SandboxCompiler {
         protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
             if (name.startsWith("com.scaleguard.") && !name.startsWith("com.scaleguard.server.functions.")
                     || name.startsWith("io.netty.") || name.startsWith("java.io.") || name.startsWith("java.nio.")
-                    || name.startsWith("java.net.") || name.startsWith("java.lang.reflect.") || name.startsWith("java.lang.invoke.") && !name.equals("java.lang.invoke.MethodHandles") && !name.equals("java.lang.invoke.MethodHandles$Lookup")
+                    || name.startsWith("java.net.") && !name.equals("java.net.URL") || name.startsWith("java.lang.reflect.") || name.startsWith("java.lang.invoke.") && !name.equals("java.lang.invoke.MethodHandles") && !name.equals("java.lang.invoke.MethodHandles$Lookup")
                     || name.startsWith("sun.") || name.startsWith("jdk.") || name.startsWith("com.sun.")
                     || name.equals("java.lang.System") || name.equals("java.lang.Runtime")
                     || name.equals("java.lang.ClassLoader") || name.equals("java.lang.ProcessBuilder") || name.equals("java.lang.Process")) {

@@ -65,13 +65,13 @@ Scripts get `method`, `path`, `headers`, `query`, `body`, `rawBody` (see the tut
 | `res` | `status(n)` / `status = n`, `header(k, v)`, `text(s)`, `html(s)`, `json(obj)`, `send(obj)`, `redirect(url[, 3xx])`. Returning a value instead sends it (text, or JSON for maps/lists) |
 | `ctx` | `secret(name)`, `config`, `json(obj)`, `parseJson(s)`, `now()`, `uuid()`, `sha256(s)`, `hmacSha256(key, s)`, `base64(s)`, `fromBase64(s)`, `urlEncode(s)`, `urlDecode(s)` |
 | `log` | `debug/info/warn/error(msg)`: shown under *Recent runs* (50 lines × 500 chars per run) |
-| `http` | `get/post/put/delete/request(...)` → `{status, ok, headers, body, json()}`; only if the admin enabled the network |
+| `http` (or `new URL(..).text` / `openConnection()`) | `get/post/put/delete/request(...)` → `{status, ok, headers, body, json()}`; only if the admin enabled the network |
 
 Allowed language: variables, control flow, closures, script-level methods, strings, numbers, `List`/`Map`/`Set` and their
 usual methods, `Math`, a few value classes (`BigDecimal`, `StringBuilder`, …). Imports work, but only for the allowlisted classes: `groovy.json.JsonSlurper` / `JsonOutput`, `java.time` (`Instant`, `LocalDate`,
 `LocalDateTime`, `ZonedDateTime`, `Duration`, `ZoneId`, `ZoneOffset`, `DateTimeFormatter`), `java.math`, and the `java.util` collections
 (star imports only of `groovy.json`, `java.time`, `java.time.format`, `java.math`, `java.util`). Importing anything else (`java.io.File`,
-`java.net.URL`, …) is a compile error that lists what is allowed; an import never widens what a script may use. Not allowed: static imports, class/interface
+`java.net.URL`, …) is a compile error that lists what is allowed; an import never widens what a script may use. `new URL(...)` works too, but it is only a name: `.text` and `openConnection()` (with `setRequestMethod`, `setRequestProperty`, `responseCode`, `inputStream`, `getText()`) are carried out by the function's checked HTTP client, so the network switch, allowed hosts, private-address and redirect rules apply and `file:`, `jar:`, `ftp:` URLs fail. `openStream()`, `getContent()`, `toURI()` and passing a URL to another method (`JsonSlurper().parse(url)`; use `parseText(url.text)`) are refused. Not allowed: static imports, class/interface
 declarations, annotations, arrays (`new int[n]`), `new` of anything but plain collections, computed method or property
 names (`obj."$x"()`), `.@field`, `.&method`, `this`, and any method not on the allowlist (`SandboxPolicy.METHODS`).
 

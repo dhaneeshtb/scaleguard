@@ -37,13 +37,23 @@ final class GuardedMetaClass extends MetaClassImpl {
 
     @Override
     public Object invokeMethod(Class sender, Object object, String name, Object[] args, boolean isCallToSuper, boolean fromInsideClass) {
-        if (SandboxPolicy.active()) SandboxPolicy.checkCall(object, theClass, name);
+        if (SandboxPolicy.active()) {
+            SandboxPolicy.checkCall(object, theClass, name);
+            SandboxPolicy.checkArgs(args);
+            if (object instanceof java.net.URL u) {
+                Object r = SandboxPolicy.urlCall(u, name);
+                if (r != SandboxPolicy.NOT_HANDLED) return r;
+            }
+        }
         return super.invokeMethod(sender, object, name, args, isCallToSuper, fromInsideClass);
     }
 
     @Override
     public Object invokeStaticMethod(Object object, String name, Object[] args) {
-        if (SandboxPolicy.active()) SandboxPolicy.checkCall(object instanceof Class ? object : theClass, theClass, name);
+        if (SandboxPolicy.active()) {
+            SandboxPolicy.checkCall(object instanceof Class ? object : theClass, theClass, name);
+            SandboxPolicy.checkArgs(args);
+        }
         return super.invokeStaticMethod(object, name, args);
     }
 
@@ -55,7 +65,13 @@ final class GuardedMetaClass extends MetaClassImpl {
 
     @Override
     public Object getProperty(Class sender, Object object, String name, boolean isCallToSuper, boolean fromInsideClass) {
-        if (SandboxPolicy.active()) SandboxPolicy.checkProperty(object, theClass, name, false);
+        if (SandboxPolicy.active()) {
+            SandboxPolicy.checkProperty(object, theClass, name, false);
+            if (object instanceof java.net.URL u) {
+                Object r = SandboxPolicy.urlCall(u, name);
+                if (r != SandboxPolicy.NOT_HANDLED) return r;
+            }
+        }
         return super.getProperty(sender, object, name, isCallToSuper, fromInsideClass);
     }
 

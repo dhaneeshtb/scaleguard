@@ -362,7 +362,8 @@ public final class FunctionRuntime {
     private Result call(Compiled c, FunctionDef d, Request req, FunctionApi.Log log, Run run) {
         FunctionApi.Req rq = new FunctionApi.Req(req.method(), req.path(), req.query(), req.clientIp(), req.host(), req.headers(), req.body());
         FunctionApi.Res rs = new FunctionApi.Res(d.maxResponseBytes);
-        FunctionApi.Http http = new FunctionApi.Http(new SandboxHttp(d, run.deadline, resolver));
+        SandboxHttp httpClient = new SandboxHttp(d, run.deadline, resolver);
+        FunctionApi.Http http = new FunctionApi.Http(httpClient);
         FunctionApi.Ctx ctx = new FunctionApi.Ctx(rq, rs, log, http, d);
         Binding b = new Binding();
         b.setVariable("req", rq);
@@ -382,10 +383,12 @@ public final class FunctionRuntime {
             Script script = InvokerHelper.createScript(c.cls, b);
             Object ret;
             SandboxPolicy.ACTIVE.set(Boolean.TRUE);
+            SandboxPolicy.HTTP.set(httpClient);
             try {
                 ret = script.run();
             } finally {
                 SandboxPolicy.ACTIVE.remove();
+                SandboxPolicy.HTTP.remove();
             }
             Result r = new Result();
             r.status = rs.statusCode();

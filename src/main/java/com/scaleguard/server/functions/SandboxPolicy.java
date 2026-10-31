@@ -24,6 +24,25 @@ final class SandboxPolicy {
 
     private static final boolean DEBUG = Boolean.getBoolean("scaleguard.functions.debug");
 
+    /** The running function's outbound client: URL.text / URL.openConnection() go through it, never straight to the network. */
+    static final ThreadLocal<SandboxHttp> HTTP = new ThreadLocal<>();
+
+    static final Set<String> URL_METHODS = names("toString", "getHost", "getPath", "getQuery", "getProtocol", "getPort", "getFile", "getText", "openConnection");
+    static final Set<String> URL_PROPERTIES = names("host", "path", "query", "protocol", "port", "file", "text");
+    static final Object NOT_HANDLED = new Object();
+
+    /** java.net.URL is only a name: fetching is rerouted to the checked client (http / https, allowed hosts, no private addresses). */
+    static Object urlCall(java.net.URL u, String name) {
+        switch (name) {
+            case "getText", "text":
+                return new FunctionApi.UrlConn(u).getText();
+            case "openConnection":
+                return new FunctionApi.UrlConn(u);
+            default:
+                return NOT_HANDLED;
+        }
+    }
+
     /** True only on a thread that is running a function; Groovy-implemented library code (the compiler) must not be guarded. */
     static final ThreadLocal<Boolean> ACTIVE = new ThreadLocal<>();
 
@@ -49,7 +68,7 @@ final class SandboxPolicy {
     static final Set<String> NEW_TYPES = Set.of(
             "java.util.ArrayList", "java.util.LinkedList", "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap",
             "java.util.HashSet", "java.util.LinkedHashSet", "java.util.TreeSet", "java.lang.StringBuilder",
-            "java.math.BigDecimal", "java.math.BigInteger", "groovy.json.JsonSlurper");
+            "java.math.BigDecimal", "java.math.BigInteger", "groovy.json.JsonSlurper", "java.net.URL");
 
     /** Packages whose classes may be star-imported (an import only makes a name resolvable; use is still checked against the lists above). */
     static final Set<String> IMPORT_PACKAGES = Set.of("groovy.json", "java.time", "java.time.format", "java.math", "java.util");
@@ -84,7 +103,7 @@ final class SandboxPolicy {
             "removeIf", "putIfAbsent", "getOrDefault", "computeIfAbsent", "merge", "subMap", "sort", "entry", "of", "copyOf", "emptyList",
             "emptyMap", "unmodifiableList", "unmodifiableMap", "singletonList", "randomUUID", "mapValues",
             // closures / ranges
-            "parseText", "parse", "toJson", "prettyPrint", "now", "ofEpochMilli", "ofEpochSecond", "toEpochMilli", "getEpochSecond",
+            "getText", "openConnection", "getHost", "getPath", "getQuery", "getProtocol", "getPort", "getFile", "parseText", "parse", "toJson", "prettyPrint", "now", "ofEpochMilli", "ofEpochSecond", "toEpochMilli", "getEpochSecond",
             "plusSeconds", "plusMinutes", "plusHours", "plusDays", "minusSeconds", "minusMinutes", "minusHours", "minusDays", "between",
             "ofSeconds", "ofMillis", "ofMinutes", "ofHours", "ofDays", "toMillis", "toSeconds", "atZone", "toLocalDate", "toInstant",
             "withZone", "ofPattern", "toSecondOfDay", "call", "doCall", "curry", "rcurry", "memoize", "times", "upto", "downto", "step", "getFrom", "getTo", "contains");
@@ -104,7 +123,7 @@ final class SandboxPolicy {
 
     private static final Set<Class<?>> VALUE_BASES = Set.of(CharSequence.class, Number.class, Boolean.class, Character.class,
             Collection.class, Map.class, Map.Entry.class, Iterator.class, Closure.class, GString.class, Range.class,
-            groovy.json.JsonSlurper.class, java.time.temporal.Temporal.class, java.time.Duration.class, java.time.ZoneId.class,
+            groovy.json.JsonSlurper.class, java.net.URL.class, java.time.temporal.Temporal.class, java.time.Duration.class, java.time.ZoneId.class,
             java.time.ZoneOffset.class, java.time.format.DateTimeFormatter.class);
 
     /** Script classes registered after compilation, with the methods the author declared. */
@@ -150,6 +169,10 @@ final class SandboxPolicy {
             if (!METHODS.contains(name)) throw denied("method " + name);
             return;
         }
+        if (receiver instanceof java.net.URL) {
+            if (!URL_METHODS.contains(name)) throw denied("method URL." + name);
+            return;
+        }
         Class<?> c = receiver == null ? theClass : receiver.getClass();
         if (!valueType(c)) throw denied("type " + c.getName());
         Set<String> own = SCRIPTS.get(c).methods;
@@ -168,6 +191,10 @@ final class SandboxPolicy {
             if (!STATIC_TYPES.contains(c.getName()) || write || !name.matches("[A-Z][A-Z0-9_]*")) throw denied("property " + name + " of " + c.getName());
             return;
         }
+        if (receiver instanceof java.net.URL) {
+            if (write || !URL_PROPERTIES.contains(name)) throw denied("property URL." + name);
+            return;
+        }
         Class<?> c = receiver == null ? theClass : receiver.getClass();
         if (!valueType(c)) throw denied("type " + c.getName());
         if (receiver instanceof Map) return;              // keys are data
@@ -181,6 +208,11 @@ final class SandboxPolicy {
             Set<String> n = apiNames(c);
             if (!(n.contains((write ? "set" : "get") + cap) || (!write && n.contains("is" + cap)) || n.contains(name))) throw denied("property " + name);
         }
+    }
+
+    /** A URL handed to some other method (JsonSlurper.parse(url)) would be fetched by Groovy itself, outside the checked client. */
+    static void checkArgs(Object[] args) {
+        if (args != null) for (Object a : args) if (a instanceof java.net.URL) throw denied("passing a URL to a method; use url.text or http.get");
     }
 
     static void checkConstruct(Class<?> c) {

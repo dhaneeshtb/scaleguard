@@ -109,6 +109,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 | **HTTP/2, HTTP/3 and gRPC** | ALPN `h2` on TLS, h2c on plain HTTP, and HTTP/3 over QUIC on every HTTPS port (advertised with `Alt-Svc`, same certificates, multi-core UDP listeners). Each can be switched per route, like nginx's per-server `http2` / `http3` / `grpc_pass`. gRPC unary, client-, server- and bidirectional streaming proxied message by message, trailers intact, over pooled HTTP/2 backend connections |
 | **WebSockets and TCP** | WebSocket upgrade proxying and raw TCP routes |
 | **Caching** | Per-route response cache with TTLs |
+| **Cloud functions** | Answer a route with a small **Groovy** program instead of a backend: pick a function as a route's target (or in Quick Mapping) and it replies to any URL pattern and HTTP method, with `method`, `path`, `headers`, `query` and the parsed `body` as ready-made variables. Auth, rate limits, WAF, IP rules, CORS, analytics and the response cache (with TTLs) apply like for any target. Runs in a sandbox: no files, processes, reflection, threads or system access, a hard time limit, bounded memory and output, and **outbound network calls off unless you enable them** per function, with an optional host allow-list and SSRF protection (private ranges, redirects, DNS rebinding). Secrets are write-only and exposed per function. Editor, test panel, run logs and examples in the admin UI. [Guide and sandbox limits](docs/CLOUD_FUNCTIONS.md) |
 | **Async delivery** | Hand requests to Kafka or an embedded durable queue, with retries and an event audit API |
 
 ### Protection
@@ -139,7 +140,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 ### Operations
 | | |
 |---|---|
-| **Admin UI** | Live traffic, analytics, routes, backend health, firewall, rate limits, cluster, certificates and DNS, all editable |
+| **Admin UI** | Live traffic, analytics, routes, backend health, firewall, rate limits, cluster, certificates, DNS and cloud functions, all editable |
 | **REST API** | Everything in the UI is scriptable. [Reference](docs/API.md) and [OpenAPI 3 spec](docs/openapi.yaml) |
 | **Request analytics** | Every request recorded in a built-in DuckDB: live dashboards (traffic, status classes, p50/p95 latency, top routes, paths, clients, blocked attacks), searchable access logs with CSV/NDJSON export, and a read-only SQL console. W3C `traceparent` support and an `X-Trace-Id` on every response. No external log stack |
 | **High availability** | Nodes form a cluster with no shared database: they elect a master by majority vote (Raft-style), keep identical configuration through a SHA-256-chained DuckDB ledger (changes go to the master and reach every node in milliseconds; tampered copies are refused), re-elect in about 3–6 s if the master dies, route analytics through the master to every node, and support a **DR standby site** that is promoted with one call. See [docs/CLUSTER.md](docs/CLUSTER.md) |

@@ -576,6 +576,13 @@ paths:
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [sourceId], properties: { sourceId: { type: string } } } } } }
       responses: { '200': { description: 'OK: {"routes": []}' }, '404': { description: Route or function not found } }
+  /functions/{id}/cache:
+    post:
+      tags: [Cloud functions]
+      summary: Response caching for the function's target systems (same rules as proxied targets)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, ttl: { type: integer, description: seconds, minimum: 1, maximum: 86400 }, pattern: { type: string, description: path prefix }, methods: { type: array, items: { type: string } }, keyHeaders: { type: array, items: { type: string } } } } } } }
+      responses: { '200': { description: 'OK: {"cache": {...}}' }, '400': { description: Invalid TTL, pattern or method }, '409': { description: Function not attached to a route yet } }
   /functions/secrets/{name}:
     put:
       tags: [Cloud functions]

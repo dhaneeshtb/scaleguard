@@ -481,6 +481,7 @@ Groovy functions that answer a route directly (target scheme `function`). Guide,
 | `POST /functions/{id}/test` | `{method, path, query, headers, body}` → `{status, headers, body, error, detail, logs, ms, runId}` |
 | `GET /functions/{id}/runs` | last 50 runs on this node with logs |
 | `POST /functions/{id}/attach` | `{"sourceId"}` makes the function that route's target |
+| `POST /functions/{id}/cache` | `{enabled, ttl, pattern, methods, keyHeaders}` response caching on the function's target (same rules as `cachedResources`, see Target system) |
 | `PUT /functions/secrets/{name}` | `{"value"}` write-only gateway secret; `DELETE` removes it |
 
 Function fields: `name`, `description`, `code`, `enabled`, `methods` (empty = any), `timeoutMs`, `maxRequestBytes`,

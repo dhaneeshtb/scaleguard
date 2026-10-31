@@ -258,7 +258,7 @@ function validate(type: EntityType, o: any): Record<string, string> {
         if (isTrue(o.async) && !asText(o.asyncEngine)) e.asyncEngine = "Pick an async engine.";
     } else if (type === "targetsystems") {
         need("name", "Give this target a name.");
-        need("hostGroupId", "Choose the host group that serves this target.");
+        if (scheme !== "function") need("hostGroupId", "Choose the host group that serves this target.");
     } else {
         need("host", "Enter the server hostname or IP.");
         port("port");
@@ -433,6 +433,7 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
     const rlNum = draft.rateLimit === null || draft.rateLimit === undefined || draft.rateLimit === "" ? -1 : Number(draft.rateLimit);
     const rlMode: "default" | "custom" | "unlimited" = rlNum < 0 ? "default" : rlNum === 0 ? "unlimited" : "custom";
     const isHttp = scheme === "http" || scheme === "https";
+    const isFn = scheme === "function";   // a cloud function target: no host group, upstream path, headers or connection settings
     const h2On = isOn(draft.http2);
     const h3On = scheme === "https" && isOn(draft.http3);
     const grpcOn = h2On && isOn(draft.grpc);
@@ -599,20 +600,27 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
 
     const targetSections = (
         <>
-            <Section id="sec-identity" icon={FiLayers} title="Upstream route" description="Which host group serves this route, and over which protocol.">
+            <Section id="sec-identity" icon={FiLayers} title={isFn ? "Function target" : "Upstream route"} description={isFn ? "Sources route here using the group ID." : "Which host group serves this route, and over which protocol."}>
                 <Field label="Name" required htmlFor="f-name" error={err("name")} span={2}>
                     <TextInput id="f-name" value={draft.name} onChange={v => set("name", v)} placeholder="Orders API backend" error={!!err("name")} />
                 </Field>
+                {isFn ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 text-[12.5px] leading-relaxed text-slate-600 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-300 sm:col-span-2">
+                        This target is answered by a <b>cloud function</b> ({asText(draft.host) || "unknown"}), so it has no host group or upstream path.
+                        Edit the code, limits and permissions under <a className="font-semibold underline" href={`${process.env.PUBLIC_URL || ""}/functions?id=${encodeURIComponent(asText(draft.host))}`}>Platform → Cloud functions</a>.
+                    </div>
+                ) : (
                 <Field label="Protocol to upstream" required htmlFor="f-scheme" span={2}>
                     <Segmented id="f-scheme" value={scheme} onChange={setScheme} options={[
                         { value: "https", label: "HTTPS" }, { value: "http", label: "HTTP" }, { value: "tcp", label: "TCP" }, { value: "kafka", label: "Kafka" },
                     ]} />
                 </Field>
-                <Field label="Host group" required htmlFor="f-hg" error={err("hostGroupId")}
+                )}
+                {!isFn && <Field label="Host group" required htmlFor="f-hg" error={err("hostGroupId")}
                     hint={groupIds.length ? `${groupIds.length} host group${groupIds.length > 1 ? "s" : ""} available. Pick one or type a new ID.` : "The group of servers that handle this route."}>
                     <TextInput id="f-hg" list="dl-hg" value={draft.hostGroupId} onChange={v => set("hostGroupId", v)} placeholder="h-orders" mono error={!!err("hostGroupId")} />
                     <datalist id="dl-hg">{groupIds.map(g => <option key={g} value={g} />)}</datalist>
-                </Field>
+                </Field>}
                 <Field label="Group ID" htmlFor="f-group" hint="Sources route here using this ID.">
                     <TextInput id="f-group" value={draft.groupId} onChange={v => set("groupId", v)} placeholder="t-orders" mono />
                 </Field>
@@ -661,8 +669,8 @@ export default function EntityEditor({ type, id }: { type: EntityType; id?: stri
                 </Section>
             )}
 
-            {isHttp && (
-                <Section id="sec-cache" icon={FiZap} title="Edge caching" description="Serve repeat responses from ScaleGuard instead of the upstream.">
+            {(isHttp || isFn) && (
+                <Section id="sec-cache" icon={FiZap} title="Edge caching" description={isFn ? "Serve repeat function answers from the cache instead of running the function." : "Serve repeat responses from ScaleGuard instead of the upstream."}>
                     <Toggle id="f-cache" label="Enable caching" description="Only URLs that match a rule below are cached." checked={isTrue(draft.enableCache)} onChange={v => set("enableCache", v)} />
                     {isTrue(draft.enableCache) && (
                         <Field label="Cache rules" htmlFor="f-rules-p0" span={2} hint="Pattern, method and how long to keep the response.">

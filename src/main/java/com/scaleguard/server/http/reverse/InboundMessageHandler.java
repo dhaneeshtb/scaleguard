@@ -441,7 +441,7 @@ public class InboundMessageHandler {
     onode.put("method",request.method().name());
     onode.put("uri",request.uri());
     onode.put("host",request.headers().get(HttpHeaderNames.HOST, "unknown"));
-    Arrays.stream(crs.getKeyLookupHeaders()).forEach(s->onode.put(s,request.headers().get(s)));
+    Arrays.stream(crs.getKeyLookupHeaders() == null ? new String[0] : crs.getKeyLookupHeaders()).forEach(s->onode.put(s,request.headers().get(s)));
     return checksumKey.get(onode.toString());
   }
 

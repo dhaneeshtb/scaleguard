@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
  * POST   /functions/{id}/test       {"method","path","query","headers","body"} → runs the saved function
  * GET    /functions/{id}/runs       last runs with logs (this node)
  * POST   /functions/{id}/attach     {"sourceId"} → makes the function that route's target
+ * POST   /functions/{id}/cache      {"enabled","ttl","methods","pattern","keyHeaders"} → response caching on the function's target(s)
  * PUT    /functions/secrets/{name}  {"value"} (write-only)      DELETE /functions/secrets/{name}
  * </pre>
  */
@@ -91,6 +92,8 @@ public class FunctionRoute implements RequestRoute {
                 return ok(Map.of("runs", rt.runs(id), "stats", rt.stats(id)));
             } else if (p[2].equals("test") && m.equals("POST")) {
                 return test(rt, id, body);
+            } else if (p[2].equals("cache") && m.equals("POST")) {
+                return cache(d, body);
             } else if (p[2].equals("attach") && m.equals("POST")) {
                 return attach(d, body);
             }
@@ -126,6 +129,7 @@ public class FunctionRoute implements RequestRoute {
         Map<String, Object> o = FunctionApi.JSON.convertValue(d, new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {});
         o.put("routes", routes(d.id));
         o.put("stats", rt.stats(d.id));
+        o.put("cache", cacheView(d.id));
         return o;
     }
 
@@ -186,6 +190,71 @@ public class FunctionRoute implements RequestRoute {
             o.put("runId", r.runId);
             return ok(o);
         });
+    }
+
+    private List<TargetSystem> targetsOf(String fnId) {
+        List<TargetSystem> l = new ArrayList<>();
+        for (TargetSystem t : RouteTable.getInstance().getTargetSystems().values()) {
+            if ("function".equalsIgnoreCase(t.getScheme()) && fnId.equals(t.getHost())) l.add(t);
+        }
+        return l;
+    }
+
+    private Map<String, Object> cacheView(String fnId) {
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("enabled", false);
+        c.put("ttl", 60);
+        c.put("methods", List.of("GET"));
+        c.put("pattern", "/");
+        c.put("keyHeaders", List.of());
+        List<TargetSystem> ts = targetsOf(fnId);
+        if (!ts.isEmpty() && ts.get(0).isEnableCache() && ts.get(0).getCachedResources() != null && !ts.get(0).getCachedResources().isEmpty()) {
+            var first = ts.get(0).getCachedResources().get(0);
+            c.put("enabled", true);
+            c.put("ttl", first.getTtl());
+            c.put("pattern", first.getPattern());
+            c.put("methods", ts.get(0).getCachedResources().stream().map(x -> x.getMethod()).distinct().toList());
+            c.put("keyHeaders", first.getKeyLookupHeaders() == null ? List.of() : List.of(first.getKeyLookupHeaders()));
+        }
+        return c;
+    }
+
+    /** Response caching for a function = the same cache rules a proxied target has, written to the function's target system(s). */
+    private RequestRoutingResponse cache(FunctionDef d, String body) throws Exception {
+        JsonNode n = FunctionApi.JSON.readTree(body);
+        boolean enabled = n.path("enabled").asBoolean(false);
+        int ttl = n.path("ttl").asInt(60);
+        if (ttl < 1 || ttl > 86400) return err(400, "ttl must be 1..86400 seconds");
+        String pattern = n.path("pattern").asText("/");
+        if (!pattern.startsWith("/")) return err(400, "pattern must start with /");
+        List<String> methods = new ArrayList<>();
+        for (JsonNode x : n.path("methods")) {
+            if (!x.asText().matches("(?i)GET|HEAD|POST|PUT|PATCH|DELETE")) return err(400, "unsupported method " + x.asText());
+            methods.add(x.asText().toUpperCase());
+        }
+        if (methods.isEmpty()) methods.add("GET");
+        List<String> keyHeaders = new ArrayList<>();
+        for (JsonNode x : n.path("keyHeaders")) if (!x.asText().isBlank()) keyHeaders.add(x.asText().trim());
+        List<TargetSystem> targets = targetsOf(d.id);
+        if (targets.isEmpty()) return err(409, "attach the function to a route first; caching is a setting of its target");
+        for (TargetSystem t : targets) {
+            List<com.scaleguard.server.http.cache.CachedResource> rules = new ArrayList<>();
+            if (enabled) {
+                for (String m : methods) {
+                    var r = new com.scaleguard.server.http.cache.CachedResource();
+                    r.setPattern(pattern);
+                    r.setMethod(m);
+                    r.setTtl(ttl);
+                    r.setCached(true);
+                    r.setKeyLookupHeaders(keyHeaders.toArray(new String[0]));
+                    rules.add(r);
+                }
+            }
+            t.setEnableCache(enabled);
+            t.setCachedResources(rules);
+            ConfigManager.update(t);        // the live object: copy() skips only nulls, so nothing else on the target changes
+        }
+        return ok(Map.of("cache", cacheView(d.id)));
     }
 
     private RequestRoutingResponse attach(FunctionDef d, String body) throws Exception {

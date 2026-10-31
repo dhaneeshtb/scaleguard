@@ -12,8 +12,9 @@ interface Def {
     timeoutMs: number; maxRequestBytes: number; maxResponseBytes: number; maxConcurrent: number; maxMemoryMb: number;
     networkEnabled: boolean; allowedHosts: string[]; allowPrivateNetworks: boolean; maxHttpCalls: number; maxHttpBytes: number;
     secrets: string[]; config: Record<string, string>;
-    routes?: { sourceId: string; name: string; host: string; path: string }[]; stats?: { inflight: number; total: number; failed: number };
+    cache?: CacheCfg; routes?: { sourceId: string; name: string; host: string; path: string }[]; stats?: { inflight: number; total: number; failed: number };
 }
+interface CacheCfg { enabled: boolean; ttl: number; methods: string[]; pattern: string; keyHeaders: string[] }
 interface Summary { id: string; name: string; description?: string; enabled: boolean; networkEnabled: boolean; methods: string[]; routes: number; total: number; failed: number; inflight: number; updated: number }
 interface Overview { enabled: boolean; functions: Summary[]; secrets: string[]; limits: { maxTimeoutMs: number; maxBodyBytes: number }; defaults: Def }
 interface Run { runId: string; at: number; method: string; path: string; status: number; ms: number; error?: string; detail?: string; logs: string[] }
@@ -52,6 +53,8 @@ export default function Functions() {
     const [sources, setSources] = useState<any[]>([]);
     const [attachTo, setAttachTo] = useState("");
     const [runs, setRuns] = useState<Run[]>([]);
+    const [cache, setCache] = useState<CacheCfg>({ enabled: false, ttl: 60, methods: ["GET"], pattern: "/", keyHeaders: [] });
+    const [cacheKeys, setCacheKeys] = useState("");
     const [secretName, setSecretName] = useState("");
     const [secretValue, setSecretValue] = useState("");
 
@@ -70,6 +73,9 @@ export default function Functions() {
         setHostsText((d.allowedHosts || []).join("\n"));
         setConfigText(Object.entries(d.config || {}).map(([k, v]) => `${k}=${v}`).join("\n"));
         setCheck(null);
+        const c: CacheCfg = d.cache || { enabled: false, ttl: 60, methods: ["GET"], pattern: "/", keyHeaders: [] };
+        setCache(c);
+        setCacheKeys((c.keyHeaders || []).join(", "));
     }, []);
 
     useEffect(() => { loadOverview().catch(e => toast({ title: errText(e, "Couldn't load functions"), status: "error" })); }, []);
@@ -140,6 +146,15 @@ export default function Functions() {
             loadOverview();
             toast({ title: "Route now answers with this function", status: "success" });
         } catch (e: any) { toast({ title: errText(e, "Couldn't attach"), status: "error" }); }
+    };
+
+    const saveCache = async () => {
+        if (!current?.id) return;
+        try {
+            const r = await api("post", `/${current.id}/cache`, { ...cache, keyHeaders: cacheKeys.split(",").map(x => x.trim()).filter(Boolean) });
+            setCache(r.data.cache);
+            toast({ title: cache.enabled ? `Responses cached for ${cache.ttl}s` : "Caching turned off", status: "success", duration: 2500 });
+        } catch (e: any) { toast({ title: errText(e, "Couldn't save caching"), status: "error" }); }
     };
 
     const addSecret = async () => {
@@ -306,6 +321,32 @@ export default function Functions() {
                                 <button type="button" onClick={attach} disabled={!attachTo || dirty} className="h-10 rounded-xl bg-slate-900 px-4 text-[12.5px] font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-slate-900">Use for this route</button>
                             </div>
                             <p className="mt-2 text-[12px] text-slate-500">This replaces that route's current target. The URL and methods are the route's host and path plus the methods ticked above; to serve several URLs make one route per path.</p>
+                        </Card>
+                    )}
+
+                    {current.id && (
+                        <Card title="Response caching" icon={FiZap} description="Same cache as proxied targets: a matching request is answered from the cache without running the function until the TTL ends.">
+                            <ToggleRow id="fn-cache" label="Cache responses" description="Only successful (2xx) answers are stored. Answers with Cache-Control: private / no-store / no-cache or Set-Cookie never are. Needs the function attached to a route; applies to every route that uses it." checked={cache.enabled} onChange={v => setCache({ ...cache, enabled: v })} />
+                            {cache.enabled && (
+                                <div className="mt-4 space-y-4">
+                                    <div className="grid gap-4 sm:grid-cols-3">
+                                        <Field label="TTL (seconds)" hint="How long an answer is reused."><input type="number" className={inputCls} value={cache.ttl} onChange={e => setCache({ ...cache, ttl: Number(e.target.value) })} /></Field>
+                                        <Field label="Path starts with" hint="Only paths under this prefix are cached."><input className={inputCls} value={cache.pattern} onChange={e => setCache({ ...cache, pattern: e.target.value })} /></Field>
+                                        <Field label="Methods">
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                {["GET", "HEAD", "POST"].map(m => (
+                                                    <label key={m} className="inline-flex items-center gap-1.5 text-[12.5px]"><input type="checkbox" checked={cache.methods.includes(m)} onChange={e => setCache({ ...cache, methods: e.target.checked ? [...cache.methods, m] : cache.methods.filter(x => x !== m) })} /> {m}</label>
+                                                ))}
+                                            </div>
+                                        </Field>
+                                    </div>
+                                    <Field label="Also tell requests apart by these headers" hint="Comma separated. Requests are matched on method, host, full URL with query string and these headers. If the answer depends on who calls (tenant, language, API key), list that header, or it will be shared.">
+                                        <input className={inputCls} value={cacheKeys} onChange={e => setCacheKeys(e.target.value)} placeholder="x-tenant, accept-language" />
+                                    </Field>
+                                </div>
+                            )}
+                            <button type="button" onClick={saveCache} disabled={(current.routes || []).length === 0} className="mt-4 h-10 rounded-xl border border-slate-200 px-4 text-[12.5px] font-semibold disabled:opacity-50 dark:border-white/10">Save caching</button>
+                            {(current.routes || []).length === 0 && <span className="ml-3 text-[12px] text-slate-500">Attach a route first.</span>}
                         </Card>
                     )}
 

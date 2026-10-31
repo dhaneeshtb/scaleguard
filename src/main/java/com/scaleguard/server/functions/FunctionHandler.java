@@ -24,9 +24,10 @@ public final class FunctionHandler {
 
     private FunctionHandler() {}
 
-    public static void handle(ChannelHandlerContext ctx, Object msg, RouteTarget ts, AccessRecord rec, String clientIp, Map<String, String> extraHeaders) {
+    public static void handle(ChannelHandlerContext ctx, Object msg, RouteTarget ts, AccessRecord rec, String clientIp,
+                              Map<String, String> extraHeaders, com.scaleguard.server.http.cache.CachedResponse cache) {
         if (!(msg instanceof FullHttpRequest req)) {
-            write(ctx, rec, error(400, "bad_request"), true, extraHeaders, false);
+            write(ctx, rec, error(400, "bad_request"), true, extraHeaders, false, null, null);
             return;
         }
         final boolean keepAlive = HttpUtil.isKeepAlive(req);
@@ -37,7 +38,7 @@ public final class FunctionHandler {
         if (d != null && rec != null) rec.backend = "function:" + d.name;
         int size = req.content().readableBytes();
         if (d != null && size > d.maxRequestBytes) {
-            write(ctx, rec, error(413, "request_too_large"), keepAlive, extraHeaders, head);
+            write(ctx, rec, error(413, "request_too_large"), keepAlive, extraHeaders, head, null, null);
             return;
         }
         byte[] body = new byte[size];
@@ -47,7 +48,7 @@ public final class FunctionHandler {
         FunctionRuntime.Request fr = new FunctionRuntime.Request(req.method().name(), q < 0 ? uri : uri.substring(0, q), q < 0 ? "" : uri.substring(q + 1),
                 clientIp, req.headers().get(HttpHeaderNames.HOST), FunctionRuntime.headersOf(req.headers()), body);
         rt.invoke(id, fr).whenComplete((r, e) -> ctx.executor().execute(() ->
-                write(ctx, rec, r != null ? r : error(500, "error"), keepAlive, extraHeaders, head)));
+                write(ctx, rec, r != null ? r : error(500, "error"), keepAlive, extraHeaders, head, cache, ts.getTargetSystem())));
     }
 
     private static FunctionRuntime.Result error(int status, String code) {
@@ -59,8 +60,26 @@ public final class FunctionHandler {
         return r;
     }
 
+    /** Only a clean 2xx the function itself did not mark private / uncacheable is stored. */
+    static boolean cacheable(FunctionRuntime.Result r) {
+        if (r.error != null || r.status < 200 || r.status >= 300) return false;
+        for (Map.Entry<String, String> h : r.headers.entrySet()) {
+            String k = h.getKey().toLowerCase(java.util.Locale.ROOT), v = String.valueOf(h.getValue()).toLowerCase(java.util.Locale.ROOT);
+            if (k.equals("set-cookie")) return false;
+            if (k.equals("cache-control") && (v.contains("no-store") || v.contains("no-cache") || v.contains("private"))) return false;
+        }
+        return true;
+    }
+
     private static void write(ChannelHandlerContext ctx, AccessRecord rec, FunctionRuntime.Result r, boolean keepAlive,
-                              Map<String, String> extra, boolean head) {
+                              Map<String, String> extra, boolean head, com.scaleguard.server.http.cache.CachedResponse cache,
+                              com.scaleguard.server.http.router.TargetSystem target) {
+        if (cache != null && cache.getKey() != null && cache.getResource() != null && cacheable(r)) {
+            FullHttpResponse copy = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(r.status), Unpooled.copiedBuffer(r.body));
+            r.headers.forEach((k, v) -> { if (v != null) copy.headers().set(k, v); });
+            copy.headers().set(HttpHeaderNames.CONTENT_LENGTH, r.body.length);
+            com.scaleguard.server.http.cache.CacheManagers.get().saveFresh(target, cache.getKey(), copy, cache.getResource().getTtl());
+        }
         FullHttpResponse resp = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(r.status),
                 Unpooled.wrappedBuffer(head ? new byte[0] : r.body));
         r.headers.forEach((k, v) -> {

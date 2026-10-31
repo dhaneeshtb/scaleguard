@@ -63,12 +63,18 @@ public class InMemoryCacheLooker implements CacheManager {
   }
   @Override
   public void saveFresh(TargetSystem info,String key, Object msg) {
+    saveFresh(info, key, msg, 300);
+  }
+
+  /** Honours the rule's TTL (seconds); the old fixed 300 s only applies when none is given. */
+  @Override
+  public void saveFresh(TargetSystem info,String key, Object msg, int ttlSeconds) {
     List<Object> list =new ArrayList<>();
     list.add(msg);
 
     CacheManager.TimedCacheElement cacheElement=new CacheManager.TimedCacheElement();
     cacheElement.setCacheTime(System.currentTimeMillis());
-    cacheElement.setExpiry(300);
+    cacheElement.setExpiry(ttlSeconds > 0 ? ttlSeconds : 300);
     cacheElement.setMessage(list);
     dataMap.put(key,cacheElement);
   }

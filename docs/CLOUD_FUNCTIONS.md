@@ -145,6 +145,15 @@ Honest limits:
 6. Attach it to a route with authentication, rate limiting and the WAF turned on. Test with the *Test* panel and check *Recent runs*.
 7. Turn the function off (or `scaleguard.functions=false`) to stop all of them at once.
 
+## Response caching
+
+Function targets use the proxy's own cache. Turn it on under **Response caching** on the function page (or edit the target system's cache rules
+like any other target: `enableCache` + `cachedResources` with pattern, method, **TTL** and key headers). A request is matched exactly as for proxied
+targets: method, host, full URL including the query string, and the rule's key headers, hashed into one key. While an entry is alive the
+function is not run; auth, rate limits, WAF and IP rules still run first. Only clean 2xx answers are stored; answers carrying `Set-Cookie` or
+`Cache-Control: private | no-store | no-cache` are never stored. If the answer varies by caller, list that header as a key header. The cache is
+the same in-memory or DuckDB cache the proxy uses (`cache.backend`).
+
 ## Scaling, reload and clusters
 
 - Each function is compiled once per (id, code hash) and its Class is shared by all runs: no per-request compilation. Saving checks the

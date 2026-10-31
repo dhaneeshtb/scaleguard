@@ -136,7 +136,7 @@ public class FunctionLifecycleTest {
         EmbeddedChannel ch = new EmbeddedChannel(new ChannelInboundHandlerAdapter() {
             @Override
             public void channelRead(ChannelHandlerContext ctx, Object msg) {
-                FunctionHandler.handle(ctx, msg, rt, null, "9.9.9.9", Map.of("X-Trace-Id", "abc"));
+                FunctionHandler.handle(ctx, msg, rt, null, "9.9.9.9", Map.of("X-Trace-Id", "abc"), null);
             }
         });
         FullHttpRequest req = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, m, "/hello?x=1", Unpooled.wrappedBuffer(body));
@@ -215,5 +215,83 @@ public class FunctionLifecycleTest {
             // unknown function
         }
         com.scaleguard.server.http.router.QuickSystemMapper.deleteSystem(name);
+    }
+
+    // ------------------------------------------------------------------ response caching (the proxy's own cache rules and request hashing)
+
+    private String cachedCall(FunctionDef d, int ttl, String[] keyHeaders, HttpMethod m, String uri, Map<String, String> hdrs) throws Exception {
+        TargetSystem ts = new TargetSystem();
+        ts.setScheme("function");
+        ts.setHost(d.id);
+        ts.setGroupId("cache-test-" + d.id);
+        ts.setEnableCache(true);
+        com.scaleguard.server.http.cache.CachedResource cr = new com.scaleguard.server.http.cache.CachedResource();
+        cr.setPattern("/");
+        cr.setMethod("GET");
+        cr.setTtl(ttl);
+        cr.setCached(true);
+        cr.setKeyLookupHeaders(keyHeaders);
+        ts.setCachedResources(java.util.List.of(cr));
+        RouteTarget rt = new RouteTarget(new SourceSystem(), ts);
+        com.scaleguard.server.http.reverse.InboundMessageHandler inbound = new com.scaleguard.server.http.reverse.InboundMessageHandler();
+        EmbeddedChannel ch = new EmbeddedChannel(new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelRead(ChannelHandlerContext ctx, Object msg) {
+                inbound.handle(ctx, msg, rt, c -> FunctionHandler.handle(ctx, msg, rt, null, "9.9.9.9", Map.of(), c));
+            }
+        });
+        FullHttpRequest req = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, m, uri, Unpooled.EMPTY_BUFFER);
+        req.headers().set("Host", "fn.test");
+        hdrs.forEach((k, v) -> req.headers().set(k, v));
+        ch.writeInbound(req);
+        for (int i = 0; i < 200 && ch.outboundMessages().isEmpty(); i++) {
+            Thread.sleep(10);
+            ch.runPendingTasks();
+        }
+        FullHttpResponse r = ch.readOutbound();
+        return r == null ? null : r.content().toString(StandardCharsets.UTF_8);
+    }
+
+    @Test
+    public void functionAnswersAreCachedWithTheProxysRulesAndRequestKey() throws Exception {
+        FunctionRuntime rt = FunctionRuntime.get();
+        FunctionDef d = def("cached-" + UUID.randomUUID(), "return [id: ctx.uuid(), tenant: headers['x-tenant']]");
+        assertNull(rt.save(d));
+        String a = cachedCall(d, 60, new String[0], HttpMethod.GET, "/p?x=1", Map.of());
+        assertEquals("same request -> served from the cache, function not run again", a, cachedCall(d, 60, new String[0], HttpMethod.GET, "/p?x=1", Map.of()));
+        org.junit.Assert.assertNotEquals("other query string -> other key", a, cachedCall(d, 60, new String[0], HttpMethod.GET, "/p?x=2", Map.of()));
+        assertEquals(2, rt.stats(d.id).get("total") instanceof Number n ? n.intValue() : -1);
+
+        String t1 = cachedCall(d, 60, new String[]{"x-tenant"}, HttpMethod.GET, "/v?x=1", Map.of("x-tenant", "a"));
+        org.junit.Assert.assertNotEquals("key headers are part of the key", t1, cachedCall(d, 60, new String[]{"x-tenant"}, HttpMethod.GET, "/v?x=1", Map.of("x-tenant", "b")));
+        assertEquals(t1, cachedCall(d, 60, new String[]{"x-tenant"}, HttpMethod.GET, "/v?x=1", Map.of("x-tenant", "a")));
+
+        // POST has no cache rule: always runs
+        String p1 = cachedCall(d, 60, new String[0], HttpMethod.POST, "/p?x=1", Map.of());
+        org.junit.Assert.assertNotEquals(p1, cachedCall(d, 60, new String[0], HttpMethod.POST, "/p?x=1", Map.of()));
+
+        // the rule's TTL expires entries
+        String e1 = cachedCall(d, 1, new String[0], HttpMethod.GET, "/ttl", Map.of());
+        assertEquals(e1, cachedCall(d, 1, new String[0], HttpMethod.GET, "/ttl", Map.of()));
+        Thread.sleep(1300);
+        org.junit.Assert.assertNotEquals(e1, cachedCall(d, 1, new String[0], HttpMethod.GET, "/ttl", Map.of()));
+        rt.delete(d.id);
+    }
+
+    @Test
+    public void privateFailedAndCookieSettingAnswersAreNeverCached() throws Exception {
+        FunctionRuntime rt = FunctionRuntime.get();
+        FunctionDef priv = def("priv-" + UUID.randomUUID(), "res.header('Cache-Control', 'private'); return [id: ctx.uuid()]");
+        assertNull(rt.save(priv));
+        org.junit.Assert.assertNotEquals(cachedCall(priv, 60, new String[0], HttpMethod.GET, "/q", Map.of()), cachedCall(priv, 60, new String[0], HttpMethod.GET, "/q", Map.of()));
+        FunctionDef cookie = def("cookie-" + UUID.randomUUID(), "res.header('Set-Cookie', 'a=b'); return [id: ctx.uuid()]");
+        assertNull(rt.save(cookie));
+        org.junit.Assert.assertNotEquals(cachedCall(cookie, 60, new String[0], HttpMethod.GET, "/q", Map.of()), cachedCall(cookie, 60, new String[0], HttpMethod.GET, "/q", Map.of()));
+        FunctionDef bad = def("err-" + UUID.randomUUID(), "return res.status(500).json([id: ctx.uuid()])");
+        assertNull(rt.save(bad));
+        org.junit.Assert.assertNotEquals(cachedCall(bad, 60, new String[0], HttpMethod.GET, "/q", Map.of()), cachedCall(bad, 60, new String[0], HttpMethod.GET, "/q", Map.of()));
+        rt.delete(priv.id);
+        rt.delete(cookie.id);
+        rt.delete(bad.id);
     }
 }

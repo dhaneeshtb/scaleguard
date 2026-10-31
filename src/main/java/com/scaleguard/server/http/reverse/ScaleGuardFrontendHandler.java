@@ -218,7 +218,15 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         String scheme = ts.getTargetSystem().getScheme();
         if ("function".equalsIgnoreCase(scheme)) {
           // cloud function target: no host group, the request is answered by sandboxed Groovy (docs/CLOUD_FUNCTIONS.md)
-          com.scaleguard.server.functions.FunctionHandler.handle(ctx, msg, ts, rec, inAddress, withTrace(rec, java.util.Map.of()));
+          // the target's response caching (rules with a TTL, same as for proxied targets) applies to function answers too
+          final java.util.Map<String, String> extra = withTrace(rec, java.util.Map.of());
+          final String clientAddress = inAddress;
+          final AccessRecord record = rec;
+          if (ts.getTargetSystem().isEnableCache() && msg instanceof FullHttpRequest) {
+            inboundHandler.handle(ctx, msg, ts, cr -> com.scaleguard.server.functions.FunctionHandler.handle(ctx, msg, ts, record, clientAddress, extra, cr));
+          } else {
+            com.scaleguard.server.functions.FunctionHandler.handle(ctx, msg, ts, record, clientAddress, extra, null);
+          }
         } else if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
           if (ts.getTargetSystem().isEnableCache()) {
             final boolean[] fwd = {false};

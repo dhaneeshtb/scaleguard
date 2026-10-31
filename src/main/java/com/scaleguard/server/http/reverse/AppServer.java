@@ -3,7 +3,6 @@ package com.scaleguard.server.http.reverse;
 import com.scaleguard.server.http.utils.NettyTransport;import com.scaleguard.server.certificates.CertificateRenewalWatcher;
 import com.scaleguard.server.concurrent.VirtualThreads;
 import com.scaleguard.server.db.ConnectionUtil;
-import com.scaleguard.server.dns.DnsServer;
 import com.scaleguard.server.http.router.ConfigManager;
 import com.scaleguard.server.http.router.RouteTable;
 import com.scaleguard.server.http.router.SourceSystem;
@@ -284,10 +283,11 @@ public class AppServer implements Server{
             com.scaleguard.server.analytics.AccessLogStore.getInstance();
             // High availability: share configuration, rate limits and leadership with other nodes on the same PostgreSQL
             com.scaleguard.server.cluster.ClusterWiring.start();
-            // Enable with dnsServer=true (application.properties, env var or -DdnsServer=true).
-            if(DnsServer.isEnabled()) {
-                DnsServer dnsServer = new DnsServer();
-                dnsServer.start();
+            // Desired state is the replicated dns.enabled setting; dnsServer=true is the default until it is set.
+            try {
+                com.scaleguard.server.dns.DnsService.apply();
+            } catch (Exception e) {
+                logger.error("DNS server failed to start", e);
             }
             try {
                 SshServerWithTunnelListener.startServer();

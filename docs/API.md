@@ -390,6 +390,9 @@ Authoritative DNS for your zones plus forwarding for allowed clients. Enable wit
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/dns` | All records grouped by name |
+| `GET` | `/dns/status` | `{"enabled", "running", "port"}`: desired state (cluster-wide) and whether this node's server is up |
+| `GET` | `/dns/test?domain=example.com` | Checks run from this node: server running, answers for the zone, public NS delegation points at our name servers, their glue/A records match our IPs and answer on port 53. Returns `{domain, ok, checks:[{name, ok, detail}], instructions:[...]}`. Cannot prove port 53 is open from the internet |
+| `POST` | `/dns/start`, `/dns/stop` | Set the desired state; saved as `dns.enabled` and replicated, so every connected node starts/stops its server. `500` if the start fails here (e.g. port in use) |
 | `GET` | `/dns/stats` | Server counters (queries, cache hits, upstream timeouts, rate-limited, …) |
 | `POST` | `/dns` | Add a record |
 | `DELETE` | `/dns/{id}` | Delete a record |

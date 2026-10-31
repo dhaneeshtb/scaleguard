@@ -48,6 +48,7 @@ public final class ClusterWiring {
         cm.on("system_properties/analytics", () -> AccessLogStore.getInstance().reloadSettings());
 
         cm.on("dns_entries", DNSAddressBook::reload);
+        cm.on("system_properties/dns", com.scaleguard.server.dns.DnsService::reload);
         cm.on("applications", Application::reload);
         cm.on("system_properties/oauth", () -> {
             com.scaleguard.server.security.oauth.OAuthSettings.reload();
@@ -128,6 +129,7 @@ public final class ClusterWiring {
         } catch (Exception ignored) {
             // analytics off
         }
+        m.put("dnsRunning", com.scaleguard.server.dns.DnsService.running());
         m.put("http3Ports", com.scaleguard.server.http.h3.Http3Listener.ports());
         m.put("uptimeMs", java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime());
         return m;

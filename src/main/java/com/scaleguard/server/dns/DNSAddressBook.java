@@ -327,7 +327,7 @@ public class DNSAddressBook {
         out.add(new Rr(owner, type, DnsWire.CLASS_IN, ttl, b));
     }
 
-    private static List<String> advertisedIps() {
+    static List<String> advertisedIps() {
         List<String> configured = DnsConfig.get().advertiseIps;
         return configured.isEmpty() ? SystemManager.readNetworksCached() : configured;
     }

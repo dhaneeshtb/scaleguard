@@ -73,6 +73,7 @@ public final class DnsServer {
     private final List<Channel> channels = new ArrayList<>();
     private final List<EventLoopGroup> groups = new ArrayList<>();
     private UpstreamResolver upstream;
+    private Thread shutdownHook;
 
     public static void main(String[] args) throws Exception {
         new DnsServer().startBlocking();
@@ -98,6 +99,15 @@ public final class DnsServer {
     }
 
     public void startBlocking() throws Exception {
+        try {
+            bind();
+        } catch (Exception e) {
+            stop(); // release sockets and threads from a half-finished start (e.g. port in use)
+            throw e;
+        }
+    }
+
+    private void bind() throws Exception {
         boolean reusePort = NettyTransport.supportsReusePort();
         int udpThreads = reusePort ? Math.max(1, Runtime.getRuntime().availableProcessors()) : 1;
 
@@ -154,18 +164,25 @@ public final class DnsServer {
         }, 60, 60, TimeUnit.SECONDS);
 
         running = this;
-        Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "sg-dns-stop"));
+        shutdownHook = new Thread(this::stop, "sg-dns-stop");
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
         logger.info("DNS server listening on UDP/TCP {} ({} UDP socket{}, {}) | upstreams={} | recursion={} for {} | rate limit={}/s per client",
                 config.port, udpThreads, udpThreads > 1 ? "s" : "", NettyTransport.describe() + (reusePort ? "+SO_REUSEPORT" : ""),
                 config.upstreams, config.recursion, config.recursionAllow, config.rateLimit);
     }
 
     public void stop() {
+        if (shutdownHook != null && Thread.currentThread() != shutdownHook) {
+            try { Runtime.getRuntime().removeShutdownHook(shutdownHook); } catch (IllegalStateException ignored) { /* JVM exiting */ }
+        }
         channels.forEach(Channel::close);
         if (upstream != null) upstream.close();
         groups.forEach(g -> g.shutdownGracefully(0, 2, TimeUnit.SECONDS));
         if (running == this) running = null;
+        logger.info("DNS server stopped");
     }
+
+    int port() { return config.port; }
 
     Map<String, Object> statsSnapshot() {
         return stats.snapshot(cache.size(), upstream == null ? 0 : upstream.pendingCount(), limiter.trackedClients());

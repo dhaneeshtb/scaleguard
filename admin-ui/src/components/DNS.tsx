@@ -17,6 +17,24 @@ export default function DNS() {
     const [ttl, setTTL] = useState<number>(600);
     const [ip, setIp] = useState<string>();
     const [nameServers, setNameServers] = useState<any[]>([]);
+    const [status, setStatus] = useState<any>();
+    const [dnsError, setDnsError] = useState<string>();
+    const [testDomain, setTestDomain] = useState<string>("");
+    const [testing, setTesting] = useState<boolean>(false);
+    const [testResult, setTestResult] = useState<any>();
+
+    const runTest = async () => {
+        setTesting(true); setTestResult(undefined); setDnsError(undefined);
+        try {
+            const r = await axios.get(auth.data.host + "/dns/test?scaleguard=true&domain=" + encodeURIComponent(testDomain.trim()), {
+                headers: { Authorization: auth.data.token }
+            });
+            setTestResult(r.data);
+        } catch (e: any) {
+            setDnsError(e?.response?.data?.error || "Could not run the name server test");
+        }
+        setTesting(false);
+    }
 
     const load = async () => {
         const r = await axios.get(auth.data.host + "/dns?scaleguard=true", {
@@ -26,9 +44,26 @@ export default function DNS() {
         const ns = Object.keys(res).map(s => res[s]).reduce((acc, r) => r.length > 0 ? acc.push(...r) && acc : acc, []).filter(x => x.type == "base")
         setSystems(res)
         setNameServers(ns);
+        const st = await axios.get(auth.data.host + "/dns/status?scaleguard=true", {
+            headers: { Authorization: auth.data.token }
+        });
+        setStatus(st.data);
     }
 
     useEffect(() => { load(); }, [])
+
+    // Start/stop is stored cluster-wide: every connected node starts or stops its DNS server to match.
+    const toggleServer = async () => {
+        setLoading(true); setDnsError(undefined);
+        try {
+            await axios.post(auth.data.host + "/dns/" + (status?.enabled ? "stop" : "start") + "?scaleguard=true", {},
+                { headers: { Authorization: auth.data.token } });
+        } catch (e: any) {
+            setDnsError(e?.response?.data?.error || "Could not change the DNS server state");
+        }
+        await load()
+        setLoading(false);
+    }
 
     const deleteItem = async (id) => {
         setLoading(true)
@@ -76,6 +111,53 @@ export default function DNS() {
                         <p className="text-xs text-slate-400">{recordCount} record{recordCount !== 1 ? 's' : ''} · {nameServers.length} name server{nameServers.length !== 1 ? 's' : ''}</p>
                     </div>
                 </div>
+                {status && (
+                    <div className="flex items-center gap-3">
+                        <Badge colorScheme={status.running ? "green" : status.enabled ? "orange" : "gray"}>
+                            {status.running ? `Running on :${status.port}` : status.enabled ? "Enabled, not running here" : "Stopped"}
+                        </Badge>
+                        <Button size="sm" colorScheme={status.enabled ? "red" : "green"} isLoading={loading} onClick={toggleServer}>
+                            {status.enabled ? "Stop DNS server" : "Start DNS server"}
+                        </Button>
+                    </div>
+                )}
+            </div>
+            {dnsError && <p className="text-sm text-red-500">{dnsError}</p>}
+
+            {/* Name server test */}
+            <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200/60 dark:border-slate-700/50 p-5 shadow-sm space-y-3">
+                <div>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-white">Test name server setup</h3>
+                    <p className="text-[11px] text-slate-400">Checks that this server answers and that your domain is delegated to it.</p>
+                </div>
+                <div className="flex gap-2">
+                    <input value={testDomain} onChange={(e) => setTestDomain(e.target.value)} className={inputClasses}
+                        placeholder="e.g. example.com" />
+                    <Button colorScheme="blue" isLoading={testing} isDisabled={!testDomain.trim()} onClick={runTest}>Test</Button>
+                </div>
+                {testResult && (
+                    <div className="space-y-2">
+                        <Badge colorScheme={testResult.ok ? "green" : "red"}>{testResult.ok ? "Configured" : "Not fully configured"}</Badge>
+                        {testResult.checks.map((c: any, i: number) => (
+                            <div key={i} className="flex gap-2 text-sm">
+                                <span className={c.ok ? "text-green-500" : "text-red-500"}>{c.ok ? "✓" : "✗"}</span>
+                                <span className="text-slate-700 dark:text-slate-300">{c.name}<span className="block text-xs text-slate-400">{c.detail}</span></span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <details open={testResult && !testResult.ok}>
+                    <summary className="text-xs font-medium text-slate-500 cursor-pointer">How to configure</summary>
+                    <ol className="mt-2 space-y-1 text-xs text-slate-500 list-none">
+                        {(testResult?.instructions || [
+                            "1. Start the DNS server here and open UDP and TCP port 53 to the internet.",
+                            "2. Add a name server below (e.g. ns1.example.com); it uses this server's IPs.",
+                            "3. At your registrar, create glue records for it pointing to this server's IPs.",
+                            "4. At your registrar, set your domain's name servers to it.",
+                            "5. Add records for the domain here, then run the test (delegation can take up to 48 hours)."
+                        ]).map((t: string, i: number) => <li key={i}>{t}</li>)}
+                    </ol>
+                </details>
             </div>
 
             {/* Top Section: Name Servers + Add Record */}

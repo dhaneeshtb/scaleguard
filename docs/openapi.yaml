@@ -577,6 +577,30 @@ paths:
       summary: Add a record
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DnsRecord' } } } }
       responses: { '200': { description: OK }, '400': { description: 'Invalid record ({"error": "..."})' } }
+  /dns/status:
+    get:
+      tags: [DNS]
+      summary: Desired (cluster-wide) and actual (this node) DNS server state
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: 'OK: {"enabled", "running", "port"}' } }
+  /dns/test:
+    get:
+      tags: [DNS]
+      summary: Test that ScaleGuard is configured as the name server for a domain
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: domain, in: query, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'OK: {"domain", "ok", "checks": [{"name", "ok", "detail"}], "instructions": []}' }, '400': { description: 'Invalid domain ({"error": "..."})' } }
+  /dns/start:
+    post:
+      tags: [DNS]
+      summary: Start the DNS server on every connected node (saved as dns.enabled)
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK }, '500': { description: 'Could not start on this node ({"error": "..."})' } }
+  /dns/stop:
+    post:
+      tags: [DNS]
+      summary: Stop the DNS server on every connected node (saved as dns.enabled)
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
   /dns/stats:
     get:
       tags: [DNS]

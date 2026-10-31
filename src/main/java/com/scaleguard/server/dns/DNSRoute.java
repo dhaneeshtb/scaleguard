@@ -24,6 +24,24 @@ public class DNSRoute implements RequestRoute {
         String last = tuples.length > 0 ? tuples[tuples.length - 1] : "";
 
         if (method.equalsIgnoreCase("get")) {
+            if ("status".equalsIgnoreCase(last)) {
+                DnsServer s = DnsServer.current();
+                Map<String, Object> st = new java.util.LinkedHashMap<>();
+                st.put("enabled", DnsService.desired());
+                st.put("running", s != null);
+                st.put("port", s != null ? s.port() : DnsConfig.get().port);
+                return RequestRoutingResponse.succes(JSON.toString(st));
+            }
+            if ("test".equalsIgnoreCase(last)) {
+                String q = uri.contains("?") ? uri.substring(uri.indexOf('?') + 1) : "";
+                String domain = null;
+                for (String kv : q.split("&")) {
+                    if (kv.startsWith("domain=")) domain = java.net.URLDecoder.decode(kv.substring(7), java.nio.charset.StandardCharsets.UTF_8).trim().toLowerCase();
+                }
+                if (domain == null || !domain.matches("^([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)+[a-z0-9-]{2,63}\\.?$")) return error("domain is required, e.g. ?domain=example.com");
+                final String d = domain;
+                return RequestRoutingResponse.later(() -> RequestRoutingResponse.succes(JSON.toString(DnsDiagnostics.run(d))));
+            }
             if ("stats".equalsIgnoreCase(last)) {
                 DnsServer s = DnsServer.current();
                 Map<String, Object> stats = s == null ? Map.of("running", false) : s.statsSnapshot();
@@ -43,6 +61,15 @@ public class DNSRoute implements RequestRoute {
                 DNSAddressBook.remove(id);
             }
             return RequestRoutingResponse.succes("{}");
+        }
+
+        if (method.equalsIgnoreCase("post") && ("start".equalsIgnoreCase(last) || "stop".equalsIgnoreCase(last))) {
+            try {
+                DnsService.setEnabled("start".equalsIgnoreCase(last));
+            } catch (IllegalStateException e) {
+                return RequestRoutingResponse.response(500, JSON.toString(Map.of("error", e.getMessage())));
+            }
+            return RequestRoutingResponse.succes(JSON.toString(Map.of("enabled", DnsService.desired(), "running", DnsService.running())));
         }
 
         if (method.equalsIgnoreCase("post")) {

@@ -48,6 +48,8 @@ public final class ClusterWiring {
         cm.on("system_properties/analytics", () -> AccessLogStore.getInstance().reloadSettings());
 
         cm.on("dns_entries", DNSAddressBook::reload);
+        cm.on("cloud_functions", () -> com.scaleguard.server.functions.FunctionRuntime.get().reload());
+        cm.on("system_properties/functions", () -> com.scaleguard.server.functions.FunctionRuntime.get().reload());
         cm.on("system_properties/dns", com.scaleguard.server.dns.DnsService::reload);
         cm.on("applications", Application::reload);
         cm.on("system_properties/oauth", () -> {
@@ -81,6 +83,7 @@ public final class ClusterWiring {
             com.scaleguard.server.db.HostGroupsDB.getInstance();
             com.scaleguard.server.db.SystemPropertyDB.getInstance();
             com.scaleguard.server.db.DNSEntriesDB.getInstance();
+            com.scaleguard.server.functions.CloudFunctionDB.getInstance();
             com.scaleguard.server.db.ApplicationEntriesDB.getInstance();
             com.scaleguard.server.db.ClientInfoEntriesDB.getInstance();
             com.scaleguard.server.db.CertificateOrdersDB.getInstance();
@@ -89,6 +92,7 @@ public final class ClusterWiring {
             com.scaleguard.server.security.oauth.AccessTokenRevocations.isRevoked(null);
             com.scaleguard.server.security.oauth.RefreshTokens.activeCounts();
         });
+        com.scaleguard.server.functions.FunctionRuntime.get().reload();
         cm.metrics(ClusterWiring::metrics);
         cm.start();
         // every node keeps the whole cluster's access log (pulls peers' rows; no-op outside a cluster)

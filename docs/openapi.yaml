@@ -55,6 +55,28 @@ components:
     TooMany:
       description: Admin rate limit exceeded (see Retry-After)
   schemas:
+    CloudFunction:
+      type: object
+      required: [name, code]
+      properties:
+        id: { type: string, readOnly: true }
+        name: { type: string }
+        description: { type: string }
+        code: { type: string, description: Groovy source; see docs/CLOUD_FUNCTIONS.md }
+        enabled: { type: boolean, default: true }
+        methods: { type: array, items: { type: string }, description: 'Allowed HTTP methods; empty = any. Others get 405.' }
+        timeoutMs: { type: integer, default: 5000 }
+        maxRequestBytes: { type: integer, default: 1048576 }
+        maxResponseBytes: { type: integer, default: 1048576 }
+        maxConcurrent: { type: integer, default: 10 }
+        maxMemoryMb: { type: integer, default: 512, description: Allocation budget per run }
+        networkEnabled: { type: boolean, default: false }
+        allowedHosts: { type: array, items: { type: string }, description: '[http://|https://]host[:port], host may start with *.' }
+        allowPrivateNetworks: { type: boolean, default: false }
+        maxHttpCalls: { type: integer, default: 5 }
+        maxHttpBytes: { type: integer, default: 1048576 }
+        secrets: { type: array, items: { type: string }, description: Gateway secret names ctx.secret() may return }
+        config: { type: object, additionalProperties: { type: string } }
     Error:
       type: object
       properties: { message: { type: string } }
@@ -498,6 +520,74 @@ paths:
       parameters: [{ $ref: '#/components/parameters/scaleguard' }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, retentionDays: { type: integer, minimum: 1, maximum: 3650 } } } } } }
       responses: { '200': { description: OK }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /functions:
+    get:
+      tags: [Cloud functions]
+      summary: List functions, gateway secret names (never values), limits and defaults
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: 'OK: {"enabled", "functions": [], "secrets": [], "limits": {}, "defaults": {}}' } }
+    post:
+      tags: [Cloud functions]
+      summary: Create a function (the code is compiled and checked against the sandbox allowlist first)
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CloudFunction' } } } }
+      responses: { '200': { description: 'The saved function (replicated to every node)' }, '400': { description: 'Invalid settings or compile / sandbox error ({"message"})' } }
+  /functions/check:
+    post:
+      tags: [Cloud functions]
+      summary: Compile-check code without saving
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { code: { type: string } } } } } }
+      responses: { '200': { description: 'OK: {"ok": true|false, "error": ""}' } }
+  /functions/{id}:
+    get:
+      tags: [Cloud functions]
+      summary: A function with the routes that use it and its counters
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK }, '404': { description: Not found } }
+    post:
+      tags: [Cloud functions]
+      summary: Update a function (hot reload; runs in flight finish on the old version)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CloudFunction' } } } }
+      responses: { '200': { description: OK }, '400': { description: 'Invalid settings or compile / sandbox error' }, '404': { description: Not found } }
+    delete:
+      tags: [Cloud functions]
+      summary: Delete a function
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK }, '409': { description: Still used by a route } }
+  /functions/{id}/test:
+    post:
+      tags: [Cloud functions]
+      summary: Run the saved function with a sample request on this node
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { method: { type: string }, path: { type: string }, query: { type: string }, headers: { type: object, additionalProperties: { type: string } }, body: { type: string } } } } } }
+      responses: { '200': { description: 'OK: {"status", "headers", "body", "error", "detail", "logs", "ms", "runId"}' } }
+  /functions/{id}/runs:
+    get:
+      tags: [Cloud functions]
+      summary: Last 50 runs on this node with their log lines, plus counters
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
+  /functions/{id}/attach:
+    post:
+      tags: [Cloud functions]
+      summary: Make the function the target of a route (creates a target system with scheme "function")
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [sourceId], properties: { sourceId: { type: string } } } } } }
+      responses: { '200': { description: 'OK: {"routes": []}' }, '404': { description: Route or function not found } }
+  /functions/secrets/{name}:
+    put:
+      tags: [Cloud functions]
+      summary: Create or replace a gateway secret (write-only, replicated)
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [value], properties: { value: { type: string } } } } } }
+      responses: { '200': { description: 'OK: {"secrets": [names]}' }, '400': { description: Invalid name } }
+    delete:
+      tags: [Cloud functions]
+      summary: Delete a gateway secret
+      parameters: [{ name: name, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: OK } }
   /cluster:
     get:
       tags: [Cluster]

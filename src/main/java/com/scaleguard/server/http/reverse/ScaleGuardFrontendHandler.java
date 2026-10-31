@@ -216,7 +216,10 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
         }
 
         String scheme = ts.getTargetSystem().getScheme();
-        if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+        if ("function".equalsIgnoreCase(scheme)) {
+          // cloud function target: no host group, the request is answered by sandboxed Groovy (docs/CLOUD_FUNCTIONS.md)
+          com.scaleguard.server.functions.FunctionHandler.handle(ctx, msg, ts, rec, inAddress, withTrace(rec, java.util.Map.of()));
+        } else if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
           if (ts.getTargetSystem().isEnableCache()) {
             final boolean[] fwd = {false};
             inboundHandler.handle(ctx, msg, ts, key -> {

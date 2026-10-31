@@ -229,6 +229,12 @@
       <artifactId>okhttp</artifactId>
       <version>4.12.0</version>
     </dependency>
+    <!-- Cloud functions: sandboxed Groovy scripts (docs/CLOUD_FUNCTIONS.md) -->
+    <dependency>
+      <groupId>org.apache.groovy</groupId>
+      <artifactId>groovy</artifactId>
+      <version>4.0.27</version>
+    </dependency>
 
 
   </dependencies>

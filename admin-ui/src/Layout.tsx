@@ -48,6 +48,7 @@ const navSections: { title: string; links: NavLink[] }[] = [
     {
         title: "Platform",
         links: [
+            { to: "/functions", label: "Cloud functions", icon: FiZap },
             { to: "/cluster", label: "Cluster", icon: FiServer },
         ],
     },

@@ -29,6 +29,7 @@ import Firewall from './pages/protection/Firewall';
 import BackendHealth from './pages/traffic/BackendHealth';
 import Analytics from './pages/traffic/Analytics';
 import Cluster from './pages/platform/Cluster';
+import Functions from './pages/platform/Functions';
 
 function App() {
   return (
@@ -61,6 +62,7 @@ function App() {
                     <Route path="/backends" element={<BackendHealth />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/cluster" element={<Cluster />} />
+                    <Route path="/functions" element={<Functions />} />
                   </Routes>
                 </Layout>
               }

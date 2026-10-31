@@ -15,6 +15,7 @@ Insomnia or Swagger UI.
 - [DNS](#dns) and [tunnels](#tunnels)
 - [Certificates](#certificates)
 - [App security: OAuth 2.0](#app-security-oauth-20): apps, clients, token settings (guide: [OAUTH.md](OAUTH.md))
+- [Cloud functions](#cloud-functions): sandboxed Groovy scripts as a route target (guide: [CLOUD_FUNCTIONS.md](CLOUD_FUNCTIONS.md))
 - [Async engines and queue events](#async-engines-and-queue-events)
 - [Dynamic registration](#dynamic-registration)
 - [System settings](#system-settings)
@@ -463,6 +464,32 @@ They're served on the admin port and on every route with `secappid`, under `/oau
 | `POST` | `/oauth2/introspect` | RFC 7662: `token=…`. Allowed for clients of the same app, or with an admin token. `{"active": false}` or `{"active": true, "client_id", "scope", "aud", "exp", …}` |
 | `GET` | `/oauth2/jwks` | RFC 7517 public keys |
 | `GET` | `/.well-known/oauth-authorization-server` | RFC 8414 metadata |
+
+## Cloud functions
+
+Groovy functions that answer a route directly (target scheme `function`). Guide, sandbox model and review checklist:
+[CLOUD_FUNCTIONS.md](CLOUD_FUNCTIONS.md). Functions and secrets replicate to every node like other configuration.
+
+| Method & path | Purpose |
+|---|---|
+| `GET /functions` | `{enabled, functions[], secrets[], limits, defaults}`; secret values are never returned |
+| `POST /functions` | create; body = function (below). 400 with `{"message"}` on invalid settings, compile errors or sandbox violations |
+| `GET /functions/{id}` | the function plus `routes[]` (routes using it) and `stats` |
+| `POST /functions/{id}` | update (hot reload; runs in flight finish on the old version) |
+| `DELETE /functions/{id}` | delete; 409 while a route still uses it |
+| `POST /functions/check` | `{"code"}` → `{ok, error}`, nothing saved |
+| `POST /functions/{id}/test` | `{method, path, query, headers, body}` → `{status, headers, body, error, detail, logs, ms, runId}` |
+| `GET /functions/{id}/runs` | last 50 runs on this node with logs |
+| `POST /functions/{id}/attach` | `{"sourceId"}` makes the function that route's target |
+| `PUT /functions/secrets/{name}` | `{"value"}` write-only gateway secret; `DELETE` removes it |
+
+Function fields: `name`, `description`, `code`, `enabled`, `methods` (empty = any), `timeoutMs`, `maxRequestBytes`,
+`maxResponseBytes`, `maxConcurrent`, `maxMemoryMb`, `networkEnabled` (default false), `allowedHosts`
+(`[http://|https://]host[:port]`, `*.` wildcard), `allowPrivateNetworks`, `maxHttpCalls`, `maxHttpBytes`, `secrets[]`, `config{}`.
+
+A route is attached with `attach` (or by setting a route's `target` to a target system whose `scheme` is `function` and
+`host` is the function id). Settings: `scaleguard.functions` (false = off), `.threads`, `.maxTimeoutMs`, `.maxBodyBytes`.
+Failures seen by clients: 405 (method), 413 (request too large), 502 (response too large), 503 (disabled / busy), 504 (time limit), 500.
 
 ## Async engines and queue events
 

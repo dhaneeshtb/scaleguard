@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { FiGlobe } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
+import DnsGuide from "./dns/DnsGuide";
 import DnsNodes from "./dns/DnsNodes";
 import DnsRecords from "./dns/DnsRecords";
 import DnsSettings from "./dns/DnsSettings";
@@ -8,7 +9,7 @@ import DnsZones from "./dns/DnsZones";
 import { dnsCall, errorText } from "./dns/dnsApi";
 import { Card, PageHeader, Pill, inputCls } from "./ui/controls";
 
-const TABS = [["records", "Records"], ["settings", "Server settings"], ["nodes", "Nodes"]] as const;
+const TABS = [["records", "Records"], ["settings", "Server settings"], ["nodes", "Nodes"], ["guide", "Setup guide"]] as const;
 type Tab = typeof TABS[number][0];
 
 export default function DNS() {
@@ -117,20 +118,18 @@ export default function DNS() {
                             </div>
                         )}
                     </Card>
-                    <Card title="How to configure">
-                        <ol className="space-y-1.5 text-[13px] text-slate-600 dark:text-slate-300">
-                            {(steps || [
-                                "1. Start the DNS server and open UDP and TCP port 53 to the internet on every node.",
-                                "2. Add the name servers (e.g. ns1.example.com) above and declare your domain under Domains served.",
-                                "3. Subdomain (app.example.com): at the DNS host of example.com add an A record for ns1 and an NS record with host app pointing to your name servers.",
-                                "4. Registered domain: at your registrar set its name servers to yours, with glue records.",
-                                "5. Add records for the domain, then Test everything (delegation can take up to 48 hours).",
-                            ]).map((t: string, i: number) => <li key={i}>{t}</li>)}
-                        </ol>
-                    </Card>
+                    {steps && (
+                        <Card title="Next steps" description="For the first domain that needs attention.">
+                            <ol className="space-y-1.5 text-[13px] text-slate-600 dark:text-slate-300">
+                                {steps.map((t: string, i: number) => <li key={i}>{t}</li>)}
+                            </ol>
+                            <button type="button" onClick={() => setTab("guide")} className="mt-3 text-[13px] font-semibold text-teal-600 hover:underline dark:text-teal-300">Open the full setup guide</button>
+                        </Card>
+                    )}
                 </div>
             )}
             {tab === "nodes" && <DnsNodes status={status} />}
+            {tab === "guide" && <DnsGuide status={status} domains={domains} onOpenSettings={() => setTab("settings")} />}
         </div>
     );
 }

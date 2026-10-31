@@ -1,0 +1,68 @@
+# ScaleGuard with Docker. One command:   ./scaleguard-docker.sh        (or: docker compose up -d --build)
+# Settings come from .env (copy .env.example; the script creates it for you). Optional parts:
+#   ./scaleguard-docker.sh up --postgres   also start PostgreSQL and use it for the configuration store
+#   ./scaleguard-docker.sh up --dns        publish port 53 and turn the DNS server on
+name: scaleguard
+
+services:
+  scaleguard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: scaleguard:local
+    container_name: scaleguard
+    restart: unless-stopped
+    ports:
+      - "${SCALEGUARD_HTTP_PUBLISH:-80}:80"
+      - "${SCALEGUARD_HTTPS_PUBLISH:-443}:443"
+      - "${SCALEGUARD_HTTPS_PUBLISH:-443}:443/udp"      # HTTP/3 (QUIC)
+      - "${SCALEGUARD_SSH_PUBLISH:-2222}:2222"          # SafeExpose tunnels
+    environment:
+      # --- admin login (the password is required; there is no default) ---
+      SCALEGUARD_ADMIN_USER: ${SCALEGUARD_ADMIN_USER:-scaleguard}
+      SCALEGUARD_ADMIN_PASSWORD: ${SCALEGUARD_ADMIN_PASSWORD:?Set SCALEGUARD_ADMIN_PASSWORD in .env (run ./scaleguard-docker.sh to create it)}
+      # --- configuration store: SQLite in the data volume, or PostgreSQL when SCALEGUARD_DB_URL is set ---
+      SCALEGUARD_DB_URL: ${SCALEGUARD_DB_URL:-}
+      SCALEGUARD_DB_USER: ${SCALEGUARD_DB_USER:-}
+      SCALEGUARD_DB_PASSWORD: ${SCALEGUARD_DB_PASSWORD:-}
+      # --- DuckDB: response cache and analytics (both live in the data volume) ---
+      SCALEGUARD_CACHE_BACKEND: ${SCALEGUARD_CACHE_BACKEND:-duckdb}
+      SCALEGUARD_L1_CACHE_SIZE: ${SCALEGUARD_L1_CACHE_SIZE:-2000}
+      SCALEGUARD_ANALYTICS: ${SCALEGUARD_ANALYTICS:-true}
+      # --- tuning ---
+      SCALEGUARD_RATE_LIMIT: ${SCALEGUARD_RATE_LIMIT:-10000}
+      SCALEGUARD_HEAP_PERCENT: ${SCALEGUARD_HEAP_PERCENT:-50}
+      SCALEGUARD_EXTRA_OPTS: ${SCALEGUARD_EXTRA_OPTS:-}
+      # --- DNS server (off unless started with --dns; see DnsConfig.java for every dns* option) ---
+      dnsServer: ${SCALEGUARD_DNS:-false}
+      dnsPort: "53"
+      dnsProxy: ${SCALEGUARD_DNS_PROXY:-8.8.8.8,1.1.1.1}
+    volumes:
+      # everything persistent lives here: DuckDB cache + analytics, SQLite/ledger, certificates, licence.
+      # SCALEGUARD_DATA_DIR = a named volume (default) or a host folder such as ./data
+      - ${SCALEGUARD_DATA_DIR:-scaleguard-data}:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false            # only waits for it when the postgres profile is on
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    container_name: scaleguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-scaleguard}
+      POSTGRES_USER: ${POSTGRES_USER:-scaleguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - scaleguard-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  scaleguard-data:
+  scaleguard-pgdata:

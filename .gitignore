@@ -26,3 +26,5 @@ domains/
 *.log
 *.pid
 scaleguard.db
+.env
+dist/

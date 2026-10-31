@@ -9,3 +9,11 @@ target
 *.key
 *.png
 *.svg
+.env
+adminui
+admin-ui/build
+dev-tools
+docs
+certs
+scaleguard.log
+scaleguard.pid

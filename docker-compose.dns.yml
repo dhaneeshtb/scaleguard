@@ -1,0 +1,7 @@
+# Added by ./scaleguard-docker.sh up --dns: publishes the DNS port (UDP and TCP).
+# On a Linux host where systemd-resolved owns port 53, set SCALEGUARD_DNS_PUBLISH to a free port or free port 53 first.
+services:
+  scaleguard:
+    ports:
+      - "${SCALEGUARD_DNS_PUBLISH:-53}:53/udp"
+      - "${SCALEGUARD_DNS_PUBLISH:-53}:53/tcp"

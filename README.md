@@ -59,7 +59,23 @@ flowchart LR
 
 ## ⚡ Quick start
 
-Requires **Java 21+**.
+Requires **Java 21+** (the installer tells you how to get it if it is missing).
+
+**One command on macOS or Linux** (no Docker):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dhaneeshtb/scaleguard/main/install.sh | sh
+scaleguard status        # also: start | stop | restart | logs | password
+```
+
+It installs the server and the admin UI under `~/.local/share/scaleguard`, asks for (or generates) an admin password, saves
+the settings in `~/.scaleguard/scaleguard.env` (readable only by you), and starts it on port 8080. Everything ScaleGuard keeps is in that one
+folder, `~/.scaleguard`: the settings, the DuckDB files (`cache.duckdb`, `analytics.duckdb`), the SQLite store, certificates and the log. Options: `--port`,
+`--https-port`, `--user`, `--service` (start at login/boot via systemd or launchd), `--uninstall [--purge]`. From a checkout,
+`./install.sh` builds the jar and UI itself (needs Java 21, Maven and Node.js). Maintainers: `./make-release.sh` builds
+`dist/scaleguard.tar.gz` (+ checksum) to attach to a GitHub release, which is what the one-liner downloads.
+
+Or by hand:
 
 ```bash
 git clone https://github.com/dhaneeshtb/scaleguard.git && cd scaleguard
@@ -74,11 +90,38 @@ java -DadminUser=$SCALEGUARD_ADMIN_USER -DadminPassword=$SCALEGUARD_ADMIN_PASSWO
 Open **http://localhost/adminui/** and sign in. Add a route, point it at your backends, and you're serving.
 
 <details>
-<summary><b>Docker</b></summary>
+<summary><b>Docker (one command)</b></summary>
+
+```bash
+./scaleguard-docker.sh                 # builds the image and starts ScaleGuard; creates .env with a generated admin password
+./scaleguard-docker.sh up --postgres   # ...and keep the configuration in a PostgreSQL container
+./scaleguard-docker.sh up --dns        # ...and publish port 53 (UDP + TCP) and turn the DNS server on
+./scaleguard-docker.sh logs | status | down | reset
+```
+
+Open **http://localhost/adminui/**; the login is in `.env`. Needs Docker with Compose v2 running. Everything is configured by
+environment variables in `.env` (see [`.env.example`](.env.example)); `docker compose up -d --build` does the same once `.env` exists.
+
+| Variable | Meaning |
+|---|---|
+| `SCALEGUARD_ADMIN_USER` / `SCALEGUARD_ADMIN_PASSWORD` | admin login; the password is required, there is no default |
+| `SCALEGUARD_DB_URL`, `_DB_USER`, `_DB_PASSWORD` | PostgreSQL for the configuration store (a `jdbc:postgresql://…` URL). Empty = SQLite in the data volume. `--postgres` starts one for you |
+| `SCALEGUARD_CACHE_BACKEND`, `_L1_CACHE_SIZE` | response cache: `duckdb` (default, persisted in the volume) or `memory` |
+| `SCALEGUARD_ANALYTICS` | `false` turns the DuckDB request analytics off |
+| `SCALEGUARD_DNS`, `_DNS_PROXY`, `_DNS_PUBLISH` | DNS server on/off, upstream resolvers, host port for DNS (default 53) |
+| `SCALEGUARD_HTTP_PUBLISH`, `_HTTPS_PUBLISH`, `_SSH_PUBLISH` | host ports for HTTP, HTTPS (+ HTTP/3 on UDP) and SafeExpose tunnels (2222) |
+| `SCALEGUARD_EXTRA_OPTS` | any extra JVM flags, e.g. `-Dscaleguard.http3=false` |
+
+Data (configuration, certificates, and the DuckDB files `cache.duckdb` and `analytics.duckdb`) lives under `/data`, a mounted volume
+(`scaleguard-data` by default; set `SCALEGUARD_DATA_DIR=./data` to keep it in a host folder). The container warns at start if `/data`
+is not a mount. On a Linux host where
+`systemd-resolved` already uses port 53, set `SCALEGUARD_DNS_PUBLISH` to a free port before `--dns`.
+
+Plain `docker run` works too:
 
 ```bash
 docker build -f docker/Dockerfile -t scaleguard .
-docker run -p 80:80 -p 443:443 -p 443:443/udp \
+docker run -p 80:80 -p 443:443 -p 443:443/udp -v scaleguard-data:/data \
   -e SCALEGUARD_ADMIN_USER=admin -e SCALEGUARD_ADMIN_PASSWORD='choose-a-strong-password' \
   scaleguard
 ```
@@ -107,7 +150,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 | **Layer-7 load balancing** | Round-robin, least-connections, weighted and active/standby (multi-cluster disaster recovery), per target |
 | **Routing** | By host name, port, path prefix, header value or JWT claim |
 | **HTTP/2, HTTP/3 and gRPC** | ALPN `h2` on TLS, h2c on plain HTTP, and HTTP/3 over QUIC on every HTTPS port (advertised with `Alt-Svc`, same certificates, multi-core UDP listeners). Each can be switched per route, like nginx's per-server `http2` / `http3` / `grpc_pass`. gRPC unary, client-, server- and bidirectional streaming proxied message by message, trailers intact, over pooled HTTP/2 backend connections |
-| **WebSockets and TCP** | WebSocket upgrade proxying and raw TCP routes |
+| **WebSockets and TCP** | WebSocket proxying that completes the backend handshake before answering the client (so fast first frames and slow links such as tunnels work), relays frames with back-pressure and passes on the backend's refusals and sub-protocol; raw TCP routes |
 | **Caching** | Per-route response cache with TTLs |
 | **Cloud functions** | Answer a route with a small **Groovy** program instead of a backend: pick a function as a route's target (or in Quick Mapping) and it replies to any URL pattern and HTTP method, with `method`, `path`, `headers`, `query` and the parsed `body` as ready-made variables. Auth, rate limits, WAF, IP rules, CORS, analytics and the response cache (with TTLs) apply like for any target. Runs in a sandbox: no files, processes, reflection, threads or system access, a hard time limit, bounded memory and output, and **outbound network calls off unless you enable them** per function, with an optional host allow-list and SSRF protection (private ranges, redirects, DNS rebinding). Secrets are write-only and exposed per function. Editor, test panel, run logs and examples in the admin UI. [Guide and sandbox limits](docs/CLOUD_FUNCTIONS.md) |
 | **Async delivery** | Hand requests to Kafka or an embedded durable queue, with retries and an event audit API |
@@ -297,16 +340,26 @@ To work on the UI: `cd admin-ui && npm install && npm start`. `./build.sh` build
 ## 🔌 SafeExpose: self-hosted tunnels
 
 ```bash
-git clone https://github.com/dhaneeshtb/scalegurad-safeexpose.git && cd scalegurad-safeexpose
-./safeexpose 3000              # asks for your ScaleGuard server, user and password the first time
-./safeexpose 3000 my-app       # or pick the name: https://my-app.<your-domain>
+curl -fsSL https://raw.githubusercontent.com/dhaneeshtb/scalegurad-safeexpose/main/install.sh | sh   # once; no source, no build
+safeexpose 3000                # asks for your ScaleGuard server, user and password the first time
+safeexpose 3000 my-app         # or pick the name: https://my-app.<your-domain>
+safeexpose 192.168.1.20:3000   # an app on another machine
 ```
 
 Your local app is live at `https://app-3000.<your-domain>` (or the name you chose) with a real certificate. No port
-forwarding, no firewall changes. Ctrl+C removes the tunnel, and it reconnects by itself if the connection drops. The
-launcher builds itself on first use (Java 11+ and Maven); `safeexpose.cmd` is the Windows version, and
-`SAFEEXPOSE_SERVER` / `SAFEEXPOSE_USER` / `SAFEEXPOSE_PASSWORD` configure it for scripts. The server needs a base DNS
-zone for tunnels (Admin UI → DNS). [SafeExpose docs →](https://github.com/dhaneeshtb/scalegurad-safeexpose)
+forwarding, no firewall changes. Ctrl+C removes the tunnel, and it reconnects by itself if the connection drops;
+WebSockets (for example a dev server's hot reload) work through it.
+
+- **Install:** needs Java 11+; the installer (and the command) tell you how to install it if it is missing. It downloads a
+  prebuilt jar and checks its SHA-256. A PowerShell installer exists for Windows.
+- **Login:** asked once (password hidden) and saved to `~/.tunnel_config`, readable only by you. For scripts use
+  `SAFEEXPOSE_SERVER` / `SAFEEXPOSE_USER` / `SAFEEXPOSE_PASSWORD`.
+- **Public name:** `https://<name>.<domain>`. The domain is `--domain example.com` (or `safeexpose domain example.com`),
+  else the server's `scaleguard.tunnel.domain` setting, else the first domain under **DNS → Domains served**, else a DNS
+  `base` record, else the server's own host name. Point that domain's DNS at the gateway (a served domain does this for you).
+- The client learns the SSH host and port from the server, so nothing is hard-coded.
+
+[SafeExpose docs →](https://github.com/dhaneeshtb/scalegurad-safeexpose)
 
 ---
 

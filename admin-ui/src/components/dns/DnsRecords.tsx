@@ -42,8 +42,10 @@ const VALUE_PLACEHOLDER: Partial<Record<RType, string>> = {
     PTR: "host.example.com", TXT: "v=spf1 include:_spf.example.com ~all",
 };
 
-export default function DnsRecords({ records, busy, error, onAdd, onDelete }: {
+export default function DnsRecords({ records, busy, error, setupHint, onSetup, onAdd, onDelete }: {
     records: any[]; busy: boolean; error?: string;
+    /** Set while the server isn't set up: adding is blocked and this says why. */
+    setupHint?: string; onSetup: () => void;
     onAdd: (body: { name: string; type: string; ip: string; ttl: number }) => Promise<boolean>;
     onDelete: (id: string) => Promise<void>;
 }) {
@@ -75,7 +77,14 @@ export default function DnsRecords({ records, busy, error, onAdd, onDelete }: {
 
     return (
         <div className="space-y-5">
-            <Card title="Add record" description={HELP[type]}>
+            <Card title="Add record" description={setupHint ? undefined : HELP[type]}>
+                {setupHint && (
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-[13px] text-amber-800 dark:text-amber-200">
+                        <span>{setupHint}</span>
+                        <button type="button" onClick={onSetup} className="rounded-lg border border-amber-500/40 px-3 py-1.5 text-[12.5px] font-semibold hover:bg-amber-500/10">Open Server settings</button>
+                    </div>
+                )}
+                <fieldset disabled={!!setupHint} className={setupHint ? "opacity-50" : ""}>
                 <div className="grid gap-4 sm:grid-cols-6">
                     <div className="sm:col-span-1">
                         <Field label="Type" htmlFor="dns-type">
@@ -123,11 +132,12 @@ export default function DnsRecords({ records, busy, error, onAdd, onDelete }: {
                 </div>
                 {error && <p className="mt-3 text-[12.5px] text-rose-500 dark:text-rose-300">{error}</p>}
                 <div className="mt-4 flex justify-end">
-                    <button type="button" onClick={save} disabled={busy || !name || !ready(type, f)}
+                    <button type="button" onClick={save} disabled={!!setupHint || busy || !name || !ready(type, f)}
                         className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-cyan-400 px-4 text-[13px] font-semibold text-slate-950 shadow-glow hover:brightness-110 disabled:opacity-50">
                         <FiPlus /> Add record
                     </button>
                 </div>
+                </fieldset>
             </Card>
 
             <Card title="Records" description={`${records.length} record${records.length === 1 ? "" : "s"}, replicated to every node.`}

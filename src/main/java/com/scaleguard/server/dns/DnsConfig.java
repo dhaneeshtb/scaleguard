@@ -15,13 +15,14 @@ import java.util.List;
  * dnsServer=true                      start the DNS server (default false)
  * dnsPort=53                          UDP + TCP port
  * dnsProxy=1.1.1.1,8.8.8.8            upstream resolvers for names outside our zones (host or host:port)
+ * dnsLoadBalance=true                rotate A/AAAA/NS answers per query so clients spread over all servers
  * dnsRecursion=true                   forward non-zone names for allowed clients
  * dnsRecursionAllow=127.0.0.0/8,...   CIDRs allowed to use recursion (default: loopback + private ranges)
  * dnsRateLimit=100                    queries per second per client (/32 for IPv4, /64 for IPv6); 0 = off
  * dnsRateBurst=200                    burst size for the rate limiter
  * dnsCacheSize=100000                 max cached upstream answers
  * dnsUpstreamTimeoutMs=1500           per-attempt upstream timeout
- * dnsAdvertiseIps=203.0.113.10        IPs returned for "base" zones (default: this host's public interface IPs)
+ * dnsAdvertiseIps=203.0.113.10        pins the IPs returned for "base" zones (default: public IPs of every running cluster node, detected; not editable in the UI)
  * dnsNameServers=ns1.example.com.     NS names served at each zone apex (optional)
  * dnsBlockedDomains=example.com.      suffixes refused outright (optional)
  * dnsTcpMaxConnections=2000           concurrent TCP clients
@@ -32,6 +33,7 @@ final class DnsConfig {
     final int port;
     final List<InetSocketAddress> upstreams;
     final boolean recursion;
+    final boolean loadBalance;
     final CidrSet recursionAllow;
     final int rateLimit;
     final int rateBurst;
@@ -73,6 +75,7 @@ final class DnsConfig {
         port = intProp("dnsPort");
         upstreams = parseUpstreams(raw("dnsProxy"));
         recursion = !"false".equalsIgnoreCase(raw("dnsRecursion"));
+        loadBalance = !"false".equalsIgnoreCase(raw("dnsLoadBalance"));
         recursionAllow = CidrSet.parse(raw("dnsRecursionAllow"));
         rateLimit = intProp("dnsRateLimit");
         rateBurst = Math.max(rateLimit, intProp("dnsRateBurst"));
@@ -86,7 +89,7 @@ final class DnsConfig {
 
     /** Saved setting, else the dns* property, else the default. */
     String raw(String key) {
-        String v = saved.get(key);
+        String v = DnsSettings.DEFAULTS.containsKey(key) ? saved.get(key) : null; // only editable keys come from the UI
         if (v == null || v.isBlank()) v = AppProperties.get(key);
         return v == null || v.isBlank() ? DnsSettings.DEFAULTS.get(key) : v.trim();
     }

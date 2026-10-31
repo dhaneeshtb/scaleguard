@@ -56,4 +56,32 @@ public class DnsRecordTypesTest {
         assertNotNull(DNSRoute.validateValue("caa", "0 bogus x"));
         assertNull(DNSRoute.validateValue("txt", "v=spf1 -all"));
     }
+
+    @Test
+    public void answersRotateAcrossAllAddressesUnlessTurnedOff() throws Exception {
+        String name = "lb" + System.nanoTime() + ".test.";
+        for (String ip : new String[]{"192.0.2.1", "192.0.2.2", "192.0.2.3"}) DNSAddressBook.add(name, ip, "a", 60);
+        DNSAddressBook.add(name, "10 mail." + name, "mx", 60);
+
+        java.util.Set<String> firsts = new java.util.HashSet<>();
+        for (int i = 0; i < 6; i++) {
+            DNSAddressBook.AuthAnswer a = DNSAddressBook.resolve(name, DnsWire.TYPE_ANY);
+            java.util.List<DnsWire.Rr> as = a.answers().stream().filter(r -> r.type() == DnsWire.TYPE_A).toList();
+            assertEquals(3, as.size()); // nothing lost
+            assertEquals(DnsWire.TYPE_MX, a.answers().get(0).type()); // unrotated records keep their place
+            firsts.add(java.util.Arrays.toString(as.get(0).rdata()));
+        }
+        assertEquals(3, firsts.size()); // every address leads in turn
+
+        com.scaleguard.server.dns.DnsSettings.save(java.util.Map.of("dnsLoadBalance", "false"));
+        DnsConfig.reset();
+        try {
+            java.util.Set<String> fixed = new java.util.HashSet<>();
+            for (int i = 0; i < 4; i++) fixed.add(java.util.Arrays.toString(DNSAddressBook.resolve(name, DnsWire.TYPE_A).answers().get(0).rdata()));
+            assertEquals(1, fixed.size());
+        } finally {
+            com.scaleguard.server.dns.DnsSettings.save(java.util.Map.of("dnsLoadBalance", ""));
+            DnsConfig.reset();
+        }
+    }
 }

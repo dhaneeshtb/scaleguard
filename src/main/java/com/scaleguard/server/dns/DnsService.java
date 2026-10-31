@@ -35,6 +35,17 @@ public final class DnsService {
         return DnsConfig.enabled();
     }
 
+    /** Why records can't be added yet, or null when the server is set up (started, with a name server). */
+    public static String setupProblem() {
+        if (!desired()) return "Start the DNS server before adding records.";
+        boolean hasNs = !DnsConfig.get().nameServers.isEmpty()
+                || DNSAddressBook.get().values().stream().anyMatch(l -> l.stream().anyMatch(DNSAddressBook.WrappedDNSRecord::isBase));
+        return hasNs ? null : "Add a name server in Server settings before adding records.";
+    }
+
+    /** This node's public IPs, published in the heartbeat so peers can answer base records with every node. */
+    public static java.util.List<String> publicIps() { return ClusterDnsIps.local(); }
+
     public static boolean running() { return DnsServer.current() != null; }
 
     /** Persists the desired state (replicated to every node) and applies it here. */

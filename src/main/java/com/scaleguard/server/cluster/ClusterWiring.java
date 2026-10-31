@@ -130,6 +130,7 @@ public final class ClusterWiring {
             // analytics off
         }
         m.put("dnsRunning", com.scaleguard.server.dns.DnsService.running());
+        m.put("dnsIps", com.scaleguard.server.dns.DnsService.publicIps());
         m.put("http3Ports", com.scaleguard.server.http.h3.Http3Listener.ports());
         m.put("uptimeMs", java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime());
         return m;

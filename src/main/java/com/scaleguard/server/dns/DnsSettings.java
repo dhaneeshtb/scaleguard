@@ -23,6 +23,7 @@ final class DnsSettings {
     static {
         DEFAULTS.put("dnsPort", "53");
         DEFAULTS.put("dnsProxy", "1.1.1.1,8.8.8.8");
+        DEFAULTS.put("dnsLoadBalance", "true");
         DEFAULTS.put("dnsRecursion", "true");
         DEFAULTS.put("dnsRecursionAllow", "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7");
         DEFAULTS.put("dnsRateLimit", "100");
@@ -30,7 +31,6 @@ final class DnsSettings {
         DEFAULTS.put("dnsCacheSize", "100000");
         DEFAULTS.put("dnsUpstreamTimeoutMs", "1500");
         DEFAULTS.put("dnsTcpMaxConnections", "2000");
-        DEFAULTS.put("dnsAdvertiseIps", "");
         DEFAULTS.put("dnsNameServers", "");
         DEFAULTS.put("dnsBlockedDomains", "");
     }
@@ -66,6 +66,7 @@ final class DnsSettings {
     /** Validates and saves (replicated); returns an error message instead when a value is invalid. */
     static String save(Map<String, String> in) throws Exception {
         Map<String, String> merged = new LinkedHashMap<>(load());
+        List<String> oldNs = List.of(split(merged.getOrDefault("dnsNameServers", "")));
         for (Map.Entry<String, String> e : in.entrySet()) {
             if (!DEFAULTS.containsKey(e.getKey())) return "unknown setting " + e.getKey();
             String v = e.getValue() == null ? "" : e.getValue().trim();
@@ -82,6 +83,10 @@ final class DnsSettings {
         p.setMts(now);
         p.setUts(now);
         SystemPropertyDB.getInstance().save(List.of(p));
+        // each name server hostname must resolve to this server's IPs: a "base" record (replicated like any record)
+        List<String> newNs = List.of(split(merged.getOrDefault("dnsNameServers", "")));
+        for (String ns : newNs) DNSAddressBook.add(ns, "base", "base", DNSAddressBook.DEFAULT_TTL);
+        for (String ns : oldNs) if (!newNs.contains(ns)) DNSAddressBook.remove(ns, "base");
         return null;
     }
 
@@ -94,15 +99,13 @@ final class DnsSettings {
             case "dnsCacheSize": return range(key, v, 0, 10_000_000);
             case "dnsTcpMaxConnections": return range(key, v, 1, 1_000_000);
             case "dnsUpstreamTimeoutMs": return range(key, v, 100, 30_000);
-            case "dnsRecursion": return v.matches("(?i)true|false") ? null : "dnsRecursion must be true or false";
+            case "dnsRecursion": case "dnsLoadBalance":
+                return v.matches("(?i)true|false") ? null : key + " must be true or false";
             case "dnsProxy":
                 for (String s : split(v)) if (!validUpstream(s)) return "forwarder '" + s + "' must be an IP or host, optionally :port";
                 return null;
             case "dnsRecursionAllow":
                 for (String s : split(v)) if (!validCidr(s)) return "'" + s + "' is not an IP or CIDR range";
-                return null;
-            case "dnsAdvertiseIps":
-                for (String s : split(v)) if (NetUtil.createByteArrayFromIpAddressString(s) == null) return "'" + s + "' is not an IP address";
                 return null;
             default: // dnsNameServers, dnsBlockedDomains
                 for (String s : split(v)) if (!s.matches(HOST)) return "'" + s + "' is not a valid domain name";
@@ -154,6 +157,7 @@ final class DnsSettings {
         DEFAULTS.keySet().forEach(k -> values.put(k, DnsConfig.get().raw(k)));
         out.put("settings", values);
         out.put("defaults", DEFAULTS);
+        out.put("detectedIps", ClusterDnsIps.all()); // what a blank dnsAdvertiseIps resolves to right now
         return out;
     }
 }

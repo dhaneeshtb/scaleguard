@@ -4,7 +4,6 @@ import com.scaleguard.exceptions.GenericServerProcessingException;
 import com.scaleguard.server.db.DNSEntriesDB;
 import com.scaleguard.server.db.DNSEntry;
 import com.scaleguard.server.dns.DnsWire.Rr;
-import com.scaleguard.server.system.SystemManager;
 import io.netty.util.NetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -255,7 +255,29 @@ public class DNSAddressBook {
             Rr soa = soa(apex);
             return new AuthAnswer(DnsWire.RCODE_NOERROR, List.of(), List.of(soa.withTtl(Math.min(soa.ttl(), SOA_MINIMUM))));
         }
-        return new AuthAnswer(DnsWire.RCODE_NOERROR, answers, List.of());
+        return new AuthAnswer(DnsWire.RCODE_NOERROR, balance(answers), List.of());
+    }
+
+    private static final AtomicInteger rotation = new AtomicInteger();
+
+    /**
+     * Round-robin: every answer starts the A / AAAA / NS sets at the next record, so clients spread over all of them
+     * (in a cluster, "base" holds every running node's IP). Other records (CNAME first, MX, TXT) keep their place.
+     */
+    static List<Rr> balance(List<Rr> in) {
+        if (in.size() < 2 || !DnsConfig.get().loadBalance) return in;
+        int n = rotation.getAndIncrement() & Integer.MAX_VALUE;
+        List<Rr> out = new ArrayList<>(in.size());
+        for (Rr r : in) if (!rotates(r.type())) out.add(r);
+        for (int type : new int[]{DnsWire.TYPE_A, DnsWire.TYPE_AAAA, DnsWire.TYPE_NS}) {
+            List<Rr> set = in.stream().filter(r -> r.type() == type).toList();
+            for (int i = 0; i < set.size(); i++) out.add(set.get((i + n) % set.size()));
+        }
+        return out;
+    }
+
+    private static boolean rotates(int type) {
+        return type == DnsWire.TYPE_A || type == DnsWire.TYPE_AAAA || type == DnsWire.TYPE_NS;
     }
 
     /** Walks up the labels of qname (a.b.example.com. → b.example.com. → example.com. → com.) to the closest stored name. */
@@ -340,8 +362,8 @@ public class DNSAddressBook {
     }
 
     static List<String> advertisedIps() {
-        List<String> configured = DnsConfig.get().advertiseIps;
-        return configured.isEmpty() ? SystemManager.readNetworksCached() : configured;
+        List<String> configured = DnsConfig.get().advertiseIps; // pinned list: replicated setting, same on every node
+        return configured.isEmpty() ? ClusterDnsIps.all() : configured;
     }
 
     private static Rr soa(String apex) {

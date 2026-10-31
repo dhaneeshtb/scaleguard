@@ -39,6 +39,9 @@ public class DNSRoute implements RequestRoute {
                 st.put("enabled", DnsService.desired());
                 st.put("running", s != null);
                 st.put("port", s != null ? s.port() : DnsConfig.get().port);
+                String problem = DnsService.setupProblem();
+                st.put("setup", problem == null);
+                st.put("setupHint", problem);
                 return RequestRoutingResponse.succes(JSON.toString(st));
             }
             if ("test".equalsIgnoreCase(last)) {
@@ -107,6 +110,10 @@ public class DNSRoute implements RequestRoute {
             String type = text(node, "type");
             type = type == null || type.isBlank() ? "record" : type.trim().toLowerCase();
             if (!TYPES.contains(type)) return error("type must be one of " + TYPES);
+            if (!"base".equals(type)) {
+                String notReady = DnsService.setupProblem();
+                if (notReady != null) return RequestRoutingResponse.response(409, JSON.toString(Map.of("error", notReady)));
+            }
 
             String ip = text(node, "ip");
             if ("base".equals(type) || ip == null || ip.isBlank()) {

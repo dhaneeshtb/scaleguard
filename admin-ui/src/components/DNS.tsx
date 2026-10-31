@@ -5,10 +5,9 @@ import DnsNodes from "./dns/DnsNodes";
 import DnsRecords from "./dns/DnsRecords";
 import DnsSettings from "./dns/DnsSettings";
 import { dnsCall, errorText } from "./dns/dnsApi";
-import NameServers from "./NameServers";
 import { Card, PageHeader, Pill, inputCls } from "./ui/controls";
 
-const TABS = [["records", "Records"], ["setup", "Name servers & test"], ["settings", "Server settings"], ["nodes", "Nodes"]] as const;
+const TABS = [["records", "Records"], ["settings", "Server settings"], ["nodes", "Nodes"]] as const;
 type Tab = typeof TABS[number][0];
 
 export default function DNS() {
@@ -31,7 +30,6 @@ export default function DNS() {
 
     const all = Object.values(zones).flat();
     const records = all.filter(r => r.type !== "base");
-    const nameServers = all.filter(r => r.type === "base");
 
     const run = async (fn: () => Promise<any>, fallback: string): Promise<boolean> => {
         setBusy(true); setError(undefined);
@@ -42,7 +40,6 @@ export default function DNS() {
     const toggleServer = () => run(() => dnsCall(auth, "post", `/dns/${status?.enabled ? "stop" : "start"}`, {}), "Could not change the DNS server state");
     const addRecord = (body: any) => run(() => dnsCall(auth, "post", "/dns", body), "Could not save the record");
     const deleteRecord = async (id: string) => { await run(() => dnsCall(auth, "delete", `/dns/${id}`), "Could not delete the record"); };
-    const saveNameServer = async (name: string, ip: string) => { await run(() => dnsCall(auth, "post", "/dns", { type: "base", ttl: 600, name, ip }), "Could not save the name server"); };
 
     const runTest = async () => {
         setTesting(true); setTestResult(undefined); setError(undefined);
@@ -77,13 +74,11 @@ export default function DNS() {
 
             {error && tab !== "records" && <p className="mb-4 text-[12.5px] text-rose-500 dark:text-rose-300">{error}</p>}
 
-            {tab === "records" && <DnsRecords records={records} busy={busy} error={error} onAdd={addRecord} onDelete={deleteRecord} />}
+            {tab === "records" && <DnsRecords records={records} busy={busy} error={error} setupHint={status && !status.setup ? status.setupHint : undefined} onSetup={() => setTab("settings")} onAdd={addRecord} onDelete={deleteRecord} />}
 
-            {tab === "setup" && (
-                <div className="space-y-5">
-                    <Card title="Name servers" description="Host names that point to this server's public IPs. Give these to your registrar.">
-                        <NameServers nameServers={nameServers} onSave={saveNameServer} onDelete={deleteRecord} />
-                    </Card>
+            {tab === "settings" && (
+                <div className="space-y-5 pb-16">
+                    <DnsSettings onSaved={load} />
                     <Card title="Test your setup" description="Checks that this server answers and that your domain is delegated to it.">
                         <div className="flex gap-2">
                             <input value={testDomain} onChange={e => setTestDomain(e.target.value)} className={inputCls} placeholder="example.com" aria-label="Domain to test" />
@@ -115,8 +110,6 @@ export default function DNS() {
                     </Card>
                 </div>
             )}
-
-            {tab === "settings" && <DnsSettings onSaved={load} />}
             {tab === "nodes" && <DnsNodes status={status} />}
         </div>
     );

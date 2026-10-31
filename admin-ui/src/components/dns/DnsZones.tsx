@@ -19,7 +19,7 @@ export default function DnsZones({ domains, busy, setupHint, onAdd, onDelete, on
     const add = async () => { if (await onAdd(name.trim().toLowerCase())) setName(""); };
 
     return (
-        <Card title="Domains served" description="Domains this server is the authority for, e.g. app.example.com. Names inside them answer from your records; unknown names get NXDOMAIN.">
+        <Card title="Domains served" description="Domains this server is the authority for, e.g. app.example.com. By default the domain and every name inside it answer with the public IPs of all connected nodes, load-balanced. Add a record under Records to override a name.">
             {setupHint && <p className="mb-3 text-[12.5px] text-amber-700 dark:text-amber-300">{setupHint}</p>}
             <div className="flex gap-2">
                 <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && name.trim()) add(); }}

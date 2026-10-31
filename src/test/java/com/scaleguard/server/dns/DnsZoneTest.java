@@ -10,29 +10,31 @@ import static org.junit.Assert.assertTrue;
 public class DnsZoneTest {
 
     @Test
-    public void declaredDomainAnswersForItselfAndRefusesNothingBelowIt() {
-        String zone = "app" + System.nanoTime() + ".example.test.";
-        assertNull(DNSAddressBook.resolve(zone, DnsWire.TYPE_SOA)); // unknown: caller forwards or refuses
+    public void declaredDomainAnswersWithTheConnectedServersUnlessOverridden() {
+        System.setProperty("dnsAdvertiseIps", "192.0.2.10,192.0.2.11");
+        DnsConfig.reset();
+        try {
+            String zone = "app" + System.nanoTime() + ".example.test.";
+            assertNull(DNSAddressBook.resolve(zone, DnsWire.TYPE_SOA)); // unknown: caller forwards or refuses
 
-        DNSAddressBook.add(zone, "zone", "zone", 600);
+            DNSAddressBook.add(zone, "zone", "zone", 600);
 
-        DNSAddressBook.AuthAnswer soa = DNSAddressBook.resolve(zone, DnsWire.TYPE_SOA);
-        assertNotNull(soa);
-        assertEquals(1, soa.answers().size());
+            assertEquals(1, DNSAddressBook.resolve(zone, DnsWire.TYPE_SOA).answers().size());
+            // the domain and every name below it answer with all connected servers
+            assertEquals(2, DNSAddressBook.resolve(zone, DnsWire.TYPE_A).answers().size());
+            assertEquals(2, DNSAddressBook.resolve("www." + zone, DnsWire.TYPE_A).answers().size());
+            // the marker never leaks out as another record type
+            DNSAddressBook.AuthAnswer txt = DNSAddressBook.resolve(zone, DnsWire.TYPE_TXT);
+            assertEquals(DnsWire.RCODE_NOERROR, txt.rcode());
+            assertTrue(txt.answers().isEmpty());
 
-        // no records at all yet: NODATA at the apex, and the marker never leaks out as a TXT record
-        DNSAddressBook.AuthAnswer txt = DNSAddressBook.resolve(zone, DnsWire.TYPE_TXT);
-        assertEquals(DnsWire.RCODE_NOERROR, txt.rcode());
-        assertTrue(txt.answers().isEmpty());
-
-        // a name inside the domain that has no record: authoritative NXDOMAIN with the SOA for caching
-        DNSAddressBook.AuthAnswer below = DNSAddressBook.resolve("www." + zone, DnsWire.TYPE_A);
-        assertEquals(DnsWire.RCODE_NXDOMAIN, below.rcode());
-        assertEquals(1, below.authority().size());
-
-        // real records inside it still answer
-        DNSAddressBook.add("www." + zone, "192.0.2.9", "a", 60);
-        assertEquals(1, DNSAddressBook.resolve("www." + zone, DnsWire.TYPE_A).answers().size());
+            // an address record of its own replaces the default
+            DNSAddressBook.add(zone, "198.51.100.7", "a", 60);
+            assertEquals(1, DNSAddressBook.resolve(zone, DnsWire.TYPE_A).answers().size());
+        } finally {
+            System.clearProperty("dnsAdvertiseIps");
+            DnsConfig.reset();
+        }
     }
 
     @Test

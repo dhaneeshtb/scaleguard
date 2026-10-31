@@ -385,7 +385,7 @@ the same admin credentials (nodes call each other with tokens signed by them).
 
 ## DNS
 
-Authoritative DNS for your zones plus forwarding for allowed clients. Start and stop it from the DNS page or `POST /dns/start` (`dnsServer=true` is only the default until that is set). Record types: A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, PTR. `POST /dns {"name":"app.example.com","type":"zone"}` declares a domain served by this server (SOA/NS from the configured name servers, NXDOMAIN for unknown names inside it); delete it with `DELETE /dns/{id}`. A value is checked against its type (`400 {"error"}` if it doesn't fit): MX `10 mail.example.com`, SRV `10 5 5060 sip.example.com`, CAA `0 issue letsencrypt.org`.
+Authoritative DNS for your zones plus forwarding for allowed clients. Start and stop it from the DNS page or `POST /dns/start` (`dnsServer=true` is only the default until that is set). Record types: A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, PTR. `POST /dns {"name":"app.example.com","type":"zone"}` declares a domain served by this server: SOA/NS come from the configured name servers, and the domain and every name below it answer with the public IPs of all connected nodes (round-robin) unless an address record of its own exists; delete it with `DELETE /dns/{id}`. A value is checked against its type (`400 {"error"}` if it doesn't fit): MX `10 mail.example.com`, SRV `10 5 5060 sip.example.com`, CAA `0 issue letsencrypt.org`.
 
 | Method | Path | Description |
 |---|---|---|

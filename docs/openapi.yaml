@@ -232,7 +232,7 @@ components:
       required: [name]
       properties:
         name: { type: string, example: api.example.com }
-        type: { type: string, enum: [base, a, aaaa, txt, cname, mx, ns, srv, caa, ptr, record] }
+        type: { type: string, enum: [base, a, aaaa, txt, cname, mx, ns, srv, caa, ptr, zone, record] }
         ip: { type: string, description: Record value }
         ttl: { type: integer, minimum: 1, maximum: 604800 }
 paths:
@@ -586,9 +586,9 @@ paths:
   /dns/test:
     get:
       tags: [DNS]
-      summary: Test that ScaleGuard is configured as the name server for a domain
-      parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: domain, in: query, required: true, schema: { type: string } }]
-      responses: { '200': { description: 'OK: {"domain", "ok", "checks": [{"name", "ok", "detail"}], "instructions": []}' }, '400': { description: 'Invalid domain ({"error": "..."})' } }
+      summary: Test one domain, or (no domain) the whole DNS configuration
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: domain, in: query, required: false, schema: { type: string } }]
+      responses: { '200': { description: 'One domain: {"domain", "ok", "checks": [{"name", "ok", "detail"}], "instructions": []}. No domain: {"ok", "checks": [], "domains": [<one-domain result>]}' }, '400': { description: 'Invalid domain ({"error": "..."})' } }
   /dns/settings:
     get:
       tags: [DNS]

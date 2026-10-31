@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>"base" — this server's advertised IPs (A for IPv4, AAAA for IPv6)</li>
  *   <li>an IPv4 / IPv6 literal — A / AAAA</li>
  *   <li>anything else — TXT (e.g. ACME DNS-01 tokens)</li>
+ *   <li>type "zone" (value "zone") declares a domain this server is authoritative for, even with no records yet</li>
  *   <li>or an explicit type "a", "aaaa", "txt", "cname", "mx" ("10 mail.example.com."), "ns", "ptr",
  *       "srv" ("10 5 5060 sip.example.com."), "caa" ("0 issue letsencrypt.org")</li>
  * </ul>
@@ -250,12 +251,23 @@ public class DNSAddressBook {
         for (Rr r : all) {
             if (qtype == DnsWire.TYPE_ANY || r.type() == qtype) answers.add(r);
         }
+        if (answers.isEmpty() && !qname.equals(owner) && isDeclaredZoneOnly(owner)) {
+            // inside a declared domain with no such name: authoritative NXDOMAIN, not a refusal
+            Rr soa = soa(apex);
+            return new AuthAnswer(DnsWire.RCODE_NXDOMAIN, List.of(), List.of(soa.withTtl(Math.min(soa.ttl(), SOA_MINIMUM))));
+        }
         if (answers.isEmpty()) {
             // NODATA: the name exists but has no records of this type (RFC 2308) — include SOA for negative caching.
             Rr soa = soa(apex);
             return new AuthAnswer(DnsWire.RCODE_NOERROR, List.of(), List.of(soa.withTtl(Math.min(soa.ttl(), SOA_MINIMUM))));
         }
         return new AuthAnswer(DnsWire.RCODE_NOERROR, balance(answers), List.of());
+    }
+
+    /** True when the only thing stored at owner is a "zone" marker (a domain declared as served by this server). */
+    private static boolean isDeclaredZoneOnly(String owner) {
+        List<WrappedDNSRecord> l = dnsAddressMap.get(owner);
+        return l != null && !l.isEmpty() && l.stream().allMatch(r -> "zone".equalsIgnoreCase(r.getType()));
     }
 
     private static final AtomicInteger rotation = new AtomicInteger();
@@ -318,6 +330,7 @@ public class DNSAddressBook {
             String value = r.getIp() == null ? "" : r.getIp().trim();
             String t = r.getType() == null ? "" : r.getType().trim().toLowerCase();
             switch (t) {
+                case "zone" -> { } // marker only: makes the name a served domain (SOA/NS/NXDOMAIN), adds no record
                 case "a", "aaaa" -> addAddress(out, ownerName, value, ttl);
                 case "txt" -> out.add(new Rr(ownerName, DnsWire.TYPE_TXT, DnsWire.CLASS_IN, ttl, DnsWire.txtRdata(value)));
                 case "cname" -> out.add(new Rr(ownerName, DnsWire.TYPE_CNAME, DnsWire.CLASS_IN, ttl, DnsWire.encodeName(DnsWire.normalize(value))));

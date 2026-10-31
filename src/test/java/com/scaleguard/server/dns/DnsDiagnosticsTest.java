@@ -42,9 +42,33 @@ public class DnsDiagnosticsTest {
         DNSRoute route = new DNSRoute();
         assertTrue(route.receivesQueryString());
         // handler passes the full uri (with ?scaleguard=true) to routes that opt in
-        assertEquals(400, route.handle("GET", "/dns/test?scaleguard=true", "").getStatus());
+        assertEquals(202, route.handle("GET", "/dns/test?scaleguard=true", "").getStatus()); // no domain: test everything
         assertEquals(400, route.handle("GET", "/dns/test?scaleguard=true&domain=not%20a%20domain", "").getStatus());
         assertEquals(202, route.handle("GET", "/dns/test?scaleguard=true&domain=example.com", "").getStatus());
         assertEquals(200, route.handle("GET", "/dns/status?scaleguard=true", "").getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testingEverythingReportsServerChecksAndEveryDeclaredDomain() throws Exception {
+        System.setProperty("dnsPort", "15358");
+        DnsService.setEnabled(true);
+        try {
+            DnsSettings.save(Map.of("dnsNameServers", "ns1.all.test", "dnsRecursion", "false"));
+            DnsService.apply(); // like the settings route: picks up the saved values
+            DNSAddressBook.add("app.all.test.", "zone", "zone", 600);
+            Map<String, Object> r = DnsDiagnostics.runAll();
+            assertTrue((Boolean) check(r, "DNS server running on this node").get("ok"));
+            assertTrue((Boolean) check(r, "Name servers configured").get("ok"));
+            assertTrue((Boolean) check(r, "Domains declared").get("ok"));
+            List<Map<String, Object>> domains = (List<Map<String, Object>>) r.get("domains");
+            Map<String, Object> mine = domains.stream().filter(d -> "app.all.test".equals(d.get("domain"))).findFirst().orElseThrow();
+            assertTrue((Boolean) check(mine, "Local server answers for app.all.test").get("ok"));
+            assertFalse((Boolean) r.get("ok")); // not delegated publicly
+        } finally {
+            DnsSettings.save(Map.of("dnsNameServers", "", "dnsRecursion", ""));
+            DnsService.apply();
+            DnsService.setEnabled(false);
+        }
     }
 }

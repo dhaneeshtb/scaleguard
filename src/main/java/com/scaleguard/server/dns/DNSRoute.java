@@ -10,7 +10,7 @@ import java.util.Set;
 
 public class DNSRoute implements RequestRoute {
 
-    private static final Set<String> TYPES = Set.of("record", "base", "a", "aaaa", "txt", "cname", "mx", "ns", "ptr", "srv", "caa");
+    private static final Set<String> TYPES = Set.of("record", "base", "a", "aaaa", "txt", "cname", "mx", "ns", "ptr", "srv", "caa", "zone");
     private static final long MAX_TTL = 604_800; // 1 week
 
     /** /dns/test reads ?domain=; the path is still taken from the part before the '?'. */
@@ -50,7 +50,10 @@ public class DNSRoute implements RequestRoute {
                 for (String kv : q.split("&")) {
                     if (kv.startsWith("domain=")) domain = java.net.URLDecoder.decode(kv.substring(7), java.nio.charset.StandardCharsets.UTF_8).trim().toLowerCase();
                 }
-                if (domain == null || !domain.matches("^([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)+[a-z0-9-]{2,63}\\.?$")) return error("domain is required, e.g. ?domain=example.com");
+                if (domain == null || domain.isEmpty()) {
+                    return RequestRoutingResponse.later(() -> RequestRoutingResponse.succes(JSON.toString(DnsDiagnostics.runAll())));
+                }
+                if (!domain.matches("^([a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?\\.)+[a-z0-9-]{2,63}\\.?$")) return error("domain must be a valid name, e.g. ?domain=app.example.com (omit it to test everything)");
                 final String d = domain;
                 return RequestRoutingResponse.later(() -> RequestRoutingResponse.succes(JSON.toString(DnsDiagnostics.run(d))));
             }
@@ -116,14 +119,16 @@ public class DNSRoute implements RequestRoute {
             }
 
             String ip = text(node, "ip");
-            if ("base".equals(type) || ip == null || ip.isBlank()) {
+            if ("zone".equals(type)) {
+                ip = "zone";
+            } else if ("base".equals(type) || ip == null || ip.isBlank()) {
                 ip = "base";
             } else {
                 ip = ip.trim();
                 if (ip.length() > 1024) return error("value is too long");
             }
 
-            String bad = "base".equals(type) ? null : validateValue(type, ip);
+            String bad = "base".equals(type) || "zone".equals(type) ? null : validateValue(type, ip);
             if (bad != null) return error(bad);
 
             long ttl = node.has("ttl") ? node.get("ttl").asLong(DNSAddressBook.DEFAULT_TTL) : DNSAddressBook.DEFAULT_TTL;

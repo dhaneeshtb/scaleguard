@@ -46,7 +46,7 @@ final class DnsDiagnostics {
         try {
             List<String> soa = lookup("127.0.0.1", port, domain, "SOA");
             check(checks, "Local server answers for " + shown, !soa.isEmpty(),
-                    soa.isEmpty() ? "no SOA for " + shown + ": add a record under it (or a base record)" : "SOA " + soa.get(0));
+                    soa.isEmpty() ? "no SOA for " + shown + ": declare it under Domains served" : "SOA " + soa.get(0));
         } catch (Exception e) {
             check(checks, "Local server answers for " + shown, false, e.getMessage());
         }
@@ -93,13 +93,73 @@ final class DnsDiagnostics {
         return out;
     }
 
+    /** Whole configuration: the server-level checks, then {@link #run} for every declared domain. */
+    static Map<String, Object> runAll() {
+        List<Map<String, Object>> checks = new ArrayList<>();
+        DnsConfig cfg = DnsConfig.get();
+        boolean running = DnsService.running();
+        check(checks, "DNS server running on this node", running, running ? "listening on port " + cfg.port : "not running; use Start DNS server");
+
+        Set<String> ours = new LinkedHashSet<>(cfg.nameServers);
+        check(checks, "Name servers configured", !ours.isEmpty(), ours.isEmpty() ? "add at least one under Server settings" : String.join(", ", ours));
+
+        List<String> ips = DNSAddressBook.advertisedIps();
+        check(checks, "Public IPs detected", !ips.isEmpty(), ips.isEmpty() ? "none found on this host's interfaces; set dnsAdvertiseIps in application.properties" : String.join(", ", ips));
+
+        if (cfg.recursion) {
+            for (java.net.InetSocketAddress up : cfg.upstreams) {
+                String where = up.getHostString() + ":" + up.getPort();
+                try {
+                    boolean ok = !lookup(up.getHostString(), up.getPort(), "example.com.", "A").isEmpty();
+                    check(checks, "Forwarder " + where, ok, ok ? "answers" : "no answer for example.com");
+                } catch (Exception e) {
+                    check(checks, "Forwarder " + where, false, e.getMessage());
+                }
+            }
+        }
+
+        if (com.scaleguard.server.cluster.ClusterManager.enabled()) {
+            try {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> nodes = (List<Map<String, Object>>) com.scaleguard.server.cluster.ClusterManager.get().snapshot().get("nodes");
+                for (Map<String, Object> n : nodes == null ? List.<Map<String, Object>>of() : nodes) {
+                    if (!Boolean.TRUE.equals(n.get("alive"))) continue;
+                    boolean self = Boolean.TRUE.equals(n.get("self"));
+                    Object info = n.get("info");
+                    boolean up = self ? running : info instanceof Map<?, ?> m && Boolean.TRUE.equals(m.get("dnsRunning"));
+                    check(checks, "Node " + n.get("node") + " DNS server", up == DnsService.desired(),
+                            up ? "running" : "stopped" + (DnsService.desired() ? " (should be running)" : ""));
+                }
+            } catch (RuntimeException ignored) {
+                // membership unreadable right now: the per-node checks are skipped, not failed
+            }
+        }
+
+        List<Map<String, Object>> domains = new ArrayList<>();
+        DNSAddressBook.get().forEach((name, l) -> {
+            if (l.stream().anyMatch(r -> "zone".equalsIgnoreCase(r.getType()))) domains.add(run(name));
+        });
+        check(checks, "Domains declared", !domains.isEmpty(), domains.isEmpty() ? "none yet: add one under Domains served" : domains.size() + " domain(s)");
+
+        boolean ok = checks.stream().allMatch(c -> (Boolean) c.get("ok")) && domains.stream().allMatch(d -> (Boolean) d.get("ok"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", ok);
+        out.put("checks", checks);
+        out.put("domains", domains);
+        return out;
+    }
+
     private static List<String> instructions(String domain, Set<String> ns, List<String> ips, int port) {
         String names = ns.isEmpty() ? "ns1." + domain : String.join(", ", ns);
+        String ipList = String.join(", ", ips);
+        int dot = domain.indexOf('.');
+        String label = dot > 0 ? domain.substring(0, dot) : domain;
+        String parent = dot > 0 ? domain.substring(dot + 1) : domain;
         return List.of(
                 "1. Start the DNS server here and open UDP and TCP port " + port + " to the internet on this host and every node.",
-                "2. Add a name server below: a hostname such as ns1." + domain + " (it uses this server's IPs: " + String.join(", ", ips) + ").",
-                "3. At your registrar, create glue records (child name servers) for " + names + " pointing to " + String.join(", ", ips) + ". Needed when the name server is inside the domain itself.",
-                "4. At your registrar, set the name servers of " + domain + " to " + names + ".",
+                "2. Under Server settings, add the name servers (" + names + ") and declare " + domain + " under Domains served.",
+                "3. Subdomain of a domain you own (e.g. " + domain + "): at the DNS host of " + parent + " add an A record for each name server inside it (" + names + " -> " + ipList + ") and an NS record with host \"" + label + "\" pointing to " + names + ". The rest of " + parent + " keeps working as before.",
+                "4. A registered domain itself: at the registrar set its name servers to " + names + " and register them as glue (personal name servers) with " + ipList + ". This moves the whole domain here, so add all its records first.",
                 "5. Add records for " + domain + " here. Delegation can take up to 48 hours to spread; run the test again after.");
     }
 

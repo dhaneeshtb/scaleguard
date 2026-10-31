@@ -385,13 +385,13 @@ the same admin credentials (nodes call each other with tokens signed by them).
 
 ## DNS
 
-Authoritative DNS for your zones plus forwarding for allowed clients. Start and stop it from the DNS page or `POST /dns/start` (`dnsServer=true` is only the default until that is set). Record types: A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, PTR. A value is checked against its type (`400 {"error"}` if it doesn't fit): MX `10 mail.example.com`, SRV `10 5 5060 sip.example.com`, CAA `0 issue letsencrypt.org`.
+Authoritative DNS for your zones plus forwarding for allowed clients. Start and stop it from the DNS page or `POST /dns/start` (`dnsServer=true` is only the default until that is set). Record types: A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, PTR. `POST /dns {"name":"app.example.com","type":"zone"}` declares a domain served by this server (SOA/NS from the configured name servers, NXDOMAIN for unknown names inside it); delete it with `DELETE /dns/{id}`. A value is checked against its type (`400 {"error"}` if it doesn't fit): MX `10 mail.example.com`, SRV `10 5 5060 sip.example.com`, CAA `0 issue letsencrypt.org`.
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/dns` | All records grouped by name |
 | `GET` | `/dns/status` | `{"enabled", "running", "port"}`: desired state (cluster-wide) and whether this node's server is up |
-| `GET` | `/dns/test?domain=example.com` | Checks run from this node: server running, answers for the zone, public NS delegation points at our name servers, their glue/A records match our IPs and answer on port 53. Returns `{domain, ok, checks:[{name, ok, detail}], instructions:[...]}`. Cannot prove port 53 is open from the internet |
+| `GET` | `/dns/test[?domain=app.example.com]` | With a domain: server running, answers for the domain, public NS delegation points at our name servers, their glue/A records match our IPs and answer on port 53. Returns `{domain, ok, checks:[{name, ok, detail}], instructions:[...]}`. Without `domain`: tests the whole configuration and returns `{ok, checks, domains:[<the per-domain result above>]}`: server running, name servers, detected IPs, forwarders, every cluster node's DNS state, and every declared domain. Cannot prove port 53 is open from the internet |
 | `POST` | `/dns/start`, `/dns/stop` | Set the desired state; saved as `dns.enabled` and replicated, so every connected node starts/stops its server. `500` if the start fails here (e.g. port in use) |
 | `GET` | `/dns/settings` | `{settings, defaults}`: effective server settings (port, forwarders, recursion, allowed clients, cache, rate limit, advertised IPs, name servers, blocked domains) |
 | `POST` | `/dns/settings` | `{"dnsRateLimit": "50", …}` (any subset; blank = default). Validated, saved as `dns.settings`, replicated; every node restarts its DNS server to apply. `400` on a bad value, `500` if the restart fails here |

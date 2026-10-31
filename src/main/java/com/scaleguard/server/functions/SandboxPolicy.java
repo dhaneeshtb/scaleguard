@@ -41,13 +41,18 @@ final class SandboxPolicy {
     static final Set<String> STATIC_TYPES = Set.of(
             "java.lang.Math", "java.lang.String", "java.lang.Integer", "java.lang.Long", "java.lang.Double", "java.lang.Float",
             "java.lang.Short", "java.lang.Byte", "java.lang.Boolean", "java.lang.Character", "java.math.BigDecimal",
-            "java.math.BigInteger", "java.util.Collections", "java.util.UUID", "java.util.List", "java.util.Map", "java.util.Set");
+            "java.math.BigInteger", "java.util.Collections", "java.util.UUID", "java.util.List", "java.util.Map", "java.util.Set",
+            "groovy.json.JsonOutput", "java.time.Instant", "java.time.LocalDate", "java.time.LocalDateTime", "java.time.ZonedDateTime",
+            "java.time.Duration", "java.time.ZoneId", "java.time.ZoneOffset", "java.time.format.DateTimeFormatter");
 
     /** Classes a script may instantiate. */
     static final Set<String> NEW_TYPES = Set.of(
             "java.util.ArrayList", "java.util.LinkedList", "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap",
             "java.util.HashSet", "java.util.LinkedHashSet", "java.util.TreeSet", "java.lang.StringBuilder",
-            "java.math.BigDecimal", "java.math.BigInteger");
+            "java.math.BigDecimal", "java.math.BigInteger", "groovy.json.JsonSlurper");
+
+    /** Packages whose classes may be star-imported (an import only makes a name resolvable; use is still checked against the lists above). */
+    static final Set<String> IMPORT_PACKAGES = Set.of("groovy.json", "java.time", "java.time.format", "java.math", "java.util");
 
     /** Classes allowed in declarations and casts (superset of the above). */
     static final Set<String> TYPES = Set.of(
@@ -79,7 +84,10 @@ final class SandboxPolicy {
             "removeIf", "putIfAbsent", "getOrDefault", "computeIfAbsent", "merge", "subMap", "sort", "entry", "of", "copyOf", "emptyList",
             "emptyMap", "unmodifiableList", "unmodifiableMap", "singletonList", "randomUUID", "mapValues",
             // closures / ranges
-            "call", "doCall", "curry", "rcurry", "memoize", "times", "upto", "downto", "step", "getFrom", "getTo", "contains");
+            "parseText", "parse", "toJson", "prettyPrint", "now", "ofEpochMilli", "ofEpochSecond", "toEpochMilli", "getEpochSecond",
+            "plusSeconds", "plusMinutes", "plusHours", "plusDays", "minusSeconds", "minusMinutes", "minusHours", "minusDays", "between",
+            "ofSeconds", "ofMillis", "ofMinutes", "ofHours", "ofDays", "toMillis", "toSeconds", "atZone", "toLocalDate", "toInstant",
+            "withZone", "ofPattern", "toSecondOfDay", "call", "doCall", "curry", "rcurry", "memoize", "times", "upto", "downto", "step", "getFrom", "getTo", "contains");
 
     /** Property names that never reach a Java object (they expose Class, ClassLoader, MetaClass, the script binding …). Map keys are data and exempt. */
     static final Set<String> DENIED_PROPERTIES = Set.of(
@@ -95,7 +103,9 @@ final class SandboxPolicy {
     static final Set<String> DENIED_VARIABLES = Set.of("binding", "metaClass", "class", "this", "super", "args", "out", "err");
 
     private static final Set<Class<?>> VALUE_BASES = Set.of(CharSequence.class, Number.class, Boolean.class, Character.class,
-            Collection.class, Map.class, Map.Entry.class, Iterator.class, Closure.class, GString.class, Range.class);
+            Collection.class, Map.class, Map.Entry.class, Iterator.class, Closure.class, GString.class, Range.class,
+            groovy.json.JsonSlurper.class, java.time.temporal.Temporal.class, java.time.Duration.class, java.time.ZoneId.class,
+            java.time.ZoneOffset.class, java.time.format.DateTimeFormatter.class);
 
     /** Script classes registered after compilation, with the methods the author declared. */
     private static final class Holder { volatile Set<String> methods; }
@@ -187,6 +197,12 @@ final class SandboxPolicy {
 
     static boolean isAllowedType(String type) {
         return STATIC_TYPES.contains(type) || NEW_TYPES.contains(type) || TYPES.contains(type) || type.equals("groovy.lang.Script");
+    }
+
+    static String importHint() {
+        java.util.TreeSet<String> all = new java.util.TreeSet<>(STATIC_TYPES);
+        all.addAll(NEW_TYPES);
+        return String.join(", ", all) + "; packages " + String.join(".*, ", new java.util.TreeSet<>(IMPORT_PACKAGES)) + ".*";
     }
 
     static Class<?> scriptBase() { return Script.class; }

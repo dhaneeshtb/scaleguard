@@ -100,9 +100,7 @@ final class SandboxCompiler {
         cfg.setTargetBytecode(CompilerConfiguration.JDK17);
 
         SecureASTCustomizer secure = new SecureASTCustomizer();
-        secure.setImportsWhitelist(new ArrayList<>());
-        secure.setStarImportsWhitelist(new ArrayList<>());
-        secure.setStaticImportsWhitelist(new ArrayList<>());
+        secure.setStaticImportsWhitelist(new ArrayList<>());      // imports themselves are vetted by EarlyCheck
         secure.setStaticStarImportsWhitelist(new ArrayList<>());
         secure.setPackageAllowed(false);
         secure.setMethodDefinitionAllowed(true);
@@ -139,8 +137,15 @@ final class SandboxCompiler {
         public void call(SourceUnit source, GeneratorContext context, ClassNode classNode) {
             ModuleNode m = source.getAST();
             if (m.getClasses().size() != 1) throw fail(source, "declaring classes, interfaces or enums is not allowed");
-            if (!m.getImports().isEmpty() || !m.getStarImports().isEmpty() || !m.getStaticImports().isEmpty()
-                    || !m.getStaticStarImports().isEmpty()) throw fail(source, "imports are not allowed");
+            // an import only makes a name resolvable; every use is checked again. Only allowlisted classes / packages may be imported.
+            if (!m.getStaticImports().isEmpty() || !m.getStaticStarImports().isEmpty()) throw fail(source, "static imports are not allowed");
+            for (org.codehaus.groovy.ast.ImportNode i : m.getImports()) {
+                if (!SandboxPolicy.isAllowedType(i.getClassName())) throw fail(source, "import " + i.getClassName() + " is not allowed (allowed: " + SandboxPolicy.importHint() + ")");
+            }
+            for (org.codehaus.groovy.ast.ImportNode i : m.getStarImports()) {
+                String pkg = i.getPackageName().replaceAll("\\.$", "");
+                if (!SandboxPolicy.IMPORT_PACKAGES.contains(pkg)) throw fail(source, "import " + i.getPackageName() + "* is not allowed (allowed: " + SandboxPolicy.importHint() + ")");
+            }
             new ClassCodeVisitorSupport() {
                 @Override protected SourceUnit getSourceUnit() { return source; }
 

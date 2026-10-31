@@ -136,6 +136,28 @@ public class SandboxEscapeTest {
     }
 
     @Test
+    public void allowlistedImportsWorkOthersDoNot() throws Exception {
+        FunctionRuntime.Result r = run("import groovy.json.JsonSlurper\nimport java.time.Duration\ndef d = new JsonSlurper().parseText('{\"a\": [1, 2]}')\nreturn [n: d.a.size(), s: Duration.ofSeconds(90).toMillis()]");
+        assertNull(r.detail, r.error);
+        assertEquals("{\"n\":2,\"s\":90000}", body(r));
+        r = run("import groovy.json.*\nreturn new JsonSlurper().parseText('[1]').size()");
+        assertNull(r.detail, r.error);
+        r = run("import java.time.Instant\nreturn Instant.ofEpochMilli(0).toString()");
+        assertNull(r.detail, r.error);
+        denied("import java.io.File\nreturn 1");
+        denied("import java.io.*\nreturn 1");
+        denied("import java.net.URL\nreturn 1");
+        denied("import java.lang.reflect.Method\nreturn 1");
+        denied("import java.nio.file.*\nreturn 1");
+        denied("import java.lang.Runtime as R\nreturn 1");
+        denied("import groovy.lang.GroovyShell\nreturn 1");
+        denied("import groovy.json.JsonSlurper\nreturn new JsonSlurper().parse(new File('/etc/passwd'))");
+        denied("import groovy.json.JsonSlurper\nreturn new JsonSlurper().parse(new URL('http://127.0.0.1/'))");
+        denied("import groovy.json.JsonSlurper\nreturn new JsonSlurper().class");
+        denied("import groovy.json.JsonSlurper\nreturn JsonSlurper.class.classLoader");
+    }
+
+    @Test
     public void threadsAreForbidden() throws Exception {
         denied("Thread.start { println 'x' }");
         denied("new Thread({ }).start()");

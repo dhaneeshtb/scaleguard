@@ -68,7 +68,10 @@ Scripts get `method`, `path`, `headers`, `query`, `body`, `rawBody` (see the tut
 | `http` | `get/post/put/delete/request(...)` → `{status, ok, headers, body, json()}`; only if the admin enabled the network |
 
 Allowed language: variables, control flow, closures, script-level methods, strings, numbers, `List`/`Map`/`Set` and their
-usual methods, `Math`, a few value classes (`BigDecimal`, `StringBuilder`, …). Not allowed: `import`, class/interface
+usual methods, `Math`, a few value classes (`BigDecimal`, `StringBuilder`, …). Imports work, but only for the allowlisted classes: `groovy.json.JsonSlurper` / `JsonOutput`, `java.time` (`Instant`, `LocalDate`,
+`LocalDateTime`, `ZonedDateTime`, `Duration`, `ZoneId`, `ZoneOffset`, `DateTimeFormatter`), `java.math`, and the `java.util` collections
+(star imports only of `groovy.json`, `java.time`, `java.time.format`, `java.math`, `java.util`). Importing anything else (`java.io.File`,
+`java.net.URL`, …) is a compile error that lists what is allowed; an import never widens what a script may use. Not allowed: static imports, class/interface
 declarations, annotations, arrays (`new int[n]`), `new` of anything but plain collections, computed method or property
 names (`obj."$x"()`), `.@field`, `.&method`, `this`, and any method not on the allowlist (`SandboxPolicy.METHODS`).
 
@@ -102,7 +105,8 @@ credentials in URLs, other schemes, or request-smuggling headers (`Host`, `Conte
 Layers, all enabled together (`functions/SandboxCompiler`, `SandboxPolicy`, `GuardedMetaClass`):
 
 1. **No annotations.** Source containing `@` outside a string or comment is refused before Groovy sees it
-   (`@Grab`, `@ASTTest` etc. run code inside the compiler). Imports and extra classes are refused at CONVERSION.
+   (`@Grab`, `@ASTTest` etc. run code inside the compiler). Extra classes and static imports are refused at CONVERSION, and
+   imports are accepted only for allowlisted classes / packages.
 2. **Compile-time allowlist.** A visitor over the resolved AST accepts only allowlisted types, constructors, static receivers and method
    names, and only constant property / method names.
 3. **Run-time allowlist.** The same lists are re-checked on every dynamic dispatch (method, property, constructor, static call) by a

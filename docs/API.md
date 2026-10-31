@@ -413,7 +413,7 @@ or `record`. `ttl` 1 to 604800 (default from the server config).
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/tunnel` | DNS records of tunnelled services |
-| `POST` | `/tunnel` | `{"name", "port", "host", "baseDNS"}`: expose a service through an SSH tunnel under the base zone |
+| `POST` | `/tunnel` | `{"name", "port", "host", "baseDNS"}`: expose a service through an SSH tunnel as `https://name.<domain>`. Domain: `baseDNS` if sent, else the `scaleguard.tunnel.domain` setting, else the first served domain (DNS page, "Domains served"), else a base record, else the server's host name. The response also carries `fqdn`, `systemPort`, the tunnel's SSH `username`/`password`, and `sshHost` / `sshPort` (where to open the SSH tunnel) |
 | `DELETE` | `/tunnel/{id}` | Remove a tunnelled service |
 
 ## Certificates

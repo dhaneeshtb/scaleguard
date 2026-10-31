@@ -20,6 +20,11 @@ import org.slf4j.LoggerFactory;
 public class SshServerWithTunnelListener {
     private static final Logger logger = LoggerFactory.getLogger(SshServerWithTunnelListener.class);
     private static int sshPort = 2222;
+
+    /** The port tunnel clients connect to; reported by POST /tunnel so clients need no hard-coded port. */
+    public static int port() {
+        return sshPort;
+    }
     public static void main(String[] args) throws IOException {
         startServer();
     }

@@ -135,7 +135,7 @@ curl -s -X POST "http://localhost/config/quickmapping?scaleguard=true" -H "Autho
 |---|---|
 | **Automatic TLS** | Let's Encrypt certificates ordered and renewed for every route (HTTP-01 or DNS-01 challenges), picked per connection by SNI |
 | **Authoritative DNS** | Host your zones on the gateway itself: A, AAAA, CNAME, TXT, MX, NS, with EDNS0, TCP fallback, response rate limiting, and caching forwarders for allowed networks |
-| **SafeExpose tunnels** | Self-hosted ngrok alternative: publish a service from a laptop or private network over SSH with automatic TLS |
+| **SafeExpose tunnels** | Self-hosted ngrok alternative: publish a service from a laptop or private network over SSH with automatic TLS, in one command (`./safeexpose 3000`) |
 
 ### Operations
 | | |
@@ -297,12 +297,16 @@ To work on the UI: `cd admin-ui && npm install && npm start`. `./build.sh` build
 ## 🔌 SafeExpose: self-hosted tunnels
 
 ```bash
-git clone https://github.com/dhaneeshtb/scalegurad-safeexpose.git
-./safeexpose --host your-scaleguard-server.com --port 3000
+git clone https://github.com/dhaneeshtb/scalegurad-safeexpose.git && cd scalegurad-safeexpose
+./safeexpose 3000              # asks for your ScaleGuard server, user and password the first time
+./safeexpose 3000 my-app       # or pick the name: https://my-app.<your-domain>
 ```
 
-Your local app is live at `https://your-scaleguard-server.com` with a real certificate. No port forwarding, no
-firewall changes. [SafeExpose docs →](https://github.com/dhaneeshtb/scalegurad-safeexpose)
+Your local app is live at `https://app-3000.<your-domain>` (or the name you chose) with a real certificate. No port
+forwarding, no firewall changes. Ctrl+C removes the tunnel, and it reconnects by itself if the connection drops. The
+launcher builds itself on first use (Java 11+ and Maven); `safeexpose.cmd` is the Windows version, and
+`SAFEEXPOSE_SERVER` / `SAFEEXPOSE_USER` / `SAFEEXPOSE_PASSWORD` configure it for scripts. The server needs a base DNS
+zone for tunnels (Admin UI → DNS). [SafeExpose docs →](https://github.com/dhaneeshtb/scalegurad-safeexpose)
 
 ---
 

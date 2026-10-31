@@ -385,7 +385,7 @@ the same admin credentials (nodes call each other with tokens signed by them).
 
 ## DNS
 
-Authoritative DNS for your zones plus forwarding for allowed clients. Enable with `dnsServer=true`.
+Authoritative DNS for your zones plus forwarding for allowed clients. Start and stop it from the DNS page or `POST /dns/start` (`dnsServer=true` is only the default until that is set). Record types: A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, PTR. A value is checked against its type (`400 {"error"}` if it doesn't fit): MX `10 mail.example.com`, SRV `10 5 5060 sip.example.com`, CAA `0 issue letsencrypt.org`.
 
 | Method | Path | Description |
 |---|---|---|
@@ -393,6 +393,8 @@ Authoritative DNS for your zones plus forwarding for allowed clients. Enable wit
 | `GET` | `/dns/status` | `{"enabled", "running", "port"}`: desired state (cluster-wide) and whether this node's server is up |
 | `GET` | `/dns/test?domain=example.com` | Checks run from this node: server running, answers for the zone, public NS delegation points at our name servers, their glue/A records match our IPs and answer on port 53. Returns `{domain, ok, checks:[{name, ok, detail}], instructions:[...]}`. Cannot prove port 53 is open from the internet |
 | `POST` | `/dns/start`, `/dns/stop` | Set the desired state; saved as `dns.enabled` and replicated, so every connected node starts/stops its server. `500` if the start fails here (e.g. port in use) |
+| `GET` | `/dns/settings` | `{settings, defaults}`: effective server settings (port, forwarders, recursion, allowed clients, cache, rate limit, advertised IPs, name servers, blocked domains) |
+| `POST` | `/dns/settings` | `{"dnsRateLimit": "50", …}` (any subset; blank = default). Validated, saved as `dns.settings`, replicated; every node restarts its DNS server to apply. `400` on a bad value, `500` if the restart fails here |
 | `GET` | `/dns/stats` | Server counters (queries, cache hits, upstream timeouts, rate-limited, …) |
 | `POST` | `/dns` | Add a record |
 | `DELETE` | `/dns/{id}` | Delete a record |

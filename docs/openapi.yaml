@@ -232,7 +232,7 @@ components:
       required: [name]
       properties:
         name: { type: string, example: api.example.com }
-        type: { type: string, enum: [base, a, aaaa, txt, cname, mx, ns, record] }
+        type: { type: string, enum: [base, a, aaaa, txt, cname, mx, ns, srv, caa, ptr, record] }
         ip: { type: string, description: Record value }
         ttl: { type: integer, minimum: 1, maximum: 604800 }
 paths:
@@ -589,6 +589,18 @@ paths:
       summary: Test that ScaleGuard is configured as the name server for a domain
       parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: domain, in: query, required: true, schema: { type: string } }]
       responses: { '200': { description: 'OK: {"domain", "ok", "checks": [{"name", "ok", "detail"}], "instructions": []}' }, '400': { description: 'Invalid domain ({"error": "..."})' } }
+  /dns/settings:
+    get:
+      tags: [DNS]
+      summary: Effective DNS server settings and their defaults
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: 'OK: {"settings": {}, "defaults": {}}' } }
+    post:
+      tags: [DNS]
+      summary: Save DNS server settings (replicated; each node restarts its DNS server)
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: { type: string }, example: { dnsRateLimit: '50', dnsProxy: '1.1.1.1,9.9.9.9' } } } } }
+      responses: { '200': { description: Saved }, '400': { description: 'Invalid value ({"error": "..."})' }, '500': { description: Saved, but the restart failed on this node } }
   /dns/start:
     post:
       tags: [DNS]

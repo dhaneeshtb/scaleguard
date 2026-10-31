@@ -43,12 +43,22 @@ final class DnsConfig {
     final int tcpMaxConnections;
 
     private static volatile DnsConfig instance;
+    /** Settings saved from the admin UI (replicated); they beat the dns* properties. */
+    private static volatile java.util.Map<String, String> saved = java.util.Map.of();
+
+    /** Forgets the cached config so the next get() re-reads saved settings (DnsService restarts the server after). */
+    static synchronized void reset() {
+        instance = null;
+    }
 
     static DnsConfig get() {
         DnsConfig c = instance;
         if (c == null) {
             synchronized (DnsConfig.class) {
-                if (instance == null) instance = new DnsConfig();
+                if (instance == null) {
+                    saved = DnsSettings.load();
+                    instance = new DnsConfig();
+                }
                 c = instance;
             }
         }
@@ -60,28 +70,29 @@ final class DnsConfig {
     }
 
     private DnsConfig() {
-        port = intProp("dnsPort", 53);
-        upstreams = parseUpstreams(str("dnsProxy", "1.1.1.1,8.8.8.8"));
-        recursion = !"false".equalsIgnoreCase(str("dnsRecursion", "true"));
-        recursionAllow = CidrSet.parse(str("dnsRecursionAllow",
-                "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,fc00::/7"));
-        rateLimit = intProp("dnsRateLimit", 100);
-        rateBurst = Math.max(rateLimit, intProp("dnsRateBurst", 200));
-        cacheSize = intProp("dnsCacheSize", 100_000);
-        upstreamTimeoutMs = intProp("dnsUpstreamTimeoutMs", 1500);
-        advertiseIps = list(str("dnsAdvertiseIps", ""));
-        nameServers = list(str("dnsNameServers", "")).stream().map(DnsWire::normalize).toList();
-        blockedSuffixes = list(str("dnsBlockedDomains", "")).stream().map(DnsWire::normalize).toList();
-        tcpMaxConnections = intProp("dnsTcpMaxConnections", 2000);
+        port = intProp("dnsPort");
+        upstreams = parseUpstreams(raw("dnsProxy"));
+        recursion = !"false".equalsIgnoreCase(raw("dnsRecursion"));
+        recursionAllow = CidrSet.parse(raw("dnsRecursionAllow"));
+        rateLimit = intProp("dnsRateLimit");
+        rateBurst = Math.max(rateLimit, intProp("dnsRateBurst"));
+        cacheSize = intProp("dnsCacheSize");
+        upstreamTimeoutMs = intProp("dnsUpstreamTimeoutMs");
+        advertiseIps = list(raw("dnsAdvertiseIps"));
+        nameServers = list(raw("dnsNameServers")).stream().map(DnsWire::normalize).toList();
+        blockedSuffixes = list(raw("dnsBlockedDomains")).stream().map(DnsWire::normalize).toList();
+        tcpMaxConnections = intProp("dnsTcpMaxConnections");
     }
 
-    private static String str(String key, String def) {
-        String v = AppProperties.get(key);
-        return v == null || v.isBlank() ? def : v.trim();
+    /** Saved setting, else the dns* property, else the default. */
+    String raw(String key) {
+        String v = saved.get(key);
+        if (v == null || v.isBlank()) v = AppProperties.get(key);
+        return v == null || v.isBlank() ? DnsSettings.DEFAULTS.get(key) : v.trim();
     }
 
-    private static int intProp(String key, int def) {
-        try { return Integer.parseInt(str(key, String.valueOf(def))); } catch (NumberFormatException e) { return def; }
+    private int intProp(String key) {
+        try { return Integer.parseInt(raw(key)); } catch (NumberFormatException e) { return Integer.parseInt(DnsSettings.DEFAULTS.get(key)); }
     }
 
     private static List<String> list(String csv) {

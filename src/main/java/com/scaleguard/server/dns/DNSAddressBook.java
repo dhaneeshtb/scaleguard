@@ -30,7 +30,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>"base" — this server's advertised IPs (A for IPv4, AAAA for IPv6)</li>
  *   <li>an IPv4 / IPv6 literal — A / AAAA</li>
  *   <li>anything else — TXT (e.g. ACME DNS-01 tokens)</li>
- *   <li>or an explicit type "a", "aaaa", "txt", "cname", "mx" ("10 mail.example.com."), "ns"</li>
+ *   <li>or an explicit type "a", "aaaa", "txt", "cname", "mx" ("10 mail.example.com."), "ns", "ptr",
+ *       "srv" ("10 5 5060 sip.example.com."), "caa" ("0 issue letsencrypt.org")</li>
  * </ul>
  *
  * <p>Reads are lock-free (copy-on-write lists); writes are serialised.
@@ -299,6 +300,17 @@ public class DNSAddressBook {
                 case "txt" -> out.add(new Rr(ownerName, DnsWire.TYPE_TXT, DnsWire.CLASS_IN, ttl, DnsWire.txtRdata(value)));
                 case "cname" -> out.add(new Rr(ownerName, DnsWire.TYPE_CNAME, DnsWire.CLASS_IN, ttl, DnsWire.encodeName(DnsWire.normalize(value))));
                 case "ns" -> out.add(new Rr(ownerName, DnsWire.TYPE_NS, DnsWire.CLASS_IN, ttl, DnsWire.encodeName(DnsWire.normalize(value))));
+                case "ptr" -> out.add(new Rr(ownerName, DnsWire.TYPE_PTR, DnsWire.CLASS_IN, ttl, DnsWire.encodeName(DnsWire.normalize(value))));
+                case "srv" -> { // "priority weight port target"
+                    String[] p = value.split("\\s+", 4);
+                    if (p.length == 4) out.add(new Rr(ownerName, DnsWire.TYPE_SRV, DnsWire.CLASS_IN, ttl,
+                            DnsWire.srvRdata(Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]), DnsWire.normalize(p[3]))));
+                }
+                case "caa" -> { // `flags tag "value"`
+                    String[] p = value.split("\\s+", 3);
+                    if (p.length == 3) out.add(new Rr(ownerName, DnsWire.TYPE_CAA, DnsWire.CLASS_IN, ttl,
+                            DnsWire.caaRdata(Integer.parseInt(p[0]), p[1].toLowerCase(), p[2].replaceAll("^\"|\"$", ""))));
+                }
                 case "mx" -> {
                     String[] parts = value.split("\\s+", 2);
                     int pref = 10;

@@ -10,13 +10,16 @@ import java.util.List;
 /**
  * Desired on/off state of the DNS server, stored as the replicated setting {@code dns.enabled} (scope
  * {@code system_properties/dns}). Every node runs {@link #apply()} on startup and when that scope changes, so
- * start/stop issued on any node reaches the whole cluster. Until an operator sets it, the {@code dnsServer}
+ * start/stop issued on any node reaches the whole cluster; saved settings ({@link DnsSettings}) ride the same scope. Until an operator sets it, the {@code dnsServer}
  * property decides.
  */
 public final class DnsService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DnsService.class);
     static final String P_ENABLED = "dns.enabled";
+
+    /** Saved-settings JSON the running config was built from; a different value means a restart. */
+    private static String applied;
 
     private DnsService() {}
 
@@ -51,15 +54,22 @@ public final class DnsService {
     /** Starts or stops this node's server to match {@link #desired()}. Start failures (e.g. port in use) are thrown. */
     public static synchronized void apply() {
         boolean want = desired();
+        String saved = DnsSettings.rawJson();
+        boolean changed = !saved.equals(applied);
+        if (changed) {
+            DnsConfig.reset();
+            applied = saved;
+        }
         DnsServer s = DnsServer.current();
-        if (want && s == null) {
+        if (!want && s != null) {
+            s.stop();
+        } else if (want && (s == null || changed)) {
+            if (s != null) s.stop(); // new settings (port, forwarders, limits) need a fresh server
             try {
                 new DnsServer().startBlocking();
             } catch (Exception e) {
                 throw new IllegalStateException("DNS server failed to start: " + e, e);
             }
-        } else if (!want && s != null) {
-            s.stop();
         }
     }
 

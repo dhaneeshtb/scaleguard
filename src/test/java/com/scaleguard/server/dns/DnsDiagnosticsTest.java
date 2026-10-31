@@ -36,4 +36,15 @@ public class DnsDiagnosticsTest {
             DnsService.setEnabled(false);
         }
     }
+
+    @Test
+    public void routeReadsDomainFromQueryString() throws Exception {
+        DNSRoute route = new DNSRoute();
+        assertTrue(route.receivesQueryString());
+        // handler passes the full uri (with ?scaleguard=true) to routes that opt in
+        assertEquals(400, route.handle("GET", "/dns/test?scaleguard=true", "").getStatus());
+        assertEquals(400, route.handle("GET", "/dns/test?scaleguard=true&domain=not%20a%20domain", "").getStatus());
+        assertEquals(202, route.handle("GET", "/dns/test?scaleguard=true&domain=example.com", "").getStatus());
+        assertEquals(200, route.handle("GET", "/dns/status?scaleguard=true", "").getStatus());
+    }
 }

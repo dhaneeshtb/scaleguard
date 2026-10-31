@@ -24,7 +24,7 @@ final class DnsWire {
 
     static final int TYPE_A = 1, TYPE_NS = 2, TYPE_CNAME = 5, TYPE_SOA = 6, TYPE_PTR = 12, TYPE_MX = 15,
             TYPE_TXT = 16, TYPE_RP = 17, TYPE_AFSDB = 18, TYPE_AAAA = 28, TYPE_SRV = 33, TYPE_NAPTR = 35,
-            TYPE_DNAME = 39, TYPE_OPT = 41, TYPE_ANY = 255;
+            TYPE_DNAME = 39, TYPE_OPT = 41, TYPE_CAA = 257, TYPE_ANY = 255;
     static final int CLASS_IN = 1, CLASS_ANY = 255;
 
     static final int RCODE_NOERROR = 0, RCODE_FORMERR = 1, RCODE_SERVFAIL = 2, RCODE_NXDOMAIN = 3,
@@ -244,6 +244,27 @@ final class DnsWire {
         out.write((preference >> 8) & 0xFF);
         out.write(preference & 0xFF);
         writeName(out, exchange);
+        return out.toByteArray();
+    }
+
+    static byte[] srvRdata(int priority, int weight, int port, String target) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(32);
+        for (int v : new int[]{priority, weight, port}) {
+            out.write((v >> 8) & 0xFF);
+            out.write(v & 0xFF);
+        }
+        writeName(out, target);
+        return out.toByteArray();
+    }
+
+    static byte[] caaRdata(int flags, String tag, String value) {
+        byte[] t = tag.getBytes(StandardCharsets.US_ASCII);
+        byte[] v = value.getBytes(StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(2 + t.length + v.length);
+        out.write(flags);
+        out.write(t.length);
+        out.write(t, 0, t.length);
+        out.write(v, 0, v.length);
         return out.toByteArray();
     }
 

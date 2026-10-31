@@ -57,9 +57,6 @@ public class FunctionLifecycleTest {
         assertNotNull(e);
         assertTrue(e, e.contains("not allowed"));
         assertNotNull(rt.save(def("syntax", "def = = =")));
-        FunctionDef net = def("net", "return 1");
-        net.networkEnabled = true;
-        assertNotNull(rt.save(net));
         assertEquals(before, rt.all().size());
     }
 

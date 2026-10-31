@@ -39,7 +39,7 @@ Everything powerful is **off by default** and shown with a warning in the editor
 | Setting | Default | Meaning |
 |---|---|---|
 | Outbound network | off | Without it `http.*` throws. With it, only the listed hosts |
-| Allowed hosts | none | `[http://\|https://]host[:port]`, `*.example.com` for subdomains; no scheme = `https` on 443. Scheme, host *and* port must match |
+| Allowed hosts | empty = any public host | `[http://\|https://]host[:port]`, `*.example.com` for subdomains; no scheme = `https` on 443. Scheme, host *and* port must match. Empty list = any public host (the private-range and metadata blocks still apply) |
 | Private networks | off | Loopback, RFC 1918, CGNAT, IPv6 ULA / NAT64 / 6to4. Link-local (incl. `169.254.169.254`) and `fd00:ec2::/32` are **never** reachable |
 | Max outbound calls / response size | 5 / 1 MB | per run |
 | Time limit | 5 s (max `scaleguard.functions.maxTimeoutMs`, 60 s) | per run, excludes the one-time compile |
@@ -94,7 +94,7 @@ Honest limits:
 ## Reviewing a function before you enable it
 
 1. Read the code. Anything surprising about `http`, `ctx.secret` or loops is a reason to stop.
-2. Enable the network only if needed; list exact hosts (no broad wildcards), and prefer `https`.
+2. Enable the network only if needed; list exact hosts when you can (an empty list lets the function send data to any public server), and prefer `https`.
 3. Keep *private networks* off unless the target really is internal; then list only that host and port.
 4. Tick only the secrets the code reads (search for `ctx.secret`). Remember anyone who can edit the function can exfiltrate those secrets to an allowed host.
 5. Lower the time limit, body sizes and concurrency to what the function needs.

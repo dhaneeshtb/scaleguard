@@ -99,6 +99,14 @@ public class SandboxHttpTest {
     }
 
     @Test
+    public void emptyAllowlistMeansAnyPublicHostButStillNoPrivateAddresses() {
+        String m = refused(() -> client(def(true, false)).execute("GET", "http://127.0.0.1:" + pa + "/hello", null, null));
+        assertTrue(m, m.contains("private"));
+        assertTrue(refused(() -> client(def(true, true)).execute("GET", "http://169.254.169.254/", null, null)).contains("blocked"));
+        assertEquals(200, client(def(true, true)).execute("GET", "http://127.0.0.1:" + pa + "/hello", null, null).status());
+    }
+
+    @Test
     public void loopbackIsRefusedUnlessThePrivateSwitchIsOn() {
         String m = refused(() -> client(def(true, false, "http://127.0.0.1:" + pa)).execute("GET", "http://127.0.0.1:" + pa + "/hello", null, null));
         assertTrue(m, m.contains("private"));

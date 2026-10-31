@@ -150,7 +150,7 @@ final class SandboxHttp {
         int port = u.getPort() > 0 ? u.getPort() : scheme.equals("https") ? 443 : 80;
         final String h = host;
         final int p = port;
-        if (rules.stream().noneMatch(r -> r.matches(scheme, h, p))) {
+        if (!rules.isEmpty() && rules.stream().noneMatch(r -> r.matches(scheme, h, p))) {
             throw new HttpException(scheme + "://" + host + ":" + port + " is not in this function's allowed hosts");
         }
         InetAddress[] addrs = host.startsWith("[") ? literal(host) : resolver.apply(host);

@@ -28,7 +28,7 @@ public class FunctionDef {
 
     // --- outbound network: off unless the admin turns it on and lists where it may go
     public boolean networkEnabled = false;
-    /** [scheme://]host[:port], host may start with "*." ; no scheme means https. */
+    /** [scheme://]host[:port], host may start with "*." ; no scheme means https. Empty = any public host (private / metadata addresses stay blocked). */
     public List<String> allowedHosts = new ArrayList<>();
     /** Lets calls reach loopback / private (RFC 1918, ULA, CGNAT) addresses. Link-local and cloud-metadata addresses stay blocked. */
     public boolean allowPrivateNetworks = false;
@@ -62,7 +62,6 @@ public class FunctionDef {
         for (String m : methods) if (!m.matches("(?i)GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS")) return "unsupported method " + m;
         if (allowedHosts == null) allowedHosts = new ArrayList<>();
         for (String h : allowedHosts) if (SandboxHttp.HostRule.parse(h) == null) return "invalid allowed host '" + h + "' (use [http://|https://]host[:port], host may start with *.)";
-        if (networkEnabled && allowedHosts.isEmpty()) return "network is enabled but no host is allowed; add at least one host";
         if (secrets == null) secrets = new ArrayList<>();
         for (String s : secrets) if (!FunctionSecrets.validName(s)) return "invalid secret name " + s;
         if (config == null) config = new LinkedHashMap<>();

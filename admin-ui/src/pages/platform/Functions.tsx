@@ -246,7 +246,7 @@ export default function Functions() {
                         <ToggleRow id="fn-net" label="Allow outbound network calls" description="Lets the function call other servers through the http client, only to the hosts listed below." checked={current.networkEnabled} onChange={v => set({ networkEnabled: v })} />
                         {current.networkEnabled && (
                             <div className="mt-4 space-y-4">
-                                <Field label="Allowed hosts (one per line)" hint={<>Format <code>[http://|https://]host[:port]</code>; no scheme means https on port 443. <code>*.example.com</code> matches subdomains. Anything else is refused, including redirects to other hosts.</>}>
+                                <Field label="Allowed hosts (one per line)" hint={<>Leave empty to allow any public host. To restrict: <code>[http://|https://]host[:port]</code>, no scheme means https on port 443, <code>*.example.com</code> matches subdomains; anything else is refused, including redirects. Private and metadata addresses are blocked either way.</>}>
                                     <textarea className={`${inputCls} h-28 py-2 font-mono`} value={hostsText} onChange={e => setHostsText(e.target.value)} placeholder={"api.example.com\nhttps://*.partner.io:8443"} />
                                 </Field>
                                 <ToggleRow id="fn-priv" label="Also allow private networks (danger)" description="Permits loopback, 10/8, 172.16/12, 192.168/16, CGNAT and IPv6 ULA targets — i.e. servers inside your network, or this gateway itself. Cloud-metadata and link-local addresses stay blocked." checked={current.allowPrivateNetworks} onChange={v => set({ allowPrivateNetworks: v })} />

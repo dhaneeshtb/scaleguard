@@ -226,7 +226,7 @@ public class FunctionLifecycleTest {
         ts.setGroupId("cache-test-" + d.id);
         ts.setEnableCache(true);
         com.scaleguard.server.http.cache.CachedResource cr = new com.scaleguard.server.http.cache.CachedResource();
-        cr.setPattern("/");
+        cr.setPattern("/*");   // a trailing * is accepted
         cr.setMethod("GET");
         cr.setTtl(ttl);
         cr.setCached(true);

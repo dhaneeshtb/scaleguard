@@ -412,7 +412,7 @@ public class InboundMessageHandler {
         buf.append("\r\n");
       }
 
-      List<CachedResource> crs= ts.getCachedResources().stream().filter(crx->crx.getMethod().equalsIgnoreCase(request.method().name().toString()) && request.uri().split("[?]")[0].startsWith(crx.getPattern())).collect(Collectors.toList());
+      List<CachedResource> crs= ts.getCachedResources().stream().filter(crx->crx.getMethod().equalsIgnoreCase(request.method().name().toString()) && matchesPattern(request.uri().split("[?]")[0], crx.getPattern())).collect(Collectors.toList());
       if(crs.size()>0) {
         CachedResource cachedResource=crs.get(0);
         cr=new CachedResponse();
@@ -434,6 +434,13 @@ public class InboundMessageHandler {
     }
 
     return cr;
+  }
+
+  /** Cache rule patterns are path prefixes; a trailing "*" ("/api/*", "/*") is accepted and means the same prefix. */
+  static boolean matchesPattern(String path, String pattern) {
+    if (pattern == null) return false;
+    String p = pattern.endsWith("*") ? pattern.substring(0, pattern.length() - 1) : pattern;
+    return path.startsWith(p);
   }
 
   private String toKey(CachedResource crs,HttpRequest request){

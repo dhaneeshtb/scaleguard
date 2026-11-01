@@ -6,8 +6,10 @@ CDNs or trackers), so it loads fast and can be hosted anywhere, including on Sca
 ```
 landing-ui/
   index.html          the page (content, SEO tags and JSON-LD structured data)
-  css/styles.css      all styles, dark + light themes
+  css/styles.css      all styles; the last block is the black "mission control" theme (full-viewport hero, uppercase type, hairline grids)
   js/main.js          theme, tabs, copy buttons, request simulator, scroll story (all optional enhancements)
+  js/hero3d.js        the 3D hero scene (three.js), loaded lazily after first paint
+  js/vendor/          three.module.min.js (three.js r170, MIT, licence alongside), served from this site, never from a CDN
   assets/             screenshots (WebP, 1600 px and 800 px), social card, logo, icons
   install.sh          copy of ../install.sh, served at https://scaleguard.dev/install.sh
   robots.txt  sitemap.xml  llms.txt  site.webmanifest  404.html
@@ -21,6 +23,25 @@ cd landing-ui && python3 -m http.server 4173      # then open http://localhost:4
 ```
 
 (Use a server rather than `file://`: the page uses root-relative URLs such as `/css/styles.css`.)
+
+## The 3D hero ("the sentinel")
+
+The hero is a full-viewport, dark, SpaceX-style launch screen (telemetry row, huge uppercase headline, T+ clock). Behind it, a WebGL scene (three.js): requests stream left to right through TLS, rate-limit, WAF and auth gates into a glowing
+3D ScaleGuard shield and fan out to an active-active node cluster (three primary nodes and two DR nodes). Attacks burst at the WAF gate,
+floods bounce off the rate limiter, a live HUD counts served / blocked / rate-limited requests and prints access-log lines. Move the
+pointer to look around.
+
+- **Cost:** three.js is 692 KB (172 KB gzipped) and is imported only after the page has painted (`requestIdleCallback`), so it does not
+  delay the first paint or the text. The scene is one draw call for about 1,500 particles; it ran at the display refresh rate on a laptop GPU.
+- **Falls back cleanly:** no WebGL, a lost GPU context, or the browser's "data saver" setting leaves the normal centred hero in place
+  (the `has-3d` class is only added when the scene can run). With `prefers-reduced-motion` it draws a single still frame and shows no controls.
+- **Good citizen:** it pauses when scrolled off-screen or in a background tab, caps the pixel ratio (2x desktop, 1.5x phones), uses fewer
+  particles on phones,. The canvas has a text description for screen readers; the animation is decorative.
+- **Security:** nothing is fetched from a third party, so the strict `script-src 'self'` policy in `vercel.json` / `_headers` still holds.
+- **Updating three.js:** `npm pack three@<version>` in an empty folder, copy `build/three.module.min.js` and `LICENSE` into `js/vendor/`.
+  Releases after r170 no longer ship a minified single file, so newer versions need a bundler (for example esbuild with tree-shaking)
+  or the page will download about 2 MB. Re-test the scene after any upgrade.
+- **Tuning:** gate positions, colours, particle counts and the camera are constants at the top of `js/hero3d.js`.
 
 ## Host it on Vercel (scaleguard.dev)
 
@@ -69,7 +90,7 @@ Redirect `www.scaleguard.dev` to `https://scaleguard.dev/` so there is one canon
 - `<title>` (58 chars), meta description (146 chars), canonical `https://scaleguard.dev/`, Open Graph and Twitter cards with a
   1200 x 630 image, theme colours, web manifest, favicon set.
 - **Structured data (JSON-LD)**: `Organization`, `WebSite`, two `SoftwareApplication` entries (ScaleGuard and the open-source
-  SafeExpose tunnel client, both free, MIT), `HowTo` (install in three steps) and `FAQPage` with ten questions. The FAQ text in the
+  SafeExpose tunnel client, both free, MIT), `HowTo` (install in three steps) and `FAQPage` with nine short questions. The FAQ text in the
   JSON-LD is identical to the visible FAQ, as search engines require.
 - **Answer engines**: the FAQ answers lead with a direct one- or two-sentence answer; `llms.txt` summarises the product, key facts
   (including honest limits) and links to the docs; `robots.txt` explicitly allows the main search and AI crawlers.

@@ -278,5 +278,28 @@
     S.healthy();
   }
 
+
+  /* ── hero 3D scene (three.js, vendored, loaded after first paint; the page works without it) ── */
+  var stage = $('[data-stage]'), hero = $('.hero');
+  if (stage && hero) {
+    var glOk = (function () { try { var c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch (e) { return false; } })();
+    var saveData = navigator.connection && navigator.connection.saveData;
+    if (glOk && !saveData) {
+      hero.classList.add('has-3d'); stage.hidden = false;           // reserve the space now so nothing jumps when the scene arrives
+      var fail = function () { hero.classList.remove('has-3d'); stage.hidden = true; };
+      stage.addEventListener('hero3d:fail', fail);
+      var boot = function () {
+        import('/js/hero3d.js').then(function (m) { if (!m.start(stage, { reduce: reduce })) fail(); }).catch(fail);
+      };
+      if (window.requestIdleCallback) window.requestIdleCallback(boot, { timeout: 1500 }); else setTimeout(boot, 200);
+    }
+  }
+
+  var nav = $('.nav');
+  if (nav) { var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 40); }; onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); }
+  var clock = $('#t-clock');
+  if (clock) { var t0 = Date.now(); var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    setInterval(function () { var s = Math.floor((Date.now() - t0) / 1000); clock.textContent = pad(Math.floor(s / 3600)) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60); }, 1000); }
+
   var y = $('#year'); if (y) y.textContent = new Date().getFullYear();
 })();

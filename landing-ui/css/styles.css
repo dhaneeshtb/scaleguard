@@ -689,3 +689,33 @@ html { scroll-padding-top: 72px; }
 .cmd { backdrop-filter: none; background: rgba(0, 0, 0, .7); }
 .hero-stage { contain: strict; }
 .hero { content-visibility: visible; }
+
+.hero .stage-labels .l-shield{font-size:13px;letter-spacing:.32em;font-weight:700;text-shadow:0 0 12px rgba(45,212,191,.8),0 0 8px #000}
+
+/* tablet: labels sit closer together here, so tighter type; more room between the graphic and the copy */
+@media (min-width: 601px) and (max-width: 1000px) {
+  .hero-copy { padding-top: max(58svh, 560px); }
+  .hero .stage-labels span { letter-spacing: .06em; font-size: 9px; }
+  .hero .stage-labels .l-shield { letter-spacing: .2em; font-size: 10.5px; }
+  .hero .stage-labels [data-label="nodes"] { display: none; }
+}
+
+/* phone: same, plus no node-cluster label (it runs off the edge) */
+@media (max-width: 600px) {
+  .hero-copy { padding-top: max(60svh, 470px); }
+  .hero .stage-labels [data-label="nodes"] { display: none; }
+  .hero .stage-labels span { letter-spacing: .06em; }
+  .hero .stage-labels .l-shield { letter-spacing: .2em; font-size: 10px; }
+}
+
+/* phones: no dead space above the graphic, tighter sections, header that fits 320px */
+@media (max-width: 600px) {
+  .hero { padding-top: 0; }
+  .hero-stage { bottom: auto; height: 500px; }
+  .hero-copy { padding-top: 270px; }
+  .sec { padding: 64px 0; }
+  .eyebrow { margin-bottom: 18px; }
+  .brand { letter-spacing: .24em; font-size: 13px; }
+}
+@media (max-width: 360px) { .brand { letter-spacing: .12em; } .nav-actions .btn { padding-inline: 10px; } }
+@media (max-width: 600px) { .foot nav a { display: block; padding: 11px 0; } }

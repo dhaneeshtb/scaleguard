@@ -76,7 +76,7 @@ export function start(stage, opts = {}) {
     shield.add(edges);
     const barMat = new THREE.MeshBasicMaterial({ color: 0x080a10 });
     [[14, 12.5], [9, 17], [4, 21.5]].forEach(([w, y]) => {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w * 0.105, 0.2, 0.12), barMat); b.position.set(0, (16 - y) * 0.105, 0.3); shield.add(b);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w * 0.105, 0.2, 0.12), barMat); b.position.set(0, (16 - y) * 0.105, 0.3); shield.add(b); const b2 = b.clone(); b2.position.z = -0.3; shield.add(b2);
     });
     shield.scale.setScalar(1.25);
     // halo behind the shield
@@ -85,7 +85,7 @@ export function start(stage, opts = {}) {
       vertexShader: 'varying vec2 vU; void main(){ vU=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
       fragmentShader: 'varying vec2 vU; void main(){ float d=length(vU-0.5)*2.0; float a=pow(max(0.0,1.0-d),2.4)*0.42; gl_FragColor=vec4(mix(vec3(0.18,0.83,0.75),vec3(0.55,0.36,0.96),vU.x),a); }'
     }));
-    halo.position.z = -0.4; shield.add(halo);
+    halo.position.z = -0.4; world.add(halo);
   }
 
   /* ── gates: a ring plus a faint disc that flashes when something happens there ── */
@@ -114,6 +114,17 @@ export function start(stage, opts = {}) {
     disc.rotation.y = Math.PI / 2; grp.add(disc);
     gates[gt.key] = { ring, ringMat, disc, flash: 0, x: gt.x, grp };
   });
+
+  /* ── the ScaleGuard block: one glass box around every filter and the shield ── */
+  {
+    const X0 = -8.2, X1 = 1.7, H = 2.5, box = new THREE.BoxGeometry(X1 - X0, H * 2, H * 2);
+    const edges = new THREE.EdgesGeometry(box), pa = edges.attributes.position, col = new Float32Array(pa.count * 3), c = new THREE.Color();
+    for (let i = 0; i < pa.count; i++) { c.copy(TEAL).lerp(VIOLET, (1 - pa.getY(i) / H) / 2); col.set([c.r, c.g, c.b], i * 3); }
+    edges.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const blk = new THREE.Group(); blk.position.x = (X0 + X1) / 2; world.add(blk);
+    blk.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 1 })));
+    blk.add(new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x2dd4bf, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })));
+  }
 
   /* ── node cluster (active-active, with two DR nodes) ── */
   const nodeMeshes = NODES.map((n, i) => {
@@ -185,9 +196,9 @@ export function start(stage, opts = {}) {
   const labelEls = {}; $$('[data-label]', stage).forEach((el) => { labelEls[el.getAttribute('data-label')] = el; });
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
   const labelAnchors = {
-    // each label sits just above its ring
-    tls: new THREE.Vector3(GATES[0].x, GATES[0].r + 0.5, 0), rate: new THREE.Vector3(GATES[1].x, GATES[1].r + 0.5, 0), waf: new THREE.Vector3(GATES[2].x, GATES[2].r + 0.5, 0), auth: new THREE.Vector3(GATES[3].x, GATES[3].r + 0.5, 0),
-    shield: new THREE.Vector3(0, 2.55, 0), nodes: new THREE.Vector3(6.1, 2.55, -0.6)
+    // filter labels sit just above the block, its name just below
+    tls: new THREE.Vector3(GATES[0].x, GATES[0].r + 1.0, 0), rate: new THREE.Vector3(GATES[1].x, GATES[1].r + 1.0, 0), waf: new THREE.Vector3(GATES[2].x, GATES[2].r + 1.0, 0), auth: new THREE.Vector3(GATES[3].x, GATES[3].r + 1.0, 0),
+    shield: new THREE.Vector3(-3.25, -3.1, 0), nodes: new THREE.Vector3(6.1, 2.55, -0.6)
   };
   const tmp = new THREE.Vector3();
 
@@ -279,7 +290,7 @@ export function start(stage, opts = {}) {
   function draw() {
     cur.x += (target.x - cur.x) * 0.035; cur.y += (target.y - cur.y) * 0.035;
     world.rotation.y = -0.15 + cur.x * 0.12 + Math.sin(time * 0.15) * 0.05; world.rotation.x = 0.06 + cur.y * 0.1;
-    shield.rotation.y = Math.sin(time * 0.5) * 0.18; shield.position.y = Math.sin(time * 0.9) * 0.06;
+    shield.rotation.y = time * 0.9; shield.position.y = Math.sin(time * 0.9) * 0.06;
     writeBuffers(); renderer.render(scene, camera); project(); hudUpdate();
   }
   let last = 0, raf = 0, visible = true;

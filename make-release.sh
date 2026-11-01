@@ -3,6 +3,7 @@
 # Upload both files to a GitHub release (Releases -> Draft a new release -> attach), then
 #   curl -fsSL https://raw.githubusercontent.com/dhaneeshtb/scaleguard/main/install.sh | sh
 # installs it on any macOS/Linux machine with Java 21.
+# Usage: ./make-release.sh [TAG]. With GH_TOKEN set it then uploads the package to that GitHub release (publish-release.sh).
 set -eu
 cd "$(dirname "$0")"
 mvn -q -DskipTests clean package
@@ -14,3 +15,4 @@ tar czf dist/scaleguard.tar.gz -C dist/pkg scaleguard
 rm -rf dist/pkg
 (cd dist && { shasum -a 256 scaleguard.tar.gz 2>/dev/null || sha256sum scaleguard.tar.gz; } > scaleguard.tar.gz.sha256)
 ls -l dist/scaleguard.tar.gz; cat dist/scaleguard.tar.gz.sha256
+if [ -n "${GH_TOKEN:-}" ]; then ./publish-release.sh "$@"; else echo "GH_TOKEN not set: built only. To publish: export GH_TOKEN=... && ./publish-release.sh"; fi

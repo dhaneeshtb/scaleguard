@@ -29,3 +29,5 @@ scaleguard.db
 .env
 
 dist/scaleguard.tar.gz
+
+dist/scaleguard.tar.gz.sha256

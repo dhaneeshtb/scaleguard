@@ -22,7 +22,27 @@ cd landing-ui && python3 -m http.server 4173      # then open http://localhost:4
 
 (Use a server rather than `file://`: the page uses root-relative URLs such as `/css/styles.css`.)
 
-## Host it under scaleguard.dev
+## Host it on Vercel (scaleguard.dev)
+
+`landing-ui` is a static site, so Vercel needs no build. `vercel.json` already carries the security headers, caching, the
+`install.sh` content type and the `www` to apex redirect.
+
+1. **Vercel dashboard → Add New → Project**, import the `dhaneeshtb/scaleguard` repository.
+2. **Root Directory: `landing-ui`** (Edit next to the repository name).
+3. **Framework Preset: Other.** Leave **Build Command**, **Output Directory** and **Install Command** empty (or override each to blank).
+4. Deploy. Every push to the production branch redeploys; pull requests get preview URLs.
+5. **Settings → Domains:** add `scaleguard.dev` (set it as the primary) and `www.scaleguard.dev`. Add the DNS records Vercel shows at your
+   registrar (typically an `A` record for the apex and a `CNAME` for `www`; use the values in the dashboard, they are project specific).
+   HTTPS certificates are issued automatically. The `www` to apex redirect is in `vercel.json`.
+
+Or from a terminal: `cd landing-ui && npx vercel` (first run links the project), then `npx vercel --prod`.
+
+Because the Vercel root is this folder it cannot see `../install.sh`, so **keep the copy here current**: `cp ../install.sh install.sh`
+(check with `cmp install.sh ../install.sh`). The page advertises `curl -fsSL https://scaleguard.dev/install.sh | sh`.
+
+`_headers`, `CNAME` and `.nojekyll` are for other hosts and are ignored by Vercel (and listed in `.vercelignore`).
+
+## Other hosts
 
 **GitHub Pages** (the `CNAME` file is already here): publish this folder (for example a `gh-pages` branch, or Settings → Pages →
 GitHub Actions deploying `landing-ui/`). At your DNS provider add

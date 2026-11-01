@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://scaleguard.dev/</loc>
+    <lastmod>2026-11-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image><image:loc>https://scaleguard.dev/assets/screens/overview-dark.webp</image:loc><image:title>ScaleGuard admin UI overview</image:title></image:image>
+    <image:image><image:loc>https://scaleguard.dev/assets/screens/route-editor.webp</image:loc><image:title>ScaleGuard route editor</image:title></image:image>
+    <image:image><image:loc>https://scaleguard.dev/assets/screens/firewall.webp</image:loc><image:title>ScaleGuard web application firewall</image:title></image:image>
+    <image:image><image:loc>https://scaleguard.dev/assets/screens/rate-limiting.webp</image:loc><image:title>ScaleGuard rate limiting</image:title></image:image>
+    <image:image><image:loc>https://scaleguard.dev/assets/screens/backend-health.webp</image:loc><image:title>ScaleGuard backend health</image:title></image:image>
+  </url>
+</urlset>

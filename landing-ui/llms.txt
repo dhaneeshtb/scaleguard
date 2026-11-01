@@ -1,0 +1,34 @@
+# ScaleGuard
+
+> ScaleGuard is a free, open-source (MIT), self-hosted application gateway: a load balancer and reverse proxy, web application firewall, rate limiter, automatic HTTPS, authoritative DNS server, SSH tunnels (SafeExpose), request analytics and sandboxed cloud functions in one Java process, configured live from a web UI or REST API. Home: https://scaleguard.dev/
+
+ScaleGuard replaces the separate load balancer, reverse proxy, certificate client, WAF, rate limiter, DNS server, log stack and tunnel service that a team usually runs in front of its services. It runs as a single JAR (Java 21+) or in Docker. The configuration store is SQLite by default or PostgreSQL; the response cache and analytics use embedded DuckDB.
+
+## Key facts
+- Protocols: HTTP/1.1, HTTP/2, HTTP/3 over QUIC, gRPC (unary and streaming), WebSocket, raw TCP.
+- Security: per-route web application firewall with OWASP Core Rule Set import and anomaly scoring; per-client rate limiting shared across a cluster; IP allow/deny lists; OAuth 2.0 authorization server with JWT checks at the edge.
+- Automatic TLS: Let's Encrypt certificates ordered and renewed per route (HTTP-01 or DNS-01).
+- SafeExpose: fully open-source (MIT), self-hosted ngrok alternative. `safeexpose 3000` publishes a local app at your own domain over an SSH tunnel with automatic HTTPS and automatic reconnection. Repository: https://github.com/dhaneeshtb/scalegurad-safeexpose
+- Cloud functions: Groovy scripts attached to a route, in a layered sandbox (no files, processes, reflection or threads; time, memory and size limits; outbound network off unless the admin allows hosts; SSRF protection). They share the JVM and are not a hard security boundary.
+- High availability: active-active clustering. Run 3 or more nodes; every node serves traffic. Nodes elect a master by majority vote (Raft-style) and replicate configuration through a SHA-256 hash-chained ledger, with no shared database. Measured on local test clusters: a new master 2.9-3.8 s after the old one was killed. A minority side of a network split stops accepting changes but keeps serving traffic.
+- Disaster recovery: a standby site copies every configuration change and the cluster's analytics, serves traffic, never votes. If the primary site is lost it refuses changes with a promote hint; POST /cluster/dr/promote makes it the primary (measured 3.7 s to elect its master). Old nodes that return follow the new master. Details: https://github.com/dhaneeshtb/scaleguard/blob/main/docs/CLUSTER.md
+- Performance (one CPU core each, small responses, October 2026): about 93% of NGINX throughput and more than twice Envoy; NGINX and HAProxy are ahead on tail latency and memory.
+- Not a single-sign-on provider for people: human access is limited by network address, API access by scoped OAuth 2.0 tokens.
+
+## Install
+- macOS / Linux: `curl -fsSL https://scaleguard.dev/install.sh | sh` (needs Java 21), then open http://localhost:8080/adminui/
+- Docker: `./scaleguard-docker.sh` (add `--postgres` for PostgreSQL, `--dns` for the DNS server)
+- A strong admin password is generated; there is no default login.
+
+## Docs
+- [Landing page](https://scaleguard.dev/): overview, comparison, FAQ
+- [Source code and README](https://github.com/dhaneeshtb/scaleguard)
+- [REST API reference](https://github.com/dhaneeshtb/scaleguard/blob/main/docs/API.md)
+- [OpenAPI 3 spec](https://github.com/dhaneeshtb/scaleguard/blob/main/docs/openapi.yaml)
+- [Clustering guide](https://github.com/dhaneeshtb/scaleguard/blob/main/docs/CLUSTER.md)
+- [OAuth 2.0 guide](https://github.com/dhaneeshtb/scaleguard/blob/main/docs/OAUTH.md)
+- [Cloud functions guide](https://github.com/dhaneeshtb/scaleguard/blob/main/docs/CLOUD_FUNCTIONS.md)
+- [SafeExpose](https://github.com/dhaneeshtb/scalegurad-safeexpose)
+
+## Optional
+- [Issues and discussion](https://github.com/dhaneeshtb/scaleguard/issues)

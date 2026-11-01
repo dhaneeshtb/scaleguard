@@ -2,7 +2,7 @@
 # ScaleGuard installer for macOS and Linux (no Docker).
 #
 #   ./install.sh                  from a checkout: builds the jar and the admin UI, installs, starts
-#   curl -fsSL https://raw.githubusercontent.com/dhaneeshtb/scaleguard/main/install.sh | sh
+#   curl -fsSL https://scaleguard.dev/install.sh | sh
 #                                 from anywhere: downloads the latest release (jar + admin UI) and installs it
 #
 # Options:  --prefix DIR   where the program goes        (default ~/.local/share/scaleguard)

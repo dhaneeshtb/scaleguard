@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScaleGuard: Open-Source Load Balancer, WAF &amp; Reverse Proxy</title>
+<meta name="description" content="Free self-hosted gateway: load balancer, reverse proxy, WAF, rate limiting, auto-HTTPS, DNS, tunnels and cloud functions in one JAR with a web UI.">
+<link rel="canonical" href="https://scaleguard.dev/">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="author" content="ScaleGuard">
+<meta name="theme-color" content="#0a0c10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fafbfc" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark light">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ScaleGuard">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="https://scaleguard.dev/">
+<meta property="og:title" content="ScaleGuard: your whole edge in one process">
+<meta property="og:description" content="Open-source load balancer, reverse proxy, WAF, rate limiting, automatic HTTPS, DNS, tunnels and cloud functions. One command to start, a web UI to run it.">
+<meta property="og:image" content="https://scaleguard.dev/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ScaleGuard: your whole edge, one process, with the install command">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ScaleGuard: your whole edge in one process">
+<meta name="twitter:description" content="Open-source load balancer, WAF, auto-TLS, DNS, tunnels and cloud functions in a single JAR with a web UI.">
+<meta name="twitter:image" content="https://scaleguard.dev/assets/og-image.png">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="preload" href="/css/styles.css" as="style">
+<link rel="stylesheet" href="/css/styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://scaleguard.dev/#org",
+      "name": "ScaleGuard",
+      "url": "https://scaleguard.dev/",
+      "logo": { "@type": "ImageObject", "url": "https://scaleguard.dev/assets/logo-512.png", "width": 512, "height": 512 },
+      "sameAs": ["https://github.com/dhaneeshtb/scaleguard"]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://scaleguard.dev/#website",
+      "url": "https://scaleguard.dev/",
+      "name": "ScaleGuard",
+      "description": "Open-source application gateway: load balancer, reverse proxy, WAF, rate limiting, automatic HTTPS, DNS, tunnels and cloud functions.",
+      "inLanguage": "en",
+      "publisher": { "@id": "https://scaleguard.dev/#org" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://scaleguard.dev/#software",
+      "name": "ScaleGuard",
+      "alternateName": "ScaleGuard application gateway",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Load balancer, reverse proxy and web application firewall",
+      "operatingSystem": "Linux, macOS, Windows (via Docker)",
+      "softwareRequirements": "Java 21 or newer, or Docker",
+      "description": "ScaleGuard is a self-hosted application gateway in a single JAR. It combines an HTTP/1.1, HTTP/2, HTTP/3 and gRPC load balancer and reverse proxy with a web application firewall, per-client rate limiting, automatic Let's Encrypt certificates, an authoritative DNS server, SSH tunnels, request analytics and sandboxed Groovy cloud functions, all configured live from a web UI or a REST API.",
+      "url": "https://scaleguard.dev/",
+      "downloadUrl": "https://github.com/dhaneeshtb/scaleguard",
+      "installUrl": "https://scaleguard.dev/install.sh",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "screenshot": "https://scaleguard.dev/assets/screens/overview-dark.webp",
+      "image": "https://scaleguard.dev/assets/og-image.png",
+      "featureList": [
+        "Layer-7 load balancing with active and passive health checks",
+        "HTTP/1.1, HTTP/2, HTTP/3 (QUIC), gRPC, WebSocket and TCP proxying",
+        "Web application firewall with OWASP Core Rule Set import",
+        "Per-client rate limiting shared across a cluster",
+        "Automatic Let's Encrypt certificates",
+        "Authoritative DNS server",
+        "SafeExpose: open-source self-hosted ngrok alternative (one-command tunnels)",
+        "Sandboxed Groovy cloud functions",
+        "Built-in request analytics on DuckDB",
+        "Active-active Raft-style clustering without a shared database, with a promotable disaster-recovery site",
+        "OAuth 2.0 authorization server",
+        "Web UI and OpenAPI 3 REST API"
+      ],
+      "sameAs": ["https://github.com/dhaneeshtb/scaleguard"],
+      "publisher": { "@id": "https://scaleguard.dev/#org" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://scaleguard.dev/#safeexpose",
+      "name": "SafeExpose",
+      "alternateName": "ScaleGuard SafeExpose",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Self-hosted tunnel and localhost sharing tool",
+      "operatingSystem": "Linux, macOS, Windows",
+      "softwareRequirements": "Java 11 or newer",
+      "description": "SafeExpose is an open-source, self-hosted alternative to ngrok. One command, such as safeexpose 3000, publishes a local app at your own domain over an SSH tunnel through a ScaleGuard server, with automatic HTTPS and automatic reconnection.",
+      "url": "https://scaleguard.dev/#safeexpose",
+      "downloadUrl": "https://github.com/dhaneeshtb/scalegurad-safeexpose",
+      "installUrl": "https://raw.githubusercontent.com/dhaneeshtb/scalegurad-safeexpose/main/install.sh",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "isPartOf": { "@id": "https://scaleguard.dev/#software" },
+      "sameAs": ["https://github.com/dhaneeshtb/scalegurad-safeexpose"],
+      "publisher": { "@id": "https://scaleguard.dev/#org" }
+    },
+    {
+      "@type": "HowTo",
+      "name": "How to install ScaleGuard and put a service behind it",
+      "description": "Install the ScaleGuard gateway with one command and route traffic to a backend.",
+      "totalTime": "PT5M",
+      "tool": [{ "@type": "HowToTool", "name": "Java 21 or Docker" }],
+      "step": [
+        { "@type": "HowToStep", "position": 1, "name": "Install", "text": "Run: curl -fsSL https://scaleguard.dev/install.sh | sh. On Docker, run ./scaleguard-docker.sh from a clone of the repository instead." },
+        { "@type": "HowToStep", "position": 2, "name": "Open the admin UI", "text": "Open http://localhost:8080/adminui/ and sign in with the admin user and the password the installer printed." },
+        { "@type": "HowToStep", "position": 3, "name": "Add a route", "text": "Add a route for your domain and point it at your backends. HTTPS certificates are ordered and renewed automatically." }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://scaleguard.dev/#faq",
+      "mainEntity": [
+        { "@type": "Question", "name": "What is ScaleGuard?",
+          "acceptedAnswer": { "@type": "Answer", "text": "ScaleGuard is a free, open-source, self-hosted application gateway. In one Java process it provides a load balancer and reverse proxy, a web application firewall, rate limiting, automatic HTTPS certificates, an authoritative DNS server, SSH tunnels, request analytics and cloud functions, and it is configured live from a web UI or REST API." } },
+        { "@type": "Question", "name": "How do I install ScaleGuard?",
+          "acceptedAnswer": { "@type": "Answer", "text": "On macOS or Linux run curl -fsSL https://scaleguard.dev/install.sh | sh. With Docker, clone the repository and run ./scaleguard-docker.sh. Both give you an admin UI at /adminui and generate an admin password, because there is no default login." } },
+        { "@type": "Question", "name": "What does ScaleGuard need to run?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Java 21 or newer, or Docker. It runs as a single JAR on a laptop, a virtual machine or a container. The configuration store is SQLite by default and can be PostgreSQL; the response cache and analytics use embedded DuckDB, so there is no other server to run." } },
+        { "@type": "Question", "name": "Is ScaleGuard free?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. ScaleGuard is open source under the MIT license, with no paid tier, and every feature described on this page is in the open-source build." } },
+        { "@type": "Question", "name": "How does ScaleGuard compare with NGINX and HAProxy?",
+          "acceptedAnswer": { "@type": "Answer", "text": "In one-core benchmarks on small responses ScaleGuard reached about 93% of NGINX throughput and more than twice Envoy. NGINX and HAProxy are ahead on tail latency, memory use and decades of hardening. ScaleGuard adds a built-in web UI, WAF, analytics, DNS, tunnels, clustering and cloud functions that those proxies need extra modules, plugins or paid tiers for." } },
+        { "@type": "Question", "name": "Can I use ScaleGuard to control internal apps and tools?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Put dashboards, admin panels, staging APIs and wikis behind one ScaleGuard front door: each gets a named HTTPS route, per-route IP allow-lists, scoped OAuth 2.0 tokens for service clients, a web application firewall, rate limits and a recorded request log. SafeExpose publishes laptop demos through the same rules, and cloud functions replace small helper services. ScaleGuard limits human access by network address and API access by tokens; it is not a single-sign-on provider for people." } },
+        { "@type": "Question", "name": "Is ScaleGuard an ngrok alternative?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. SafeExpose is a fully open-source (MIT) self-hosted alternative to ngrok that works with ScaleGuard. It publishes a service from a laptop or private network at your own domain over an SSH tunnel with automatic HTTPS, using one command such as safeexpose 3000. It reconnects automatically when the network drops, and its code is on GitHub at dhaneeshtb/scalegurad-safeexpose." } },
+        { "@type": "Question", "name": "Does ScaleGuard support HTTP/3 and gRPC?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. HTTP/3 over QUIC is served on every HTTPS port alongside HTTP/2 and HTTP/1.1, and gRPC unary and streaming calls are proxied message by message. Each protocol can be switched off per route." } },
+        { "@type": "Question", "name": "Can ScaleGuard run as a cluster?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Run three or more nodes and every one serves traffic (active-active). They elect a master by majority vote, keep identical configuration through a SHA-256 hash-chained ledger without a shared database, and share rate-limit budgets. In local test clusters a new master was elected 2.9 to 3.8 seconds after the old one was killed. A disaster-recovery standby site copies every change and can be promoted with one call. PostgreSQL mode is also available." } },
+        { "@type": "Question", "name": "What happens if a node or a whole data centre fails?",
+          "acceptedAnswer": { "@type": "Answer", "text": "If a node fails, the other nodes keep serving traffic, and if it was the master the rest elect a new one in a few seconds. If the whole primary site is lost, the disaster-recovery site keeps serving traffic on the configuration it has, but refuses configuration changes with a hint to promote it, so the two sites can never diverge. Promoting the DR site (one API call or button) makes it the primary, and old nodes that come back follow the new master. A minority side of a network split stops accepting changes but keeps serving traffic." } },
+        { "@type": "Question", "name": "Are ScaleGuard cloud functions safe?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Cloud functions are Groovy scripts that run in a layered sandbox with no file, process, reflection or thread access, hard time, memory and size limits, and outbound network calls switched off unless the admin enables them with an allowlist and SSRF protection. They share the JVM, so they are not a hard security boundary and should be written by trusted people." } }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="g-brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 8.2-8 9-4.8-.8-8-4.5-8-9V6l8-3z"/><path d="M9 12l2.2 2.2L15.5 10"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 8l-5 4 5 4M16 8l5 4-5 4M14 5l-4 14"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M12 11l-6 6M12 11l6 6"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M4 6l6 6-6 6M12 18h8"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/></symbol>
+    <symbol id="i-logo" viewBox="0 0 32 32"><path d="M16 2l12 4.5V16c0 6.2-4.8 11.2-12 14C8.8 27.200 4 22.200 4 16V6.500L16 2z" fill="url(#g-brand)" stroke="none"/><path d="M9 12.500h14M11.500 17h9M14 21.500h4" stroke="#0a0c10" stroke-width="2.200" stroke-linecap="round" fill="none"/></symbol>
+  </defs>
+</svg>
+
+<header class="nav" id="top">
+  <div class="wrap nav-in">
+    <a class="brand" href="/" aria-label="ScaleGuard home"><svg class="logo" width="30" height="30" aria-hidden="true"><use href="#i-logo"/></svg><span>ScaleGuard</span></a>
+    <nav class="links" id="links" aria-label="Primary">
+      <a href="#why">Why</a>
+      <a href="#story">Internal apps</a>
+      <a href="#flow">How it works</a>
+      <a href="#start">Get started</a>
+      <a href="#safeexpose">SafeExpose</a>
+      <a href="#features">Features</a>
+      <a href="#ha">High availability</a>
+      <a href="#performance">Performance</a>
+      <a href="#compare">Compare</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch colour theme"><svg class="ic sun" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic moon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      <a class="btn btn-ghost gh" href="https://github.com/dhaneeshtb/scaleguard" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>GitHub</a>
+      <button class="icon-btn menu" id="menu" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="links"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ───────────────────────── HERO ───────────────────────── -->
+<section class="hero" aria-labelledby="h1">
+  <div class="hero-bg" aria-hidden="true"></div>
+  <div class="wrap hero-in">
+    <p class="pill"><span class="dot"></span>Open source · MIT · Java 21 · one JAR</p>
+    <h1 id="h1">Your whole edge.<br><span class="grad">One process.</span></h1>
+    <p class="lede">ScaleGuard is the open-source application gateway that replaces your load balancer, reverse proxy, certificate client, WAF, rate limiter, DNS server and tunnels. Run it with <strong>one command</strong>, then manage everything live from a web UI.</p>
+
+    <div class="install" data-install>
+      <div class="tabs" role="tablist" aria-label="Install method">
+        <button role="tab" aria-selected="true" aria-controls="cmd-script" id="t-script" data-tab="script">macOS · Linux</button>
+        <button role="tab" aria-selected="false" aria-controls="cmd-docker" id="t-docker" data-tab="docker" tabindex="-1">Docker</button>
+        <button role="tab" aria-selected="false" aria-controls="cmd-pg" id="t-pg" data-tab="pg" tabindex="-1">Docker + Postgres</button>
+      </div>
+      <div class="cmd" id="cmd-script" role="tabpanel" aria-labelledby="t-script">
+        <code><span class="prompt">$</span> curl -fsSL https://scaleguard.dev/install.sh | sh</code>
+        <button class="copy" type="button" data-copy="curl -fsSL https://scaleguard.dev/install.sh | sh" aria-label="Copy command"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+      </div>
+      <div class="cmd" id="cmd-docker" role="tabpanel" aria-labelledby="t-docker" hidden>
+        <code><span class="prompt">$</span> ./scaleguard-docker.sh</code>
+        <button class="copy" type="button" data-copy="./scaleguard-docker.sh" aria-label="Copy command"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+      </div>
+      <div class="cmd" id="cmd-pg" role="tabpanel" aria-labelledby="t-pg" hidden>
+        <code><span class="prompt">$</span> ./scaleguard-docker.sh up --postgres</code>
+        <button class="copy" type="button" data-copy="./scaleguard-docker.sh up --postgres" aria-label="Copy command"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+      </div>
+      <p class="install-note">Then open <code>http://localhost:8080/adminui/</code>. A strong admin password is generated for you, there is no default login.</p>
+    </div>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#start">Get started in minutes <svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      <a class="btn btn-ghost" href="#flow">See a request travel through it</a>
+    </div>
+
+    <ul class="trust" aria-label="Highlights">
+      <li>HTTP/1.1 · HTTP/2 · <strong>HTTP/3</strong> · gRPC</li>
+      <li>Active-active HA + DR</li>
+      <li>Automatic HTTPS</li>
+      <li><a href="#safeexpose">SafeExpose tunnels</a></li>
+      <li>Built-in WAF with OWASP CRS</li>
+      <li>OpenAPI 3 REST API</li>
+    </ul>
+
+    <figure class="shot">
+      <div class="frame">
+        <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>scaleguard / overview</span></div>
+        <picture>
+          <source media="(max-width: 700px)" srcset="/assets/screens/overview-dark-800.webp" data-theme-src="dark">
+          <img class="s-dark" src="/assets/screens/overview-dark.webp" srcset="/assets/screens/overview-dark-800.webp 800w, /assets/screens/overview-dark.webp 1600w" sizes="(max-width: 1240px) 94vw, 1160px" width="1600" height="1000" alt="ScaleGuard admin UI overview: live topology, route performance and traffic insights" fetchpriority="high" decoding="async">
+        </picture>
+        <img class="s-light" src="/assets/screens/overview-light.webp" srcset="/assets/screens/overview-light-800.webp 800w, /assets/screens/overview-light.webp 1600w" sizes="(max-width: 1240px) 94vw, 1160px" width="1600" height="1000" alt="ScaleGuard admin UI overview in the light theme" decoding="async">
+      </div>
+      <figcaption class="sr">The ScaleGuard admin UI showing live topology and traffic.</figcaption>
+      <div class="float f1" aria-hidden="true"><svg class="ic ok"><use href="#i-lock"/></svg><div><b>Certificate issued</b><small>app.example.com · renews itself</small></div></div>
+      <div class="float f2" aria-hidden="true"><svg class="ic bad"><use href="#i-shield"/></svg><div><b>403 · blocked by WAF</b><small>sqli-union · incident logged</small></div></div>
+      <div class="float f3" aria-hidden="true"><svg class="ic acc"><use href="#i-zap"/></svg><div><b>Cache HIT · 0.3 ms</b><small>backend never touched</small></div></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ───────────────────────── WHY ───────────────────────── -->
+<section class="sec" id="why" aria-labelledby="why-h">
+  <div class="wrap">
+    <p class="eyebrow">Why ScaleGuard</p>
+    <h2 id="why-h">Putting a service on the internet shouldn't take eight tools.</h2>
+    <p class="sub">A load balancer, a proxy, a certificate client, a WAF, a rate limiter, a DNS provider, a log stack and a tunnel: each with its own config, its own reload and its own way to break. ScaleGuard is all of them in one process, configured live, with no config files.</p>
+
+    <div class="swap" id="swap">
+      <div class="swap-col before" aria-label="Today: separate tools">
+        <h3>Today</h3>
+        <ul>
+          <li><span>Load balancer</span><em>its own config</em></li>
+          <li><span>Reverse proxy</span><em>its own reload</em></li>
+          <li><span>Certificate client</span><em>cron job</em></li>
+          <li><span>WAF rules</span><em>module or add-on</em></li>
+          <li><span>Rate limiter</span><em>another service</em></li>
+          <li><span>DNS server</span><em>zone files</em></li>
+          <li><span>Logs &amp; metrics</span><em>a whole stack</em></li>
+          <li><span>Tunnel</span><em>a SaaS account</em></li>
+        </ul>
+      </div>
+      <div class="swap-mid" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></div>
+      <div class="swap-col after" aria-label="With ScaleGuard: one process">
+        <h3>With ScaleGuard</h3>
+        <div class="one">
+          <svg class="logo" width="44" height="44" aria-hidden="true"><use href="#i-logo"/></svg>
+          <strong>1 JAR · 1 web UI · 1 REST API</strong>
+          <div class="chips">
+            <span>Load balancing</span><span>Reverse proxy</span><span>Auto-TLS</span><span>WAF</span><span>Rate limiting</span><span>DNS</span><span>Analytics</span><span>Tunnels</span><span>Cloud functions</span><span>Clustering</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── STORY: INTERNAL APPS ───────────────────────── -->
+<section class="sec story-sec" id="story" aria-labelledby="story-h">
+  <div class="wrap">
+    <p class="eyebrow">A story · internal apps</p>
+    <h2 id="story-h">How a team took control of its internal infrastructure.</h2>
+    <p class="sub">Every company has them: dashboards, admin panels, staging APIs, a wiki, a CI server, someone's demo running on a laptop. Here is how one (illustrative) team went from "nobody knows what is exposed" to a single front door they control.</p>
+
+    <div class="story on-1 on-2 on-3 on-4 on-5 on-6 on-7" id="story-app" data-story data-step="7">
+      <div class="story-stage" aria-hidden="true">
+        <div class="stage-inner">
+          <div class="st-col st-in">
+            <h4>Who comes in</h4>
+            <div class="who w-office"><svg class="ic"><use href="#i-network"/></svg><b>Office &amp; VPN</b><small>10.0.0.0/8</small></div>
+            <div class="who w-partner"><svg class="ic"><use href="#i-key"/></svg><b>Partner service</b><small>token · read scope</small></div>
+            <div class="who w-laptop"><svg class="ic"><use href="#i-terminal"/></svg><b>Laptop demo</b><small>safeexpose 3000</small></div>
+            <div class="who w-world"><svg class="ic"><use href="#i-globe"/></svg><b>The internet</b><small>scanners, bots</small></div>
+          </div>
+
+          <div class="st-gate">
+            <div class="gate-label"><svg class="logo" width="30" height="30"><use href="#i-logo"/></svg><b>ScaleGuard</b><small>the one front door</small></div>
+            <ul class="layers">
+              <li class="l-https"><svg class="ic"><use href="#i-lock"/></svg>HTTPS everywhere</li>
+              <li class="l-acl"><svg class="ic"><use href="#i-key"/></svg>Who may enter</li>
+              <li class="l-waf"><svg class="ic"><use href="#i-shield"/></svg>WAF · rate limits</li>
+              <li class="l-log"><svg class="ic"><use href="#i-chart"/></svg>Every request logged</li>
+            </ul>
+          </div>
+
+          <div class="st-col st-apps">
+            <h4>Internal apps</h4>
+            <div class="app a1"><b>Metrics dashboard</b><span class="raw">:3001 · open to anyone</span><span class="named">metrics.tools.example.com</span><span class="tag t-acl">office + VPN</span><span class="tag t-waf">WAF on</span></div>
+            <div class="app a2"><b>Admin panel</b><span class="raw">:8081 · shared password</span><span class="named">admin.tools.example.com</span><span class="tag t-acl">office + VPN</span><span class="tag t-waf">5 req/s per client</span></div>
+            <div class="app a3"><b>Staging API</b><span class="raw">:9000 · no auth</span><span class="named">staging-api.tools.example.com</span><span class="tag t-acl">token · scoped</span><span class="tag t-waf">WAF on</span></div>
+            <div class="app a4"><b>Wiki</b><span class="raw">:8090 · old TLS cert</span><span class="named">wiki.tools.example.com</span><span class="tag t-acl">office + VPN</span><span class="tag t-waf">cached 5 min</span></div>
+            <div class="app a5 late5"><b>Sam's demo</b><span class="named">demo.tools.example.com</span><span class="tag t-acl">office + VPN</span><span class="tag t-waf">gone when Sam stops</span></div>
+            <div class="app a6 late6"><b>Status webhook</b><span class="named">hooks.tools.example.com/status</span><span class="tag t-acl">cloud function</span><span class="tag t-waf">no server to run</span></div>
+          </div>
+        </div>
+        <div class="st-log">
+          <span class="lg-raw">no record of who calls what</span>
+          <span class="lg-on"><b>1,284</b> requests today · <b class="r">14</b> blocked · p95 <b>31 ms</b> · searchable with SQL</span>
+          <i class="spark"><u style="--h:30"></u><u style="--h:44"></u><u style="--h:38"></u><u style="--h:62"></u><u style="--h:51"></u><u style="--h:74"></u><u style="--h:58"></u><u style="--h:82"></u></i>
+        </div>
+      </div>
+
+      <ol class="chapters">
+        <li class="chapter" data-ch="1">
+          <span class="ch-n">Chapter 1</span>
+          <h3>Monday: fourteen tools, fourteen ways in.</h3>
+          <p>Northbeam is a 40-person product team. Over three years it has collected a metrics dashboard, an admin panel, a staging API, a wiki and a CI server. Each one lives on its own port, has its own login (or none), and its own expiring certificate. Last week someone pasted a tunnel link to a demo into Slack. Nobody can say, with confidence, what is reachable from the internet.</p>
+          <p class="note">The problem isn't any single tool. It's that there is no single place to look.</p>
+        </li>
+        <li class="chapter" data-ch="2">
+          <span class="ch-n">Chapter 2</span>
+          <h3>One front door.</h3>
+          <p>They install ScaleGuard on one small server with a single command and map each app to a name with Quick Mapping: <code>metrics.tools.example.com</code>, <code>admin.tools.example.com</code> and so on. HTTPS certificates are ordered and renewed automatically. ScaleGuard can even host the DNS zone itself, so the names resolve to the gateway and nothing else. The apps stop listening to the world; only the gateway talks to them.</p>
+          <p class="note">Result: one list of everything exposed, all on HTTPS, in the admin UI.</p>
+        </li>
+        <li class="chapter" data-ch="3">
+          <span class="ch-n">Chapter 3</span>
+          <h3>Only the right people and services.</h3>
+          <p>Each route gets its own allow-list: the office and VPN ranges for the human tools. The partner that calls the staging API gets an OAuth 2.0 client with a scope for that route and nothing else, so its token can be revoked without touching anyone else. The admin API itself needs a token and has its own limit so a mistake can't lock the admins out.</p>
+          <p class="note">Access is a setting on the route, not a convention people remember.</p>
+        </li>
+        <li class="chapter" data-ch="4">
+          <span class="ch-n">Chapter 4</span>
+          <h3>Even internal apps get protected.</h3>
+          <p>Internal doesn't mean safe: scanners find forgotten hostnames in hours, and a runaway script can hammer a staging database as hard as an attacker. The WAF runs per route with the OWASP rule set, a token bucket limits every client, and noisy addresses can be blocked for an hour with one click. Static pages like the wiki are cached so they survive a rush.</p>
+          <p class="note">Abuse gets a 403 or 429 at the door, and the app behind it never sees it.</p>
+        </li>
+        <li class="chapter" data-ch="5">
+          <span class="ch-n">Chapter 5</span>
+          <h3>Sharing a laptop demo, safely.</h3>
+          <p>Sam needs to show a prototype to a colleague. Instead of an anonymous tunnel link, Sam runs <code>safeexpose 3000 demo</code>. The prototype appears at <code>demo.tools.example.com</code> as a normal route, behind the same HTTPS, allow-list and WAF as everything else. When Sam presses Ctrl+C the route is removed. If the Wi-Fi drops, it reconnects by itself.</p>
+          <p class="note">Temporary doesn't have to mean uncontrolled.</p>
+        </li>
+        <li class="chapter" data-ch="6">
+          <span class="ch-n">Chapter 6</span>
+          <h3>Glue without another server.</h3>
+          <p>The team needs a small status endpoint and a webhook that fans a message out to chat. Rather than deploy and secure two more services, they write them as cloud functions in the admin UI. The functions run in a sandbox, may only call the hosts the admin allows, read only the secrets the admin ticks, and inherit the route's rules and cache.</p>
+          <p class="note">A new endpoint is ten lines of code and a route, not a new thing to patch.</p>
+        </li>
+        <li class="chapter" data-ch="7">
+          <span class="ch-n">Chapter 7</span>
+          <h3>Seeing everything, and staying up.</h3>
+          <p>Every request is recorded in the built-in analytics with a trace ID: who called what, how long it took, what was blocked. A question like "which client hit the admin panel at 3 a.m.?" is a SQL query, not an archaeology project. A second node joins the first so the front door survives a restart, and configuration stays identical on both without a shared database.</p>
+          <p class="note">One place to see what is exposed. One place to change it. Every request on the record.</p>
+        </li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── FLOW ───────────────────────── -->
+<section class="sec alt" id="flow" aria-labelledby="flow-h">
+  <div class="wrap">
+    <p class="eyebrow">How it works</p>
+    <h2 id="flow-h">Follow a request through the gateway.</h2>
+    <p class="sub">Every request passes the same checks, in the same order, whether it is proxied to a backend, answered from the cache or handled by a cloud function. Pick a scenario and watch where it goes.</p>
+
+    <div class="flow" id="flow-app" data-flow>
+      <div class="scenarios" role="group" aria-label="Choose a scenario">
+        <button type="button" class="sc on" data-sc="normal">Normal request</button>
+        <button type="button" class="sc" data-sc="attack">SQL injection</button>
+        <button type="button" class="sc" data-sc="flood">Too many requests</button>
+        <button type="button" class="sc" data-sc="cache">Cached page</button>
+        <button type="button" class="sc" data-sc="fn">Cloud function</button>
+        <button type="button" class="sc" data-sc="blocked">Blocked address</button>
+      </div>
+
+      <ol class="track" aria-label="Request pipeline">
+        <li data-st="client"><i><svg class="ic"><use href="#i-globe"/></svg></i><b>Client</b><small>browser · app · gRPC</small></li>
+        <li data-st="tls"><i><svg class="ic"><use href="#i-lock"/></svg></i><b>TLS &amp; protocol</b><small>HTTP/1 · 2 · 3</small></li>
+        <li data-st="ip"><i><svg class="ic"><use href="#i-network"/></svg></i><b>IP rules</b><small>allow · deny · block</small></li>
+        <li data-st="rate"><i><svg class="ic"><use href="#i-gauge"/></svg></i><b>Rate limit</b><small>per client · route</small></li>
+        <li data-st="waf"><i><svg class="ic"><use href="#i-shield"/></svg></i><b>WAF</b><small>OWASP CRS</small></li>
+        <li data-st="auth"><i><svg class="ic"><use href="#i-key"/></svg></i><b>Auth</b><small>OAuth 2.0 · keys</small></li>
+        <li data-st="target"><i><svg class="ic"><use href="#i-layers"/></svg></i><b id="target-name">Backends</b><small id="target-sub">load balanced</small></li>
+      </ol>
+
+      <div class="result" aria-live="polite">
+        <div class="badge" id="res-badge">200 OK</div>
+        <div class="res-text"><b id="res-title">Routed to a healthy backend</b><span id="res-desc">Round-robin across 10.0.0.5 and 10.0.0.6, with passive health checks watching the answer.</span></div>
+      </div>
+      <pre class="logline" id="logline" aria-label="Access log line"><code>GET /api/orders  200  backend:10.0.0.5:3000  12.4ms</code></pre>
+      <p class="flow-foot">Every request is recorded in the built-in analytics (DuckDB) with a trace ID you can search and query with SQL.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── GET STARTED ───────────────────────── -->
+<section class="sec" id="start" aria-labelledby="start-h">
+  <div class="wrap">
+    <p class="eyebrow">Get started</p>
+    <h2 id="start-h">From nothing to serving traffic in three steps.</h2>
+    <p class="sub">No config files to write, nothing to compile, no database to set up. You need Java 21 or Docker.</p>
+
+    <ol class="steps">
+      <li class="step">
+        <span class="num">1</span>
+        <h3>Install</h3>
+        <p>One command downloads ScaleGuard and the admin UI, generates an admin password and starts it.</p>
+        <div class="term" role="img" aria-label="Terminal output of the installer">
+<pre><code><span class="p">$</span> curl -fsSL https://scaleguard.dev/install.sh | sh
+<span class="d">==&gt; Java 21 found</span>
+<span class="d">==&gt; Downloading release</span>
+<span class="d">==&gt; Checksum OK</span>
+<span class="d">==&gt; Generated an admin password: ••••••••••••••••••••</span>
+<span class="ok">==&gt; ScaleGuard is installed</span>
+    Admin UI : http://localhost:8080/adminui/</code></pre>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">2</span>
+        <h3>Open the admin UI</h3>
+        <p>Sign in at <code>/adminui</code>. Live traffic, routes, firewall, certificates, DNS and cluster status are one click apart.</p>
+        <div class="mini-ui" aria-hidden="true">
+          <div class="mu-row"><i class="g"></i><b>app.example.com</b><span>2 backends · healthy</span></div>
+          <div class="mu-row"><i class="g"></i><b>api.example.com</b><span>HTTP/3 · WAF on</span></div>
+          <div class="mu-row"><i class="y"></i><b>docs.example.com</b><span>cert renewing</span></div>
+          <div class="mu-add">+ Quick mapping</div>
+        </div>
+      </li>
+      <li class="step">
+        <span class="num">3</span>
+        <h3>Add a route</h3>
+        <p>Pick a domain, list your backends, done. The HTTPS certificate is ordered and renewed for you. Prefer a script? It is one API call.</p>
+        <div class="term" role="img" aria-label="curl command that creates a route">
+<pre><code><span class="p">$</span> curl -X POST "http://localhost:8080/config/quickmapping?scaleguard=true" \
+    -H "Authorization: $TOKEN" \
+    -d '{"name":"app",
+         "sourceURL":"https://app.example.com",
+         "targets":["http://10.0.0.5:3000","http://10.0.0.6:3000"]}'</code></pre>
+        </div>
+      </li>
+    </ol>
+
+    <div class="paths">
+      <article class="path">
+        <svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg>
+        <h3>Install script</h3>
+        <p>macOS and Linux, no Docker. Optional <code>--service</code> starts it at boot. Everything lives in <code>~/.scaleguard</code>.</p>
+        <pre><code>curl -fsSL https://scaleguard.dev/install.sh | sh
+scaleguard status</code></pre>
+      </article>
+      <article class="path">
+        <svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>
+        <h3>Docker</h3>
+        <p>One script builds and starts it, with DuckDB cache and analytics on a mounted volume. Add <code>--postgres</code> or <code>--dns</code>.</p>
+        <pre><code>./scaleguard-docker.sh
+./scaleguard-docker.sh up --postgres</code></pre>
+      </article>
+      <article class="path">
+        <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg>
+        <h3>Expose a laptop app</h3>
+        <p>SafeExpose publishes a local port at your own domain over SSH, with HTTPS, and reconnects by itself.</p>
+        <pre><code>safeexpose 3000
+→ https://app-3000.your-domain</code></pre>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── SAFEEXPOSE (FLAGSHIP) ───────────────────────── -->
+<section class="sec alt safe" id="safeexpose" aria-labelledby="safe-h">
+  <div class="wrap two">
+    <div>
+      <p class="eyebrow">Flagship · SafeExpose</p>
+      <h2 id="safe-h">Put any app on the internet with one command.</h2>
+      <p class="sub"><strong>SafeExpose</strong> is the open-source, self-hosted alternative to ngrok that ships with ScaleGuard. It publishes a service from your laptop or a private network at <em>your own domain</em>, with automatic HTTPS, through the same gateway that protects the rest of your infrastructure.</p>
+      <ul class="ticks">
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>One command.</b> <code>safeexpose 3000</code> and your local app is live. Name it with <code>safeexpose 3000 demo</code>.</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Your domain, your certificate.</b> No random URLs, no vendor account, no request quotas.</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Controlled.</b> Tunnels are normal routes, so allow-lists, WAF, rate limits and analytics apply. Ctrl+C removes the route.</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Built to stay up.</b> Reconnects with back-off after Wi-Fi changes and sleep, re-creates the tunnel if the server restarted, and dev-server hot reload (WebSockets) works.</span></li>
+      </ul>
+      <div class="oss-badge">
+        <svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>
+        <p><b>Fully open source, MIT.</b> Client and server are both on GitHub. Read it, fork it, run it on your own infrastructure. <a href="https://github.com/dhaneeshtb/scalegurad-safeexpose" rel="noopener">github.com/dhaneeshtb/scalegurad-safeexpose</a></p>
+      </div>
+    </div>
+
+    <div class="safe-demo">
+      <div class="term big" role="img" aria-label="Terminal session: safeexpose 3000 publishes the local app at an HTTPS address on your own domain" data-typing>
+<pre><code><span class="p">$</span> <span class="typed" data-text="safeexpose 3000 demo">safeexpose 3000 demo</span>
+<span class="line d">Exposing localhost:3000 at</span> <span class="line ok">https://demo.tools.example.com</span>
+<span class="line d">(Ctrl+C to stop; it reconnects by itself if the network drops)</span>
+<span class="line d">Tunnel up: localhost:3000 -&gt; router.example.com:50001</span>
+<span class="line warn">Connection lost (link went quiet). Reconnecting in 2 s...</span>
+<span class="line d">Tunnel up: localhost:3000 -&gt; router.example.com:50001</span></code></pre>
+      </div>
+      <div class="safe-install">
+        <span>Install</span>
+        <div class="cmd">
+          <code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/dhaneeshtb/scalegurad-safeexpose/main/install.sh | sh</code>
+          <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/dhaneeshtb/scalegurad-safeexpose/main/install.sh | sh" aria-label="Copy SafeExpose install command"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+        </div>
+        <small>Needs Java 11+; the installer tells you how to get it. Windows: PowerShell installer in the repo.</small>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── FEATURES ───────────────────────── -->
+<section class="sec alt" id="features" aria-labelledby="feat-h">
+  <div class="wrap">
+    <p class="eyebrow">Everything included</p>
+    <h2 id="feat-h">Everything included. Nothing bolted on.</h2>
+    <p class="sub">Nothing here is a plugin, a paid tier or a separate service. It is all in the same open-source build.</p>
+
+    <div class="bento">
+      <article class="card c-wide">
+        <svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg>
+        <h3>Load balancing &amp; reverse proxy</h3>
+        <p>Round-robin, least-connections, weighted and active/standby. Route by host, port, path, header or JWT claim. HTTP/1.1, HTTP/2, <strong>HTTP/3 over QUIC</strong>, gRPC with streaming, WebSockets and raw TCP, with active and passive health checks, connect retries and per-service timeouts.</p>
+      </article>
+      <article class="card c-wide">
+        <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>
+        <h3>Web application firewall</h3>
+        <p>21 built-in rules plus your own, <strong>OWASP Core Rule Set import</strong> with anomaly scoring, per-route policies and a dry-run tester. 44 of 44 attacks blocked, 37 of 37 legitimate requests allowed in the test suite.</p>
+      </article>
+      <article class="card">
+        <svg class="ic" aria-hidden="true"><use href="#i-gauge"/></svg>
+        <h3>Rate limiting &amp; IP rules</h3>
+        <p>Token bucket per client and route with <code>429</code> + <code>Retry-After</code>, spoof-proof behind proxies, one budget across the whole cluster, plus allow/deny lists and timed blocks.</p>
+      </article>
+      <article class="card">
+        <svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>
+        <h3>Automatic HTTPS</h3>
+        <p>Let's Encrypt certificates ordered and renewed for every route (HTTP-01 or DNS-01), chosen per connection by SNI. Add a route and it is on HTTPS.</p>
+      </article>
+      <article class="card">
+        <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
+        <h3>Authoritative DNS</h3>
+        <p>Host your zones on the gateway: A, AAAA, CNAME, TXT, MX, NS, rate limiting and caching forwarders. Served domains answer with the IPs of every connected node.</p>
+      </article>
+      <article class="card c-wide flagship">
+        <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg>
+        <h3>SafeExpose tunnels <span class="flag">flagship</span></h3>
+        <p>A fully open-source, self-hosted ngrok alternative. <code>safeexpose 3000</code> publishes a service from a laptop or private network at your domain, with HTTPS, and survives network drops. <a href="#safeexpose">See how</a>.</p>
+      </article>
+      <article class="card c-wide">
+        <svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>
+        <h3>Analytics you can query</h3>
+        <p>Every request lands in an embedded <strong>DuckDB</strong>: live dashboards for traffic, status classes, p50/p95 latency, top routes and blocked attacks, searchable access logs with CSV/NDJSON export, a read-only SQL console and W3C <code>traceparent</code> support. No log stack to run.</p>
+      </article>
+      <article class="card c-wide">
+        <svg class="ic" aria-hidden="true"><use href="#i-network"/></svg>
+        <h3>Active-active clustering with DR</h3>
+        <p>Every node serves traffic. Nodes elect a master by majority vote and keep identical configuration through a SHA-256-chained ledger, with no shared database. A new master in about three seconds, and a standby site you promote with one call. <a href="#ha">Break a node and watch</a>.</p>
+      </article>
+      <article class="card c-wide">
+        <svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>
+        <h3>Cloud functions</h3>
+        <p>Answer a route with a sandboxed Groovy function instead of running a server. <code>headers</code>, <code>query</code> and the parsed <code>body</code> are variables; auth, rate limits, WAF and caching come from the route. <a href="#functions">See an example</a>.</p>
+      </article>
+    </div>
+
+    <div class="strip">
+      <span><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg>OAuth 2.0 server with JWT checks at the edge</span>
+      <span><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>OpenAPI 3 REST API for everything</span>
+      <span><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>Prometheus <code>/metrics</code></span>
+      <span><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>SQLite or PostgreSQL, DuckDB built in</span>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── SCREENS ───────────────────────── -->
+<section class="sec" id="ui" aria-labelledby="ui-h">
+  <div class="wrap">
+    <p class="eyebrow">The admin UI</p>
+    <h2 id="ui-h">A control plane you will actually want to open.</h2>
+    <p class="sub">Every setting is editable live, and nothing needs a reload. The same operations are available over the REST API.</p>
+
+    <div class="gallery" data-gallery>
+      <div class="g-tabs" role="tablist" aria-label="Screens">
+        <button role="tab" aria-selected="true" data-shot="route-editor" id="g-route">Routes</button>
+        <button role="tab" aria-selected="false" data-shot="firewall" id="g-fw" tabindex="-1">Firewall</button>
+        <button role="tab" aria-selected="false" data-shot="rate-limiting" id="g-rl" tabindex="-1">Rate limiting</button>
+        <button role="tab" aria-selected="false" data-shot="backend-health" id="g-bh" tabindex="-1">Backend health</button>
+      </div>
+      <div class="frame">
+        <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span id="g-title">scaleguard / routes</span></div>
+        <img id="g-img" src="/assets/screens/route-editor.webp" srcset="/assets/screens/route-editor-800.webp 800w, /assets/screens/route-editor.webp 1600w" sizes="(max-width: 1240px) 94vw, 1160px" width="1600" height="1000" alt="ScaleGuard route editor with a live preview of the request path" loading="lazy" decoding="async">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── CLOUD FUNCTIONS ───────────────────────── -->
+<section class="sec alt" id="functions" aria-labelledby="fn-h">
+  <div class="wrap two">
+    <div>
+      <p class="eyebrow">Cloud functions</p>
+      <h2 id="fn-h">Answer a route with code, not a server.</h2>
+      <p class="sub">Write a small Groovy function in the admin UI and attach it to any route. <code>headers</code>, <code>query</code> and the parsed <code>body</code> are just variables. It inherits the route's auth, rate limit, WAF, CORS and caching, and runs in a sandbox.</p>
+      <ul class="ticks">
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Sandboxed.</b> No files, processes, reflection or threads; hard time, memory and size limits.</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>You set the permissions.</b> Outbound calls are off until you allow them, with host allowlists and SSRF protection.</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Scales and replicates.</b> Compiled once, bounded concurrency, hot reload, synced across the cluster.</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Test in the UI.</b> Sample request panel, run logs and ready-made examples.</span></li>
+      </ul>
+      <p class="fine">Functions share the gateway's JVM, so treat authors as trusted staff. <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/CLOUD_FUNCTIONS.md" rel="noopener">Read exactly what the sandbox does and does not guarantee.</a></p>
+    </div>
+    <div class="code" role="img" aria-label="Example Groovy cloud function that returns the temperature for a latitude and longitude">
+      <div class="code-bar" aria-hidden="true"><i></i><i></i><i></i><span>weather.groovy · GET /weather?lat=9.93&amp;lon=76.26</span></div>
+<pre><code><span class="c">// headers, query and body are ready-made variables</span>
+<span class="k">def</span> r = http.get(
+  <span class="s">"https://api.open-meteo.com/v1/forecast"</span> +
+  <span class="s">"?latitude=${query.lat}&amp;longitude=${query.lon}"</span> +
+  <span class="s">"&amp;current=temperature_2m"</span>)
+
+<span class="k">if</span> (!r.ok) {
+  <span class="k">return</span> res.status(<span class="n">502</span>).json([error: <span class="s">'upstream '</span> + r.status])
+}
+<span class="k">return</span> [temperature: r.json().current.temperature_2m]</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── HIGH AVAILABILITY + DR ───────────────────────── -->
+<section class="sec alt" id="ha" aria-labelledby="ha-h">
+  <div class="wrap">
+    <p class="eyebrow">High availability &amp; disaster recovery</p>
+    <h2 id="ha-h">Active-active by default. A second site on standby.</h2>
+    <p class="sub">Run three ScaleGuard nodes and every one of them serves traffic. They elect a master by majority vote and keep identical configuration through a tamper-evident ledger, with <strong>no shared database, no etcd, no ZooKeeper</strong>. Add a standby site in another region and you can fail over to it with one call.</p>
+
+    <div class="ha" data-ha>
+      <div class="ha-ctl" role="group" aria-label="Break something and watch what happens">
+        <button type="button" class="hb on" data-hs="healthy">Healthy</button>
+        <button type="button" class="hb" data-hs="follower">Lose a node</button>
+        <button type="button" class="hb" data-hs="master">Kill the master</button>
+        <button type="button" class="hb" data-hs="site">Lose the whole primary site</button>
+        <button type="button" class="hb" data-hs="promote" disabled aria-disabled="true">Promote the DR site</button>
+        <button type="button" class="hb" data-hs="return" disabled aria-disabled="true">Old site comes back</button>
+      </div>
+
+      <div class="ha-map">
+        <div class="ha-clients"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><b>Clients</b><small>DNS · any load balancer · anycast</small></div>
+        <div class="ha-sites">
+          <div class="site">
+            <h4>Primary site <em>active-active</em></h4>
+            <div class="nodes">
+              <div class="node" data-n="n1"><b>node-1</b><span class="role">master</span><i class="led"></i></div>
+              <div class="node" data-n="n2"><b>node-2</b><span class="role">follower</span><i class="led"></i></div>
+              <div class="node" data-n="n3"><b>node-3</b><span class="role">follower</span><i class="led"></i></div>
+            </div>
+          </div>
+          <div class="site dr">
+            <h4>DR site <em>standby · still serving</em></h4>
+            <div class="nodes">
+              <div class="node" data-n="d1"><b>node-5</b><span class="role">standby</span><i class="led"></i></div>
+              <div class="node" data-n="d2"><b>node-6</b><span class="role">standby</span><i class="led"></i></div>
+            </div>
+          </div>
+        </div>
+        <dl class="ha-stats">
+          <div><dt>Serving traffic</dt><dd id="ha-serving">5 of 5 nodes</dd></div>
+          <div><dt>Master</dt><dd id="ha-master">node-1 · term 7</dd></div>
+          <div><dt>Configuration changes</dt><dd id="ha-changes" class="ok">accepted</dd></div>
+        </dl>
+      </div>
+      <div class="ha-msg" aria-live="polite"><b id="ha-title">Everything is healthy.</b><span id="ha-desc">Three voting nodes share the work. The master applies configuration changes and the others copy them within milliseconds. Two DR nodes copy every change and also serve traffic, but never vote.</span></div>
+      <p class="fine">Times shown are measured on local test clusters (3 primary nodes plus a 2-node DR site): a new master after <code>kill -9</code> in 2.9–3.8 s, and a promoted DR site electing its master in 3.7 s. <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/CLUSTER.md#tested-behaviour" rel="noopener">See the full list of tested behaviour</a>.</p>
+    </div>
+
+    <div class="bento ha-cards">
+      <article class="card">
+        <svg class="ic" aria-hidden="true"><use href="#i-network"/></svg>
+        <h3>Every node serves traffic</h3>
+        <p>Put any load balancer, DNS round robin or anycast in front. Each node proxies requests on its own, so adding a node adds capacity and losing one costs only its share.</p>
+      </article>
+      <article class="card">
+        <svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>
+        <h3>A ledger instead of a database</h3>
+        <p>Every configuration change is appended to a SHA-256 hash chain on every node. Copies are verified link by link, a tampered entry is refused, and a <strong>Verify chains</strong> button checks it all.</p>
+      </article>
+      <article class="card">
+        <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>
+        <h3>No split brain</h3>
+        <p>A master needs a majority. If the minority side of a network split cannot reach one, it stops accepting changes while it keeps serving traffic, so the two halves can never diverge.</p>
+      </article>
+      <article class="card c-wide">
+        <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
+        <h3>Disaster recovery in one call</h3>
+        <p>A DR site copies every change and the cluster's analytics, serves traffic, and follows the primary master without ever standing for election. If the primary site is lost it refuses changes with a clear "promote" hint rather than guessing. <code>POST /cluster/dr/promote</code> (or one button) makes it the primary, and old nodes that return follow the new master. Promotion refuses to run while the primary still answers, unless you force it.</p>
+      </article>
+      <article class="card c-wide">
+        <svg class="ic" aria-hidden="true"><use href="#i-gauge"/></svg>
+        <h3>Shared where it matters</h3>
+        <p>Rate-limit budgets are shared across nodes (strict mode admitted 2,202 requests against an ideal of 2,200). Refresh tokens are redeemed on the master, so a token cannot be used twice on two nodes. Analytics from every node are collected, so any node can answer for the whole cluster within seconds.</p>
+      </article>
+    </div>
+
+    <div class="two ha-setup">
+      <div>
+        <h3 class="h3">Set it up in three commands</h3>
+        <ul class="ticks">
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Same admin login on every node.</b> Nodes call each other with tokens signed from it.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Use an odd number of voting nodes, 3 or more.</b> With two, losing one pauses changes (traffic still flows).</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>DR nodes</b> list the primary nodes as peers and add one flag. Primary nodes learn about them by gossip.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span><b>Docker?</b> Pass the same flags in <code>SCALEGUARD_EXTRA_OPTS</code>.</span></li>
+        </ul>
+      </div>
+      <div class="term big" role="img" aria-label="Commands that start three active nodes and one disaster recovery node">
+<pre><code><span class="d"># three active-active nodes: each lists the other two</span>
+<span class="p">$</span> java -Dport=80 -Dscaleguard.nodeName=a \
+    -Dscaleguard.cluster.advertise=http://10.0.0.10:80 \
+    -Dscaleguard.cluster.peers=10.0.0.11:80,10.0.0.12:80 \
+    -DadminUser=admin -DadminPassword=… -jar scaleguard.jar
+
+<span class="d"># a DR node in another region</span>
+<span class="p">$</span> java … -Dscaleguard.cluster.dr=true \
+    -Dscaleguard.cluster.advertise=http://10.1.0.10:80 \
+    -Dscaleguard.cluster.peers=10.0.0.10:80,10.0.0.11:80,10.0.0.12:80 \
+    -jar scaleguard.jar
+
+<span class="d"># after losing the primary site</span>
+<span class="p">$</span> curl -X POST http://10.1.0.10/cluster/dr/promote?scaleguard=true</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── PERFORMANCE ───────────────────────── -->
+<section class="sec" id="performance" aria-labelledby="perf-h">
+  <div class="wrap">
+    <p class="eyebrow">Performance</p>
+    <h2 id="perf-h">Close to NGINX on one core. Honest about the rest.</h2>
+    <p class="sub">Built on Netty with io_uring, epoll or kqueue picked automatically. Same backend, same <code>wrk</code>, 64 keep-alive connections, one CPU core each, small responses (October 2026).</p>
+
+    <div class="stats">
+      <div class="stat"><b data-count="93" data-suffix="%">93%</b><span>of NGINX throughput on small responses</span></div>
+      <div class="stat"><b data-count="2" data-suffix="×+">2×+</b><span>the throughput of Envoy on the same core</span></div>
+      <div class="stat"><b>80–110k</b><span>authoritative DNS answers per second</span></div>
+      <div class="stat"><b>157k</b><span>requests/s on 2 proxy cores (ARM64)</span></div>
+    </div>
+
+    <figure class="bars" data-bars aria-label="Throughput as a share of NGINX, one core">
+      <figcaption>Requests per second as a share of NGINX (higher is better)</figcaption>
+      <div class="bar-row"><span>NGINX 1.29</span><div><i style="--v:100"></i></div><em>100%</em></div>
+      <div class="bar-row"><span>HAProxy 3.4</span><div><i style="--v:98"></i></div><em>~98%</em></div>
+      <div class="bar-row you"><span>ScaleGuard</span><div><i style="--v:93"></i></div><em>~93%</em></div>
+      <div class="bar-row"><span>ScaleGuard + analytics on every request</span><div><i style="--v:62"></i></div><em>~62%</em></div>
+      <div class="bar-row"><span>Envoy 1.39</span><div><i style="--v:40"></i></div><em>~40%</em></div>
+      <div class="bar-row"><span>Traefik 3.7</span><div><i style="--v:22"></i></div><em>~22%</em></div>
+      <div class="bar-row"><span>Caddy 2.11</span><div><i style="--v:18"></i></div><em>~18%</em></div>
+    </figure>
+    <p class="fine center">Where the C proxies are ahead: tail latency (JVM garbage collection; p99 about 8 ms vs 2.6 ms) and memory (about 200 MB with a 256 MB heap vs 15–25 MB). Results drift between runs, so each proxy is a share of NGINX measured in alternating runs. <a href="https://github.com/dhaneeshtb/scaleguard#-performance" rel="noopener">Methodology and how to reproduce</a>.</p>
+  </div>
+</section>
+
+<!-- ───────────────────────── COMPARE ───────────────────────── -->
+<section class="sec alt" id="compare" aria-labelledby="cmp-h">
+  <div class="wrap">
+    <p class="eyebrow">How it compares</p>
+    <h2 id="cmp-h">What you get out of the box.</h2>
+    <p class="sub">Without extra modules, plugins or paid tiers. Checked October 2026, corrections welcome.</p>
+
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Feature comparison table, scrollable">
+      <table class="cmp">
+        <thead><tr><th scope="col">Capability</th><th scope="col" class="us">ScaleGuard</th><th scope="col">NGINX OSS</th><th scope="col">HAProxy</th><th scope="col">Traefik</th><th scope="col">Caddy</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">L7 load balancing &amp; reverse proxy</th><td class="us"><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td></tr>
+          <tr><th scope="row">HTTP/3 (QUIC)</th><td class="us"><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td></tr>
+          <tr><th scope="row">Web application firewall</th><td class="us"><b class="y">Built in, per route</b></td><td>Module</td><td><b class="n">Enterprise</b></td><td>Plugin</td><td>Plugin</td></tr>
+          <tr><th scope="row">OWASP CRS with anomaly scoring</th><td class="us"><b class="y">Import in the UI</b></td><td>Module (ModSecurity)</td><td><b class="n">Enterprise</b></td><td><b class="n">No</b></td><td>Plugin</td></tr>
+          <tr><th scope="row">Request analytics with SQL</th><td class="us"><b class="y">Built in</b></td><td><b class="n">Logs only</b></td><td><b class="n">Logs only</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td></tr>
+          <tr><th scope="row">Multi-node config sync, shared rate limits</th><td class="us"><b class="y">Built in</b></td><td><b class="n">NGINX Plus</b></td><td>Partial</td><td><b class="n">Hub</b></td><td><b class="n">No</b></td></tr>
+          <tr><th scope="row">Authoritative DNS server</th><td class="us"><b class="y">Yes</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td></tr>
+          <tr><th scope="row">Self-hosted tunnels (ngrok-style)</th><td class="us"><b class="y">Yes</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td></tr>
+          <tr><th scope="row">Web UI that edits configuration</th><td class="us"><b class="y">Yes</b></td><td><b class="n">No</b></td><td><b class="n">No</b></td><td>Read-only</td><td><b class="n">No</b></td></tr>
+          <tr><th scope="row">Live changes via API, no reload</th><td class="us"><b class="y">Yes</b></td><td><b class="n">NGINX Plus</b></td><td>Partial</td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td></tr>
+          <tr><th scope="row">Open source</th><td class="us"><b class="y">MIT</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td><td><b class="y">Yes</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine center"><b>Where others are ahead today:</b> NGINX and HAProxy have decades of production hardening and lower per-request overhead; Traefik and Envoy integrate deeply with Kubernetes service discovery. ScaleGuard's edge is breadth: a complete, UI-driven gateway with security and edge services built in, in one process you own.</p>
+  </div>
+</section>
+
+<!-- ───────────────────────── FAQ ───────────────────────── -->
+<section class="sec" id="faq" aria-labelledby="faq-h">
+  <div class="wrap narrow">
+    <p class="eyebrow">Questions</p>
+    <h2 id="faq-h">Frequently asked questions.</h2>
+
+    <div class="faq">
+      <details open><summary><h3>What is ScaleGuard?</h3></summary>
+        <p>ScaleGuard is a free, open-source, self-hosted application gateway. In one Java process it provides a load balancer and reverse proxy, a web application firewall, rate limiting, automatic HTTPS certificates, an authoritative DNS server, SSH tunnels, request analytics and cloud functions, and it is configured live from a web UI or REST API.</p></details>
+      <details><summary><h3>How do I install ScaleGuard?</h3></summary>
+        <p>On macOS or Linux run <code>curl -fsSL https://scaleguard.dev/install.sh | sh</code>. With Docker, clone the repository and run <code>./scaleguard-docker.sh</code>. Both give you an admin UI at <code>/adminui</code> and generate an admin password, because there is no default login.</p></details>
+      <details><summary><h3>What does ScaleGuard need to run?</h3></summary>
+        <p>Java 21 or newer, or Docker. It runs as a single JAR on a laptop, a virtual machine or a container. The configuration store is SQLite by default and can be PostgreSQL; the response cache and analytics use embedded DuckDB, so there is no other server to run.</p></details>
+      <details><summary><h3>Is ScaleGuard free?</h3></summary>
+        <p>Yes. ScaleGuard is open source under the MIT license, with no paid tier, and every feature described on this page is in the open-source build.</p></details>
+      <details><summary><h3>How does ScaleGuard compare with NGINX and HAProxy?</h3></summary>
+        <p>In one-core benchmarks on small responses ScaleGuard reached about 93% of NGINX throughput and more than twice Envoy. NGINX and HAProxy are ahead on tail latency, memory use and decades of hardening. ScaleGuard adds a built-in web UI, WAF, analytics, DNS, tunnels, clustering and cloud functions that those proxies need extra modules, plugins or paid tiers for.</p></details>
+      <details><summary><h3>Can I use ScaleGuard to control internal apps and tools?</h3></summary>
+        <p>Yes. Put dashboards, admin panels, staging APIs and wikis behind one ScaleGuard front door: each gets a named HTTPS route, per-route IP allow-lists, scoped OAuth 2.0 tokens for service clients, a web application firewall, rate limits and a recorded request log. SafeExpose publishes laptop demos through the same rules, and cloud functions replace small helper services. ScaleGuard limits human access by network address and API access by tokens; it is not a single-sign-on provider for people.</p></details>
+      <details><summary><h3>Is ScaleGuard an ngrok alternative?</h3></summary>
+        <p>Yes. SafeExpose is a fully open-source (MIT) self-hosted alternative to ngrok that works with ScaleGuard. It publishes a service from a laptop or private network at your own domain over an SSH tunnel with automatic HTTPS, using one command such as <code>safeexpose 3000</code>. It reconnects automatically when the network drops, and its code is on GitHub at <a href="https://github.com/dhaneeshtb/scalegurad-safeexpose" rel="noopener">dhaneeshtb/scalegurad-safeexpose</a>.</p></details>
+      <details><summary><h3>Does ScaleGuard support HTTP/3 and gRPC?</h3></summary>
+        <p>Yes. HTTP/3 over QUIC is served on every HTTPS port alongside HTTP/2 and HTTP/1.1, and gRPC unary and streaming calls are proxied message by message. Each protocol can be switched off per route.</p></details>
+      <details><summary><h3>Can ScaleGuard run as a cluster?</h3></summary>
+        <p>Yes. Run three or more nodes and every one serves traffic (active-active). They elect a master by majority vote, keep identical configuration through a SHA-256 hash-chained ledger without a shared database, and share rate-limit budgets. In local test clusters a new master was elected 2.9 to 3.8 seconds after the old one was killed. A disaster-recovery standby site copies every change and can be promoted with one call. PostgreSQL mode is also available.</p></details>
+      <details><summary><h3>What happens if a node or a whole data centre fails?</h3></summary>
+        <p>If a node fails, the other nodes keep serving traffic, and if it was the master the rest elect a new one in a few seconds. If the whole primary site is lost, the disaster-recovery site keeps serving traffic on the configuration it has, but refuses configuration changes with a hint to promote it, so the two sites can never diverge. Promoting the DR site (one API call or button) makes it the primary, and old nodes that come back follow the new master. A minority side of a network split stops accepting changes but keeps serving traffic.</p></details>
+      <details><summary><h3>Are ScaleGuard cloud functions safe?</h3></summary>
+        <p>Cloud functions are Groovy scripts that run in a layered sandbox with no file, process, reflection or thread access, hard time, memory and size limits, and outbound network calls switched off unless the admin enables them with an allowlist and SSRF protection. They share the JVM, so they are not a hard security boundary and should be written by trusted people.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── FINAL CTA ───────────────────────── -->
+<section class="final" aria-labelledby="final-h">
+  <div class="wrap">
+    <h2 id="final-h">Run your edge from one place.</h2>
+    <p class="sub">One command. A web UI. Everything on your own servers.</p>
+    <div class="install center" data-install-simple>
+      <div class="cmd">
+        <code><span class="prompt">$</span> curl -fsSL https://scaleguard.dev/install.sh | sh</code>
+        <button class="copy" type="button" data-copy="curl -fsSL https://scaleguard.dev/install.sh | sh" aria-label="Copy command"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+      </div>
+    </div>
+    <div class="cta-row center">
+      <a class="btn btn-primary" href="https://github.com/dhaneeshtb/scaleguard" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Star on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/API.md" rel="noopener">Read the API docs</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="foot-brand">
+      <a class="brand" href="/" aria-label="ScaleGuard home"><svg class="logo" width="26" height="26" aria-hidden="true"><use href="#i-logo"/></svg><span>ScaleGuard</span></a>
+      <p>The open-source application gateway. Your whole edge, one process.</p>
+    </div>
+    <nav aria-label="Product"><h4>Product</h4>
+      <a href="#features">Features</a><a href="#start">Get started</a><a href="#performance">Performance</a><a href="#compare">Compare</a><a href="#faq">FAQ</a></nav>
+    <nav aria-label="Documentation"><h4>Docs</h4>
+      <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/API.md" rel="noopener">REST API reference</a>
+      <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/openapi.yaml" rel="noopener">OpenAPI 3 spec</a>
+      <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/CLUSTER.md" rel="noopener">Clustering guide</a>
+      <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/OAUTH.md" rel="noopener">OAuth 2.0 guide</a>
+      <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/docs/CLOUD_FUNCTIONS.md" rel="noopener">Cloud functions</a></nav>
+    <nav aria-label="Community"><h4>Project</h4>
+      <a href="https://github.com/dhaneeshtb/scaleguard" rel="noopener">GitHub</a>
+      <a href="https://github.com/dhaneeshtb/scaleguard/issues" rel="noopener">Issues</a>
+      <a href="https://github.com/dhaneeshtb/scalegurad-safeexpose" rel="noopener">SafeExpose (open source)</a>
+      <a href="https://github.com/dhaneeshtb/scaleguard/blob/main/LICENSE" rel="noopener">MIT license</a>
+      <a href="/llms.txt">llms.txt</a></nav>
+  </div>
+  <div class="wrap foot-end"><span>© <span id="year">2026</span> ScaleGuard. Released under the MIT license.</span><span>scaleguard.dev</span></div>
+</footer>
+
+<script src="/js/main.js" defer></script>
+</body>
+</html>

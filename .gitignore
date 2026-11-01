@@ -27,4 +27,5 @@ domains/
 *.pid
 scaleguard.db
 .env
-dist/
+
+dist/scaleguard.tar.gz

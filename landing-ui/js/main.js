@@ -279,21 +279,11 @@
   }
 
 
-  /* ── hero 3D scene (three.js, vendored, loaded after first paint; the page works without it) ── */
-  var stage = $('[data-stage]'), hero = $('.hero');
-  if (stage && hero) {
-    var glOk = (function () { try { var c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch (e) { return false; } })();
-    var saveData = navigator.connection && navigator.connection.saveData;
-    if (glOk && !saveData) {
-      hero.classList.add('has-3d'); stage.hidden = false;           // reserve the space now so nothing jumps when the scene arrives
-      var fail = function () { hero.classList.remove('has-3d'); stage.hidden = true; };
-      stage.addEventListener('hero3d:fail', fail);
-      var boot = function () {
-        import('/js/hero3d.js').then(function (m) { if (!m.start(stage, { reduce: reduce })) fail(); }).catch(fail);
-      };
-      if (window.requestIdleCallback) window.requestIdleCallback(boot, { timeout: 1500 }); else setTimeout(boot, 200);
-    }
-  }
+  /* ── hero illustration: its SMIL packets stop off-screen and for reduced motion ── */
+  Array.prototype.forEach.call(document.querySelectorAll('.art'), function (svg) {
+    if (reduce) { svg.pauseAnimations(); return; }
+    if (window.IntersectionObserver) new IntersectionObserver(function (es) { es[0].isIntersecting ? svg.unpauseAnimations() : svg.pauseAnimations(); }).observe(svg);
+  });
 
   var nav = $('.nav');
   if (nav) { var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 40); }; onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); }

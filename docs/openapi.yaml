@@ -520,6 +520,92 @@ paths:
       parameters: [{ $ref: '#/components/parameters/scaleguard' }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, retentionDays: { type: integer, minimum: 1, maximum: 3650 } } } } } }
       responses: { '200': { description: OK }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /traffic:
+    get:
+      tags: [Traffic]
+      summary: Recordings with capture counts, recent replays and recorder stats
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      responses: { '200': { description: '{"recorder": {"active", "queuedBytes", "dropped"}, "recordings": [], "replays": []}' } }
+  /traffic/recordings:
+    post:
+      tags: [Traffic]
+      summary: Start recording proxied requests and backend responses
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                routeId: { type: string, description: Source system id; all routes when omitted }
+                pattern: { type: string, description: Regular expression searched in the request path }
+                methods: { type: string, example: "GET,POST" }
+                maxBodyBytes: { type: integer, default: 1048576, maximum: 16777216 }
+                maxRequests: { type: integer, format: int64, default: 100000, description: 0 = no limit }
+      responses: { '200': { description: '{"id"}' }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /traffic/recordings/{id}/stop:
+    post:
+      tags: [Traffic]
+      summary: Stop a recording
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: OK }, '404': { description: Not found } }
+  /traffic/recordings/{id}:
+    delete:
+      tags: [Traffic]
+      summary: Delete a recording with its captures and replays
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: OK }, '404': { description: Not found } }
+  /traffic/recordings/{id}/captures:
+    get:
+      tags: [Traffic]
+      summary: Captured exchanges in recorded order
+      parameters:
+        - { $ref: '#/components/parameters/scaleguard' }
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500, default: 50 } }
+      responses: { '200': { description: 'Rows: seq, ts_ms, trace_id, method, host, uri, req_headers, req_body, req_truncated, status, resp_headers, resp_body, resp_truncated, duration_ms, backend' } }
+  /traffic/replays:
+    post:
+      tags: [Traffic]
+      summary: Replay a recording against another server and compare the answers
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recordingId, target]
+              properties:
+                recordingId: { type: string }
+                target: { type: string, example: "http://new-server:8080" }
+                concurrency: { type: integer, default: 4, maximum: 64 }
+                ignoreFields: { type: array, items: { type: string }, description: JSON field names ignored at any depth }
+                setHeaders: { type: object, additionalProperties: { type: string } }
+                methods: { type: string, example: "GET" }
+                timeoutSeconds: { type: integer, default: 30, maximum: 600 }
+      responses: { '200': { description: '{"id", "requests"}' }, '400': { $ref: '#/components/responses/BadRequest' } }
+  /traffic/replays/{id}:
+    get:
+      tags: [Traffic]
+      summary: Replay totals and per-request results
+      parameters:
+        - { $ref: '#/components/parameters/scaleguard' }
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: result, in: query, schema: { type: string, enum: [match, mismatch, error] } }
+        - { name: after, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500, default: 100 } }
+      responses: { '200': { description: '{"state", "total", "matched", "mismatched", "errors", "results": []}' }, '404': { description: Not found } }
+  /traffic/replays/{id}/cancel:
+    post:
+      tags: [Traffic]
+      summary: Stop a running replay
+      parameters: [{ $ref: '#/components/parameters/scaleguard' }, { name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: OK }, '404': { description: Not running } }
   /functions:
     get:
       tags: [Cloud functions]

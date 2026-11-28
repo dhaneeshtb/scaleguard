@@ -231,6 +231,20 @@ public final class AccessLogStore {
         written.add(rows.size());
     }
 
+    /** Work on the writer's DuckDB connection, serialised with access-log writes (used for the traffic_* tables). */
+    public interface DbWork<T> {
+        T run(DuckDBConnection db) throws SQLException;
+    }
+
+    public synchronized <T> T withDb(DbWork<T> work) throws SQLException {
+        if (!available) throw new SQLException("Analytics storage is not available: " + unavailableReason);
+        return work.run(db);
+    }
+
+    public boolean isAvailable() {
+        return available;
+    }
+
     // ------------------------------------------------------------------ compact storage
 
     /*

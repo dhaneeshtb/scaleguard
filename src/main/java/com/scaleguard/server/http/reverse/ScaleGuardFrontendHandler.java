@@ -59,9 +59,15 @@ public class ScaleGuardFrontendHandler extends ChannelInboundHandlerAdapter {
    * Admin/internal requests (no route) aren't logged.
    */
   private static AccessRecord startRecord(ChannelHandlerContext ctx, Object msg, RouteTarget ts, String clientIp) {
-    if (ts == null || !(msg instanceof HttpRequest req) || !ACCESS_LOG.isRecording()) return null;
+    if (ts == null || !(msg instanceof HttpRequest req)) return null;
+    // traffic recording (record/replay for migrations): one volatile read while nothing is being recorded
+    com.scaleguard.server.analytics.TrafficRecorder.Capture cap = com.scaleguard.server.analytics.TrafficRecorder.ACTIVE
+            ? com.scaleguard.server.analytics.TrafficRecorder.capture(ts.getSourceSystem() != null ? ts.getSourceSystem().getId() : null, req)
+            : null;
+    if (cap == null && !ACCESS_LOG.isRecording()) return null;
     io.netty.handler.codec.http.HttpHeaders h = req.headers();
     AccessRecord r = new AccessRecord();
+    r.capture = cap;
     r.traceId = TraceContext.traceId(h.get("traceparent"));
     if (TraceContext.HEADERS) h.set("traceparent", TraceContext.traceparent(r.traceId));
     r.clientIp = clientIp;

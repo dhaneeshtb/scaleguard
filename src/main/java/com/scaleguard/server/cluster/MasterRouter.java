@@ -17,7 +17,7 @@ public final class MasterRouter {
     private MasterRouter() {}
 
     /** Admin areas that are per-node or read-only even when POSTed to. */
-    private static final Set<String> LOCAL = Set.of("cluster", "signin", "login", "oauth2", ".well-known");
+    private static final Set<String> LOCAL = Set.of("cluster", "signin", "login", "oauth2", ".well-known", "traffic");
 
     private static final java.net.http.HttpClient HTTP = java.net.http.HttpClient.newBuilder()
             .connectTimeout(java.time.Duration.ofSeconds(2)).build();

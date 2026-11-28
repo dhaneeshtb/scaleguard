@@ -281,6 +281,7 @@ public class AppServer implements Server{
         try {
             // Request analytics: open the DuckDB access log now, not on the first request
             com.scaleguard.server.analytics.AccessLogStore.getInstance();
+            com.scaleguard.server.analytics.TrafficRecorder.init();   // resumes recordings that were running
             // High availability: share configuration, rate limits and leadership with other nodes on the same PostgreSQL
             com.scaleguard.server.cluster.ClusterWiring.start();
             // Desired state is the replicated dns.enabled setting; dnsServer=true is the default until it is set.

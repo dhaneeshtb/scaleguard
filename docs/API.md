@@ -332,6 +332,44 @@ transaction that is always rolled back, with file access disabled, a 15 s timeou
 Columns: `ts` (UTC), `trace_id`, `client_ip`, `method`, `host`, `path`, `query`, `protocol`, `route_id`, `route_name`,
 `backend`, `status`, `grpc_status`, `bytes_in`, `bytes_out`, `duration_ms`, `outcome`, `waf_rule`, `user_agent`, `referer`, `tls`, `node`.
 
+## Traffic record & replay (migrations)
+
+Record the real API traffic a route gets — full request and the backend's response — and replay it against another
+server (the system you are migrating to), comparing every answer. Recordings live in the analytics DuckDB (tables
+`traffic_recordings`, `traffic_captures`, `traffic_replays`, `traffic_replay_results`, also readable from
+`POST /analytics/query`), so `-Dscaleguard.analytics=false` turns this off too. Access-log retention does not apply:
+a recording stays until deleted. Recording is per node: a node records the traffic it proxies.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/traffic` | Recordings (with `captures` counts), the last 50 replays, recorder stats (`active`, `queuedBytes`, `dropped`) |
+| `POST` | `/traffic/recordings` | Start: `{"name", "routeId"?, "pattern"? (regex on the path), "methods"? ("GET,POST"), "maxBodyBytes"? (default 1 MiB, ≤ 16 MiB), "maxRequests"? (default 100,000; 0 = no limit)}` → `{"id"}` |
+| `POST` | `/traffic/recordings/{id}/stop` | Stop recording (it also stops by itself at `maxRequests`) |
+| `DELETE` | `/traffic/recordings/{id}` | Delete it with its captures and replays |
+| `GET` | `/traffic/recordings/{id}/captures` | Captured exchanges in order: `after` (seq), `limit` (≤ 500). Bodies as text, or `{"base64"}` when not UTF-8 |
+| `POST` | `/traffic/replays` | Replay: `{"recordingId", "target": "http://new:8080", "concurrency"? (4, ≤ 64), "ignoreFields"? ["id","updatedAt"], "setHeaders"? {"Authorization": "Bearer …"}, "methods"? ("GET"), "timeoutSeconds"? (30)}` → `{"id", "requests"}` |
+| `GET` | `/traffic/replays/{id}` | Totals (`state`, `total`, `matched`, `mismatched`, `errors`) and `results`: `result` (`match`/`mismatch`/`error`), `after`, `limit` (≤ 500) |
+| `POST` | `/traffic/replays/{id}/cancel` | Stop a running replay |
+
+- What is recorded: proxied HTTP/1.1, HTTP/2 and HTTP/3 requests that the backend answered (not gRPC, WebSockets,
+  cached answers, or requests ScaleGuard itself refused). Headers are the client's own, before ScaleGuard adds
+  `X-Forwarded-*`; the response is the backend's, before redirect rewriting.
+- Bodies above `maxBodyBytes` are cut: a request cut that way isn't replayed (`error`), a response cut that way is
+  compared on status only. If the database can't keep up, captures are dropped and counted (`dropped`), never slowing traffic.
+- Comparison: status first, then the body — equal bytes, or equal as JSON after removing `ignoreFields` at any depth
+  (gzip is decompressed). A mismatch says where: `status 200 → 404`, `JSON differs at $.items[0].price`, or
+  `body differs`. The new server's headers and body (first 64 KB) are kept for mismatches.
+- Replays send each request in recorded order to `target` + the original path and query, with the recorded headers
+  (minus `Host`, `Content-Length` and hop-by-hop headers) and `setHeaders` on top. Redirects aren't followed.
+  **Replays send writes (POST/PUT/DELETE) too**: point them at a test copy, or limit with `"methods": "GET"`.
+
+```bash
+curl -XPOST "$SG/traffic/recordings?scaleguard=true" -H "Authorization: $TOKEN" -d '{"name":"orders api","routeId":"s1","pattern":"^/api/"}'
+curl -XPOST "$SG/traffic/replays?scaleguard=true" -H "Authorization: $TOKEN" \
+     -d '{"recordingId":"9a84d1c0","target":"http://new-orders:8080","ignoreFields":["id","createdAt"]}'
+curl "$SG/traffic/replays/0e9fb4dc?scaleguard=true&result=mismatch" -H "Authorization: $TOKEN"
+```
+
 ## Cluster
 
 ScaleGuard nodes form a cluster without any shared database. Full guide: [CLUSTER.md](CLUSTER.md).

@@ -33,6 +33,8 @@ public final class AccessRecord {
     public String userAgent;
     public String referer;
     public boolean tls;
+    /** Set while a traffic recording wants this request (request + response bodies for replay). */
+    public TrafficRecorder.Capture capture;
 
     /** Stamps the duration and queues the record. Safe to call once; later calls are ignored. */
     private boolean done;
@@ -42,6 +44,7 @@ public final class AccessRecord {
         done = true;
         this.status = status;
         this.durationMs = (System.nanoTime() - startNanos) / 1_000_000.0;
+        if (capture != null) TrafficRecorder.complete(this);
         AccessLogStore.getInstance().submit(this);
     }
 

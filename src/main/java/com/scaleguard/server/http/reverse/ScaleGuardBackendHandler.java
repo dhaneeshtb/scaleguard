@@ -92,6 +92,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
             FullHttpResponse response= (FullHttpResponse) msg;
             com.scaleguard.server.analytics.AccessRecord rec = onHead(ctx, response);
             if (rec != null) {
+                if (rec.capture != null) rec.capture.body(response.content());
                 rec.bytesOut = response.content().readableBytes();
                 rec.finish(response.status().code());
             }
@@ -141,6 +142,7 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
     private com.scaleguard.server.analytics.AccessRecord onHead(ChannelHandlerContext ctx, io.netty.handler.codec.http.HttpResponse response) {
         PassiveHealthManager.getInstance().recordStatus(host, response.status().code());
         com.scaleguard.server.analytics.AccessRecord rec = com.scaleguard.server.analytics.AccessLog.nextResponse(ctx.channel());
+        if (rec != null && rec.capture != null) rec.capture.head(response);   // the backend's own headers, before ours
         if (rec != null && rec.traceId != null && com.scaleguard.server.analytics.TraceContext.HEADERS) response.headers().set("X-Trace-Id", rec.traceId);
         if (response.status().code() >= 300 && response.status().code() < 400) {
             // Handle Redirect
@@ -188,7 +190,10 @@ public class ScaleGuardBackendHandler extends ChannelInboundHandlerAdapter {
             pendingFlush = true;
         }
         if (msg instanceof io.netty.handler.codec.http.HttpContent content) {
-            if (streamRec != null) streamRec.bytesOut += content.content().readableBytes();
+            if (streamRec != null) {
+                streamRec.bytesOut += content.content().readableBytes();
+                if (streamRec.capture != null) streamRec.capture.body(content.content());
+            }
             if (content instanceof io.netty.handler.codec.http.LastHttpContent) {
                 midResponse = false;
                 com.scaleguard.server.analytics.AccessRecord rec = streamRec;

@@ -5,7 +5,7 @@ import { Menu, MenuButton, MenuList, MenuItem, Tooltip, useColorMode } from '@ch
 import axios from "axios";
 import {
     FiActivity, FiBarChart2, FiHeart, FiChevronsLeft, FiChevronsRight, FiCommand, FiGlobe, FiLock, FiLogOut,
-    FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown, FiSliders, FiKey, FiServer,
+    FiMenu, FiMoon, FiSearch, FiShield, FiSun, FiX, FiZap, FiChevronDown, FiSliders, FiKey, FiServer, FiRepeat,
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { useAuth } from "./contexts/AuthContext";
@@ -27,6 +27,7 @@ const navSections: { title: string; links: NavLink[] }[] = [
             { to: "/home", label: "Overview", icon: FiActivity, match: ["/home", "/managehost", "/hostgroups"] },
             { to: "/analytics", label: "Analytics", icon: FiBarChart2 },
             { to: "/backends", label: "Backend health", icon: FiHeart },
+            { to: "/replay", label: "Record & replay", icon: FiRepeat },
             { to: "/asyncengines", label: "Async Engines", icon: FiZap },
         ],
     },
